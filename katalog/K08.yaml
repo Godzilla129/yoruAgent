@@ -1,0 +1,280 @@
+id: K08
+nama: "Jejak audit aktif (auditd)"
+kode_cis: "BELUM_DIVERIFIKASI"
+kode_cis_catatan: >
+  CIS punya bagian besar tentang auditd dengan puluhan sub-item (satu
+  nomor per aturan). Kami TIDAK menerapkan daftar itu bulat-bulat -
+  lihat kenapa_aturan_sedikit. Nomor per item harus dicek ke PDF CIS
+  Ubuntu 24.04 asli sebelum dipakai di laporan. Jangan mengarang nomor.
+risiko: AMAN
+kategori: audit
+
+kenapa: >
+  Sembilan kontrol lain MENGUBAH keadaan server. K08 membuat server
+  MENCATAT siapa yang mengubah apa, kapan. Tanpa itu, Siklus Penjagaan
+  cuma bisa bilang "port 3306 terbuka lagi". Dengan auditd dia bisa bilang
+  "user yoru menyentuh file itu jam 02:28:42 pakai perintah touch".
+  Bedanya besar untuk pemilik server: "ada yang berubah" bikin panik,
+  "si ini, jam segini, pakai perintah ini" bisa ditindaklanjuti.
+
+peran_khusus_di_yoru: >
+  Tiga aturan terakhir mengawasi file drop-in Yoru SENDIRI. Jadi kalau ada
+  yang mengutak-atik hasil kerja Yoru, auditd yang jadi saksinya. Ini
+  bahan mentah Siklus Penjagaan, bukan sekadar centang CIS. Kontrol lain
+  menjaga server; K08 menjaga kontrol-kontrol itu.
+
+nilai_auid: >
+  Field yang paling penting di keluaran auditd adalah auid (audit user id),
+  BUKAN uid. auid adalah identitas login asli dan TIDAK BERUBAH walaupun
+  orangnya sudo menjadi root. Terbukti di VM yoru-a: satu baris memuat
+  auid=yoru uid=root sekaligus. Tanpa auid, semua tindakan tercatat sebagai
+  "root" dan tidak berarti apa-apa di server yang dipakai lebih dari satu
+  orang. Laporan Yoru WAJIB memakai auid, bukan uid.
+
+prasyarat:
+  - id: k09_sudah_diterapkan
+    cek: "test -f /etc/systemd/journald.conf.d/99-yoru-k09.conf"
+    wajib: true
+    kalau_gagal: PERBAIKI_DULU
+    alasan: >
+      auditd menambah volume log. K09 (pagu log) harus lebih dulu ada
+      supaya tambahan itu punya batas. Urutan penerapan K09 sebelum K08
+      bukan kebetulan.
+  - id: file_yang_diawasi_ada
+    cek: "test -e <setiap path di aturan>"
+    wajib: true
+    kalau_gagal: PERBAIKI_DULU
+    alasan: >
+      auditctl menolak aturan -w yang menunjuk path tidak ada, dan
+      kegagalan satu aturan bisa membatalkan pemuatan. Path harus
+      diverifikasi lebih dulu, bukan diasumsikan.
+  - id: akses_root
+    cek: "stat -c '%a %U' /etc/audit/rules.d"
+    lolos_jika: "750 root - folder hanya bisa dibaca root"
+    wajib: true
+    kalau_gagal: BATALKAN
+    alasan: >
+      Semua perintah periksa dan verifikasi K08 butuh root. Tanpa sudo,
+      ls dan cat mengembalikan Permission denied - dan itu BUKAN tanda
+      auditd rusak, cuma tanda perintahnya kurang sudo.
+
+periksa:
+  perintah_terpasang: "systemctl is-active auditd; systemctl is-enabled auditd; which auditctl"
+  perintah_aturan: "auditctl -l"
+  perintah_jumlah: "auditctl -l | grep -c '^-w'"
+  lolos_jika: "auditd active DAN auditctl -l mengeluarkan 12 baris"
+  petunjuk_cepat: >
+    journald mencetak "Collecting audit messages is disabled." saat lahir
+    kalau auditd belum aktif. Baris itu bisa dipakai sebagai pemeriksaan
+    cepat tanpa perintah tambahan.
+
+status_awal_server_ini: "GAGAL - auditd tidak terpasang sama sekali"
+status_awal_rincian:
+  is_active: "inactive"
+  is_enabled: "not-found"
+  auditctl: "tidak ada"
+  petunjuk_journald: "Collecting audit messages is disabled."
+
+terapkan:
+  pasang_paket: "DEBIAN_FRONTEND=noninteractive apt-get install -y auditd"
+  metode: drop-in
+  file: "/etc/audit/rules.d/zz-yoru-k08.rules"
+  isi: |
+    # K08 - jejak audit Yoru
+
+    # Identitas: siapa punya akun, siapa bisa login
+    -w /etc/passwd -p wa -k identitas
+    -w /etc/shadow -p wa -k identitas
+    -w /etc/group -p wa -k identitas
+    -w /etc/gshadow -p wa -k identitas
+
+    # Hak jadi root
+    -w /etc/sudoers -p wa -k hak_akses
+    -w /etc/sudoers.d/ -p wa -k hak_akses
+
+    # Pintu masuk server
+    -w /etc/ssh/sshd_config -p wa -k ssh_config
+    -w /etc/ssh/sshd_config.d/ -p wa -k ssh_config
+
+    # Firewall
+    -w /etc/ufw/ -p wa -k firewall
+
+    # Kerjaan Yoru sendiri
+    -w /etc/sysctl.d/99-yoru-k10.conf -p wa -k yoru_kontrol
+    -w /etc/systemd/journald.conf.d/99-yoru-k09.conf -p wa -k yoru_kontrol
+    -w /etc/mysql/mariadb.conf.d/zz-yoru-k06.cnf -p wa -k yoru_kontrol
+  reload: "augenrules --load"
+  arti_bendera:
+    "-w": "watch - awasi path ini"
+    "-p wa": "catat kalau ada write (ubah isi) atau attribute change (ubah atribut, termasuk touch)"
+    "-k": "key - label untuk dicari nanti pakai ausearch -k <label>"
+  catatan_penamaan: >
+    Awalan zz- WAJIB, dan ini yang paling mudah salah dari semua kontrol.
+    Lihat catatan_lingkungan.
+
+kembalikan:
+  perintah: "rm -f /etc/audit/rules.d/zz-yoru-k08.rules"
+  reload: "augenrules --load"
+  bukti: >
+    Diuji di VM yoru-a 4 Sep 2026: setelah rm + augenrules --load,
+    auditctl -l mengeluarkan "No rules". Hapus file CUKUP untuk kontrol
+    ini - sama seperti K09, berbeda dari K10.
+  catatan_paket: >
+    Rollback ini hanya menghapus ATURAN, bukan paket auditd. Kalau pemilik
+    minta pengembalian penuh, paketnya harus di-purge terpisah. Kami tidak
+    menganjurkan itu: auditd yang terpasang tapi tanpa aturan tidak
+    mengganggu apa pun.
+
+verifikasi:
+  perintah: "auditctl -l"
+  lolos_jika: "12 baris, sama persis dengan isi file"
+  catatan_augenrules: >
+    Baris "No rules" yang muncul di TENGAH keluaran augenrules --load
+    adalah keadaan SEBELUM aturan dimuat, bukan hasil akhir. Blok
+    enabled/failure/pid/backlog di bawahnya adalah keluaran auditctl -s.
+    Yang jadi patokan HANYA auditctl -l yang dijalankan terpisah setelahnya.
+    Jangan pernah menyimpulkan kegagalan dari keluaran augenrules saja.
+
+  tes_nyata:
+    kenapa: >
+      Aturan terpasang TIDAK SAMA DENGAN aturan berfungsi. auditctl -l cuma
+      membaca daftar di kernel. Harus dipaksa menangkap kejadian sungguhan.
+    perintah_picu: "touch /etc/sysctl.d/99-yoru-k10.conf"
+    perintah_cari: "ausearch -k yoru_kontrol -i --start recent | tail -20"
+    lolos_jika: >
+      Ada entri yang memuat proctitle perintahnya, nama file yang disentuh,
+      key=yoru_kontrol, dan auid pengguna aslinya.
+    hasil_nyata: >
+      type=PROCTITLE : proctitle=touch /etc/sysctl.d/99-yoru-k10.conf
+      type=PATH : name=/etc/sysctl.d/99-yoru-k10.conf
+      type=SYSCALL : auid=yoru uid=root comm=touch exe=/usr/bin/touch key=yoru_kontrol
+      waktu 09/04/2026 02:28:42
+    arti_bendera_ausearch:
+      "-k": "cari berdasarkan label"
+      "-i": "terjemahkan angka jadi nama (uid jadi nama pengguna, syscall jadi namanya)"
+      "--start recent": "10 menit terakhir"
+
+  temuan_bonus: >
+    ausearch juga memunculkan entri type=CONFIG_CHANGE op=add_rule
+    key=yoru_kontrol auid=yoru. Artinya auditd MENCATAT PERUBAHAN
+    ATURANNYA SENDIRI. Kalau ada yang menghapus aturan Yoru, penghapusan
+    itu ikut tercatat (op=remove_rule). Ini penting untuk Siklus Penjagaan:
+    K08 tidak bisa dimatikan diam-diam.
+
+catatan_lingkungan:
+  masalah: >
+    Ubuntu mengirim /etc/audit/rules.d/audit.rules yang baris pertamanya
+    adalah -D, artinya "hapus semua aturan".
+  aturan_augenrules: >
+    augenrules menggabungkan semua file di /etc/audit/rules.d/ urut abjad,
+    lalu memuat hasilnya sekaligus. Angka datang SEBELUM huruf.
+  akibat: >
+    File bernama 99-yoru-k08.rules akan dimuat SEBELUM audit.rules, lalu
+    -D di audit.rules MENGHAPUS SEMUANYA. augenrules --load tetap
+    melaporkan sukses, tidak ada error, dan hasilnya nol aturan.
+  solusi: >
+    Pakai awalan zz- supaya file kita dimuat SESUDAH audit.rules.
+    Ini kebalikan dari sshd (01-) dan sama arah dengan MariaDB (zz-),
+    sysctl.d (99-) dan journald.conf.d (99-) - tapi dengan pembanding
+    huruf, bukan angka, sehingga 99- justru KALAH di sini.
+  bukti: >
+    Isi /etc/audit/rules.d/audit.rules di VM yoru-a 4 Sep 2026 memang
+    diawali "## First rule - delete all" lalu -D. Teori terbukti dari
+    isi file, bukan dari asumsi.
+  pelajaran_untuk_agent: >
+    Awalan penamaan drop-in TIDAK BOLEH dihafal sebagai satu kebiasaan.
+    Empat sistem, empat aturan berbeda, dan yang menentukan bukan cuma
+    "pertama atau terakhir yang menang" tapi juga siapa tetangganya.
+    Di sini pembandingnya file bernama huruf, jadi awalan angka kalah.
+
+tabel_presedensi_drop_in:
+  - direktori: "/etc/ssh/sshd_config.d/"
+    yang_menang: "nilai PERTAMA"
+    awalan_yoru: "01-"
+    lawan: "50-cloud-init.conf"
+  - direktori: "/etc/mysql/mariadb.conf.d/"
+    yang_menang: "nilai TERAKHIR"
+    awalan_yoru: "zz-"
+    lawan: "50-server.cnf"
+  - direktori: "/etc/sysctl.d/"
+    yang_menang: "nilai TERAKHIR"
+    awalan_yoru: "99-"
+    lawan: "/usr/lib/sysctl.d/50-default.conf"
+  - direktori: "/etc/systemd/journald.conf.d/"
+    yang_menang: "nilai TERAKHIR"
+    awalan_yoru: "99-"
+    lawan: "journald.conf utama"
+  - direktori: "/etc/audit/rules.d/"
+    yang_menang: "TERAKHIR, tapi lawannya bernama huruf"
+    awalan_yoru: "zz-"
+    lawan: "audit.rules (berisi -D)"
+    catatan: "99- akan KALAH di sini karena angka < huruf"
+
+kenapa_aturan_sedikit: >
+  Daftar aturan auditd versi CIS lengkap panjangnya ratusan baris dan
+  sangat berisik. Kami sengaja mengambil dua belas aturan yang menjawab
+  pertanyaan paling sering ditanya setelah insiden: siapa yang punya akun,
+  siapa yang bisa jadi root, siapa yang mengubah pintu masuk, siapa yang
+  mengubah firewall, dan siapa yang menyentuh kontrol Yoru. Menambah
+  aturan gampang; mengurangi kebisingan yang sudah membanjiri disk susah.
+  Mulai sedikit, tambah kalau pemilik memang butuh.
+
+dikecualikan_sengaja:
+  - setelan: "-e 2 (mode immutable)"
+    keputusan: TIDAK_DITERAPKAN
+    alasan: >
+      -e 2 mengunci aturan audit sampai server di-reboot. Kalau ada aturan
+      yang salah dan bikin masalah, tidak bisa diperbaiki tanpa reboot -
+      dan me-reboot server orang bukan wewenang agent. CIS menganjurkannya
+      untuk lingkungan berkepatuhan tinggi; kami menilai risiko
+      operasionalnya lebih besar daripada manfaatnya untuk target pengguna
+      Yoru (developer dan UMKM tanpa tim IT).
+  - setelan: "aturan syscall untuk adjtimex/settimeofday"
+    keputusan: TIDAK_DITERAPKAN
+    alasan: >
+      systemd-timesyncd memanggil adjtimex secara rutin, jadi aturan ini
+      membanjiri log dengan kejadian yang sah. Sudut pandang perubahan
+      waktu tetap tertutup lewat pengawasan file, tanpa kebisingannya.
+  - setelan: "aturan eksekusi sudo/su"
+    keputusan: DITUNDA
+    alasan: >
+      Bernilai tinggi tapi menghasilkan satu entri per pemakaian sudo.
+      Bisa ditambahkan nanti setelah volume log sungguhan terukur di
+      server nyata, bukan di VM latihan.
+
+interaksi_dengan_kontrol_lain: >
+  K08 menambah volume log, jadi K09 wajib lebih dulu. Sebaliknya, K08
+  mengawasi file kontrol K06, K09 dan K10 - jadi K08 adalah kontrol yang
+  membuat kontrol lain bisa dijaga. Urutan penerapan yang benar:
+  K09 dulu (pagu log), baru K08 (pencatat), dan K08 harus dipasang
+  paling akhir supaya semua file yang diawasi sudah ada.
+
+yang_rusak_kalau_diterapkan: >
+  Tidak ada di server biasa - auditd hanya mengamati, tidak memblokir.
+  Yang perlu diperhatikan: volume log naik, dan di server yang sangat
+  sibuk backlog bisa penuh (terlihat di auditctl -s field lost).
+  Kalau field lost naik terus, aturannya terlalu banyak untuk server itu.
+
+catatan_panel:
+  aapanel: "aman - auditd tidak mengganggu panel"
+  cpanel: "aman"
+  catatan_umum: >
+    Panel yang sering menulis ke /etc/passwd (membuat akun hosting
+    otomatis) akan menghasilkan banyak entri identitas. Itu bukan alarm,
+    itu pekerjaan normal panel. Yoru harus tahu bedanya sebelum melapor.
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 4 Sep 2026, auditd 1:3.1.2-2.1build1.1"
+rollback_teruji: true
+snapshot_sebelum: "sebelum-K08"
+
+catatan_insiden_saat_pemasangan: >
+  VM mati paksa di tengah apt install auditd (4 Sep 2026 01:58:50),
+  menyisakan dpkg dalam keadaan interrupted. Perbaikannya rutin:
+  dpkg --configure -a lalu apt-get install -f -y. Tidak ada kerusakan
+  permanen. Penyebab matinya ada di sisi VMware/Windows, bukan di dalam
+  Ubuntu - dibuktikan dari log yang berhenti mendadak tanpa satu pun baris
+  Stopping/Shutdown, ditambah jeda 7 menit dan boot ID baru.
+  CALON SINYAL DRIFT: log berhenti tanpa baris shutdown = server mati
+  tidak wajar. Bisa dideteksi tiap pagi hanya dengan membandingkan boot
+  terakhir. Sinyal ini hanya terbaca karena K09 sudah membuat log permanen
+  enam menit sebelumnya.

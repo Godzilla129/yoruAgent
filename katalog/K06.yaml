@@ -1,0 +1,226 @@
+id: K06
+nama: "Cuma port yang dipakai yang boleh terbuka"
+kode_cis: "BELUM_DIVERIFIKASI"
+kode_cis_catatan: >
+  Kontrol ini tidak memetakan bersih ke satu nomor CIS. CIS punya
+  rekomendasi terkait di bagian layanan ("Ensure <service> is not
+  installed/enabled"), tapi tidak ada satu item CIS yang berbunyi
+  "ikat layanan ke localhost". Jangan mengarang nomor. Kalau dipakai
+  di laporan, sebut apa adanya: kontrol turunan dari prinsip minimasi
+  permukaan serang, bukan kutipan langsung CIS.
+risiko: BERISIKO
+kategori: jaringan
+
+kenapa: >
+  K05 (firewall) dan K06 menutup lubang yang sama dari dua arah berbeda.
+  Firewall menolak paket yang masuk - pintunya ada tapi dikunci. K06
+  membuat layanan cuma mendengar ke dirinya sendiri - pintunya tidak ada
+  sama sekali. Perlu dua-duanya karena kunci bisa lepas: firewall bisa
+  dimatikan orang, ke-reset waktu update, atau salah aturan. Kalau itu
+  terjadi dan database masih menempel di 0.0.0.0, isinya terbuka ke
+  internet detik itu juga.
+
+klasifikasi_port: >
+  INI YANG MEMBEDAKAN K06 DARI KONTROL LAIN. Kontrol lain punya satu
+  keadaan benar yang tetap. K06 tidak. Port yang sama bisa benar di satu
+  server dan salah di server lain, tergantung server itu buat apa.
+  Tidak ada aturan sederhana yang bisa memutuskan sendiri:
+  "tutup semua kecuali 22" mematikan website; "biarkan semua yang sengaja
+  dipasang" membiarkan database bocor. Agent WAJIB menimbang per port,
+  dan untuk yang abu-abu WAJIB bertanya - bukan menebak.
+  Bukti nyata di VM yoru-a: tiga port terbuka, tiga jawaban berbeda.
+
+aturan_klasifikasi:
+  - pola: "port SSH (22, atau port kustom yang dipakai pemilik saat ini)"
+    keputusan: BIARKAN
+    alasan: "Ini pintu masuk pemilik. Menutupnya mengunci pemilik."
+  - pola: "port layanan publik (80, 443) dan ada web server yang memegangnya"
+    keputusan: TANYA_PEMILIK
+    alasan: >
+      Web server memang gunanya dilihat orang. Agent tidak boleh
+      memutuskan sendiri bahwa website pemilik harus mati.
+  - pola: >
+      port basis data / cache / antrian (3306, 5432, 6379, 11211, 27017)
+      terikat ke 0.0.0.0
+    keputusan: USULKAN_TUTUP
+    alasan: >
+      Hampir selalu salah. Layanan ini biasanya cuma dipakai aplikasi
+      di mesin yang sama. Tetap butuh izin karena ada kasus sah
+      (replikasi antar server, DB terpisah dari aplikasi).
+  - pola: "port terikat 127.0.0.1 atau [::1]"
+    keputusan: ABAIKAN
+    alasan: "Sudah aman, tidak terjangkau dari luar."
+  - pola: "port 6000-6063 dipegang sshd"
+    keputusan: ABAIKAN
+    alasan: >
+      Itu X11 forwarding milik sesi SSH yang sedang login, bukan layanan
+      server. Muncul dan hilang mengikuti siapa yang sedang masuk.
+      Lihat catatan_drift_palsu di bawah.
+
+prasyarat:
+  - id: layanan_boleh_direstart
+    cek: "tanya pemilik: boleh restart layanan ini sekarang?"
+    wajib: true
+    kalau_gagal: TANYA_PEMILIK
+    alasan: >
+      bind-address cuma dibaca saat proses lahir. reload TIDAK cukup,
+      harus restart. Artinya semua koneksi aplikasi yang sedang jalan
+      putus. Bahaya K06 bukan takut terkunci seperti K01/K02, tapi
+      bikin aplikasi orang error di tengah transaksi. Idealnya di jam sepi.
+  - id: pemakai_port_didata
+    cek: "ss -tulpn | grep LISTEN, lalu tanya pemilik tiap port publik"
+    wajib: true
+    kalau_gagal: TANYA_PEMILIK
+    alasan: >
+      Tanpa tahu port itu dipakai siapa, agent tidak punya dasar untuk
+      mengklasifikasi. Lihat klasifikasi_port.
+  - id: aplikasi_lokal_masih_butuh
+    cek: "pastikan aplikasi di server ini mengakses DB lewat 127.0.0.1, bukan lewat IP LAN"
+    wajib: true
+    kalau_gagal: TANYA_PEMILIK
+    alasan: >
+      Kalau aplikasi terhubung ke database lewat alamat LAN server
+      sendiri, mengikat ke 127.0.0.1 akan mematikan aplikasi itu juga.
+
+periksa:
+  perintah: "ss -tulpn | grep LISTEN"
+  lolos_jika: >
+    Tidak ada layanan basis data/cache/antrian yang terikat ke 0.0.0.0
+    atau ::. Port publik yang tersisa sudah dikonfirmasi pemilik.
+  kolom_yang_dibaca: "Local Address:Port"
+  arti_nilai:
+    "0.0.0.0:xxxx": "mendengar semua jaringan - bisa dihubungi dari luar"
+    "[::]:xxxx": "sama, untuk IPv6"
+    "127.0.0.1:xxxx": "cuma dirinya sendiri - aman"
+    "[::1]:xxxx": "sama, untuk IPv6"
+    "<ip-lan>:xxxx": "menempel di satu kartu jaringan - perlu dilihat kasus per kasus"
+
+status_awal_server_ini: >
+  LULUS sebelum paket tambahan dipasang. Satu-satunya yang terikat
+  0.0.0.0 adalah sshd port 22, dan itu memang disengaja. Semua sisanya
+  (systemd-resolved, X11 forwarding) sudah di localhost.
+status_awal_catatan: >
+  Server terlalu bersih untuk menguji terapkan dan kembalikan. nginx dan
+  mariadb-server dipasang sengaja sebagai bahan latihan. MariaDB bawaan
+  Ubuntu 24.04 ternyata SUDAH aman (127.0.0.1), jadi kebocoran juga
+  harus dibuat sengaja lewat file 60-lab-bocor.cnf.
+
+terapkan:
+  metode: drop-in
+  catatan_metode: >
+    Tidak ada satu perintah untuk K06. Cara mengikat layanan ke localhost
+    berbeda tiap layanan. Yang di bawah adalah resep MariaDB. Layanan lain
+    butuh resepnya sendiri (redis: bind di redis.conf; postgres:
+    listen_addresses di postgresql.conf). Ini sebabnya K06 butuh penalaran,
+    bukan tambalan tetap.
+  contoh_mariadb:
+    file: "/etc/mysql/mariadb.conf.d/zz-yoru-k06.cnf"
+    isi: |
+      [mysqld]
+      bind-address = 127.0.0.1
+    reload: "systemctl restart mariadb"
+    catatan_reload: >
+      HARUS restart, bukan reload. bind-address cuma dibaca saat proses
+      lahir. Terbukti di VM yoru-a: PID berubah tiap penerapan
+      (116961 -> 117378 -> 117788).
+  catatan_penamaan: >
+    Awalan zz- WAJIB. Bukan 01- seperti file sshd. Lihat catatan_lingkungan.
+
+kembalikan:
+  perintah: "rm -f /etc/mysql/mariadb.conf.d/zz-yoru-k06.cnf"
+  reload: "systemctl restart mariadb"
+  catatan: >
+    Bukti rollback yang sah: ss menunjukkan 0.0.0.0:3306 lagi. Jangan
+    pakai exit code rm - rm -f tidak pernah mengeluh.
+
+verifikasi:
+  perintah: "ss -tulpn | grep 3306"
+  lolos_jika: "127.0.0.1:3306"
+  cek_layanan: "systemctl is-active mariadb"
+  cek_layanan_harus: "active"
+
+  tes_negatif:
+    perintah: >
+      timeout 3 bash -c 'echo > /dev/tcp/<ip-lan>/3306' 2>/dev/null
+      && echo TERBUKA || echo TERTUTUP
+    lolos_jika: "TERTUTUP"
+    hasil_nyata: "TERTUTUP - BENAR"
+
+  tes_positif:
+    perintah: >
+      timeout 3 bash -c 'echo > /dev/tcp/127.0.0.1/3306' 2>/dev/null
+      && echo JALAN || echo MATI
+    lolos_jika: "JALAN"
+    hasil_nyata: "LOKAL JALAN - BENAR"
+    kenapa_wajib: >
+      Kegagalan paling menyakitkan di K06 bukan "port masih terbuka",
+      tapi "port tertutup terlalu rapat sampai aplikasi di server itu
+      sendiri ikut tidak bisa terhubung". Website mati, dan yang mematikan
+      adalah alat yang katanya mengamankan. Tanpa tes positif, agent tidak
+      tahu bedanya "berhasil menutup" dan "berhasil membunuh pasien".
+
+catatan_lingkungan:
+  masalah: >
+    Direktori drop-in MariaDB (/etc/mysql/mariadb.conf.d/) bentuknya mirip
+    sekali dengan direktori drop-in sshd (/etc/ssh/sshd_config.d/), tapi
+    aturan menangnya KEBALIKAN.
+  aturan_openssh: "nilai PERTAMA yang ditemukan yang dipakai -> pakai awalan 01-"
+  aturan_mysql: "nilai TERAKHIR yang ditemukan yang dipakai -> pakai awalan zz-"
+  akibat: >
+    Agent yang menghafal satu pola lalu menerapkannya ke yang lain akan
+    membuat file yang diabaikan total. Sama seperti K02, tapi arah
+    kesalahannya terbalik. File dibuat, layanan restart tanpa error,
+    tapi setelan tidak berubah sama sekali.
+  cara_membuktikan: >
+    Jangan percaya dokumentasi saja. Taruh file dengan nilai berlawanan,
+    restart, baca hasil efektifnya. Di VM yoru-a: 50-server.cnf berisi
+    127.0.0.1, file 60-lab-bocor.cnf berisi 0.0.0.0, hasilnya 0.0.0.0.
+    Aturan "terakhir menang" terbukti dari perilaku, bukan dari asumsi.
+  pelajaran_untuk_agent: >
+    Dua sistem yang tampilannya sama belum tentu aturannya sama.
+    Sebelum menulis file drop-in ke direktori yang belum pernah diuji,
+    agent harus membuktikan arah presedensinya lebih dulu.
+  ditemukan_pada: "VM yoru-a, Ubuntu 24.04, 3 Sep 2026"
+
+catatan_drift_palsu: >
+  Port 6010 (dan 6000-6063 umumnya) yang dipegang sshd adalah X11
+  forwarding milik sesi SSH yang sedang login - bukan layanan server.
+  Muncul saat klien dengan X11 forwarding masuk, hilang saat dia keluar.
+  Siklus Penjagaan akan melaporkan "port muncul/hilang" padahal tidak
+  terjadi apa-apa. Ini contoh drift palsu pertama yang kami temukan
+  sendiri. Agent harus mengabaikannya. Catatan: sshd default
+  X11UseLocalhost yes membuatnya menempel di 127.0.0.1. Kalau setelan itu
+  dimatikan, port X11 benar-benar terbuka ke jaringan dan itu bahaya nyata.
+
+temuan_tambahan: >
+  nginx mendengar di port 80 tapi ufw masih memblokir 80. Website menyala
+  tapi tidak bisa diakses siapa pun. Ketimpangan antara "layanan mendengar"
+  dan "firewall memblokir" adalah temuan yang layak dilaporkan ke pemilik,
+  walau bukan masalah keamanan.
+
+yang_rusak_kalau_diterapkan: >
+  Aplikasi di server LAIN yang terhubung ke database ini berhenti bisa
+  konek. Kasus sah yang harus ditanyakan dulu: replikasi database antar
+  server, aplikasi yang dipisah dari databasenya, tool backup jarak jauh,
+  dan panel yang mengelola beberapa server. Selain itu restart layanan
+  memutus semua koneksi yang sedang jalan.
+
+catatan_panel:
+  aapanel: >
+    aaPanel sering mengikat MySQL ke 0.0.0.0 supaya fitur remote database
+    jalan. Menutupnya bisa mematikan fitur panel - wajib tanya pemilik.
+  cpanel: >
+    cPanel punya fitur Remote MySQL yang memang butuh 3306 terbuka ke host
+    tertentu. Jangan ditutup tanpa konfirmasi.
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026"
+rollback_teruji: true
+snapshot_sebelum: "sebelum-K06"
+
+catatan_sisa_lab: >
+  File /etc/mysql/mariadb.conf.d/60-lab-bocor.cnf SENGAJA ditinggalkan di
+  VM yoru-a. Itu penyakit buatan, bukan kontrol. Gunanya: mensimulasikan
+  dunia nyata di mana konfigurasi salah milik orang lain masih ada dan
+  file Yoru yang menahannya. Bonusnya jadi bahan demo Siklus Penjagaan -
+  hapus file zz-yoru-k06.cnf, port langsung terbuka lagi, Yoru harus
+  mendeteksi dan melapor. Jangan bingung membedakan awalan lab- dan yoru-.

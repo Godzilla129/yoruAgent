@@ -1,0 +1,80 @@
+id: K01
+nama: "Root tidak bisa login lewat SSH"
+kode_cis: "5.2.10"
+risiko: BERISIKO
+kategori: ssh
+
+kenapa: >
+  Kalau root bisa login langsung, penyerang cuma perlu menebak satu
+  password untuk dapat kuasa penuh. Selain itu semua tindakan tercatat
+  sebagai "root" - tidak ketahuan siapa yang melakukan apa.
+
+prasyarat:
+  - id: ada_user_sudo_lain
+    cek: "getent group sudo | cut -d: -f4"
+    wajib: true
+    kalau_gagal: BATALKAN
+    alasan: >
+      Tanpa user lain yang punya sudo, mematikan root login mengunci
+      pemilik dari servernya sendiri secara permanen.
+  - id: akun_user_aktif
+    cek: "passwd -S <user> | awk '{print $2}'"
+    lolos_jika: "nilainya P, bukan L atau NP"
+    wajib: true
+    kalau_gagal: BATALKAN
+  - id: user_punya_shell
+    cek: "getent passwd <user> | cut -d: -f7"
+    lolos_jika: "bukan /usr/sbin/nologin dan bukan /bin/false"
+    wajib: true
+    kalau_gagal: BATALKAN
+
+periksa:
+  perintah: "sshd -T | awk '/^permitrootlogin/ {print $2}'"
+  lolos_jika: "nilainya tepat 'no'"
+  jangan_pakai: "grep -q 'prohibit-password'"
+  alasan_jangan: >
+    OpenSSH punya dua ejaan untuk nilai yang sama: prohibit-password
+    dan without-password. grep yang cuma mencari salah satunya akan
+    salah melaporkan kondisi. Terbukti di VM yoru-a, 3 Sep 2026.
+  nilai_lain:
+    "yes":                  "GAGAL - paling bahaya"
+    "prohibit-password":    "SEBAGIAN - root masih bisa masuk pakai SSH key"
+    "without-password":     "SEBAGIAN - sama, ejaan lama"
+    "forced-commands-only": "SEBAGIAN - jarang, tanyakan ke pemilik"
+
+status_awal_server_ini: "SEBAGIAN (without-password)"
+
+terapkan:
+  metode: drop-in
+  file: "/etc/ssh/sshd_config.d/01-yoru-k01.conf"
+  isi: "PermitRootLogin no"
+  validasi_sebelum_reload: "sshd -t"
+  reload: "systemctl reload ssh"
+
+kembalikan:
+  perintah: "rm -f /etc/ssh/sshd_config.d/01-yoru-k01.conf"
+  validasi_sebelum_reload: "sshd -t"
+  reload: "systemctl reload ssh"
+
+verifikasi:
+  perintah: "sshd -T | awk '/^permitrootlogin/ {print $2}'"
+  cek_layanan: "systemctl is-active ssh"
+  cek_layanan_harus: "active"
+  bukti_berfungsi: "sshd -T | awk '/^permitrootlogin/ {print $2}'"
+  catatan_verifikasi: >
+    Mencoba `ssh root@server` BUKAN bukti yang sah. Di Ubuntu akun root
+    memang tidak berpassword, jadi login root ditolak juga saat kontrol
+    ini belum aktif. Hasil tesnya sama di dua kondisi berbeda, jadi tidak
+    membuktikan apa-apa. Yang sah: HANYA output sshd -T. Log sshd tidak bisa dipakai
+    karena OpenSSH sengaja menyamarkan alasan penolakan.
+
+yang_rusak_kalau_diterapkan: >
+  Script deploy, backup, atau migrasi yang login sebagai root akan
+  berhenti jalan. Di server panel, sebagian fitur backup butuh root SSH.
+
+catatan_panel:
+  aapanel: "sebagian fitur backup pakai root SSH - tanyakan pemilik dulu"
+  cpanel: "fitur transfer/migrasi butuh root SSH - berisiko tinggi"
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026"
+rollback_teruji: true

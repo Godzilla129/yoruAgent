@@ -1,0 +1,67 @@
+id: K07
+nama: "Pembaruan keamanan otomatis"
+kode_cis: "1.9"
+risiko: AMAN
+kategori: pembaruan
+
+kenapa: >
+  Mayoritas server dibobol lewat celah yang tambalannya sudah
+  tersedia berbulan-bulan, cuma tidak pernah dipasang.
+  Kontrol ini bikin tambalan keamanan terpasang sendiri.
+
+periksa:
+  perintah_paket:   "dpkg -s unattended-upgrades | grep Status"
+  perintah_service: "systemctl is-enabled unattended-upgrades"
+  perintah_config:  "cat /etc/apt/apt.conf.d/20auto-upgrades"
+  lolos_jika: >
+    paket terinstall DAN service enabled DAN kedua nilai
+    APT::Periodic bernilai "1"
+
+status_awal_server_ini: LOLOS
+catatan_default_ubuntu: >
+  Ubuntu Server 24.04 mengirim kontrol ini dalam keadaan aktif.
+  Kalau di sebuah server nilainya "0", berarti ada yang sengaja
+  mematikannya. Itu sinyal yang perlu ditanyakan ke pemilik,
+  bukan sekadar diperbaiki diam-diam.
+
+terapkan:
+  paket: "apt install -y unattended-upgrades"
+  config: |
+    APT::Periodic::Update-Package-Lists "1";
+    APT::Periodic::Unattended-Upgrade "1";
+  file_config: "/etc/apt/apt.conf.d/20auto-upgrades"
+  service: "systemctl enable --now unattended-upgrades"
+  catatan: >
+    Jangan pakai dpkg-reconfigure. Perintah itu interaktif dan
+    butuh manusia mencet tombol. Semua perintah katalog harus
+    bisa jalan tanpa manusia.
+
+kembalikan:
+  config: |
+    APT::Periodic::Update-Package-Lists "0";
+    APT::Periodic::Unattended-Upgrade "0";
+  file_config: "/etc/apt/apt.conf.d/20auto-upgrades"
+  service: "systemctl disable --now unattended-upgrades"
+  catatan: >
+    Rollback di sini BUKAN menghapus file, tapi mengembalikan
+    nilainya ke "0". Menghapus file akan menghasilkan kondisi
+    ketiga yang tidak direncanakan.
+
+verifikasi:
+  perintah: "systemctl is-enabled unattended-upgrades"
+  bukti_berfungsi: "unattended-upgrade --dry-run --debug"
+  catatan: >
+    Config yang benar bukan jaminan fiturnya jalan. Dry-run
+    membuktikan fiturnya benar-benar berfungsi.
+
+yang_rusak_kalau_diterapkan: >
+  Nyaris tidak ada di server biasa. Tapi di server dengan aplikasi
+  yang sensitif terhadap versi paket, update otomatis bisa memicu
+  restart service di waktu yang tidak diinginkan.
+
+catatan_panel:
+  aapanel: "aman"
+  cpanel: "BENTROK - cPanel mengelola pembaruan paketnya sendiri. Lewati."
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026"
+rollback_teruji: true

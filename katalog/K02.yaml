@@ -1,0 +1,98 @@
+id: K02
+nama: "Login pakai password dimatikan (SSH key saja)"
+kode_cis: "5.2.11"
+risiko: BERISIKO
+kategori: ssh
+
+kenapa: >
+  Password bisa ditebak dengan brute force - mesin bisa mencoba jutaan
+  kombinasi tanpa lelah. SSH key tidak bisa ditebak. Ini kontrol yang
+  paling efektif menutup serangan brute force ke SSH.
+
+prasyarat:
+  - id: ssh_key_terpasang
+    cek: "test -s /home/<user>/.ssh/authorized_keys"
+    wajib: true
+    kalau_gagal: BATALKAN
+    alasan: >
+      Tanpa SSH key yang sudah terpasang, mematikan login password
+      menutup satu-satunya jalan masuk. Pemilik terkunci permanen.
+  - id: key_terbukti_bisa_login
+    cek: "journalctl -t sshd | grep -q 'Accepted publickey'"
+    wajib: true
+    kalau_gagal: BATALKAN
+    alasan: >
+      File authorized_keys ada belum tentu berarti key-nya berfungsi.
+      Izin file salah atau pemilik file salah membuat SSH menolak key
+      secara diam-diam. Harus ada bukti login publickey yang berhasil.
+  - id: izin_file_benar
+    cek: "stat -c '%a %U' /home/<user>/.ssh/authorized_keys"
+    lolos_jika: "600 dan pemiliknya user tersebut, bukan root"
+    wajib: true
+    kalau_gagal: PERBAIKI_DULU
+
+periksa:
+  perintah: "sshd -T | awk '/^passwordauthentication/ {print $2}'"
+  lolos_jika: "nilainya tepat 'no'"
+  nilai_default_ubuntu: "yes"
+
+status_awal_server_ini: GAGAL
+
+terapkan:
+  metode: drop-in
+  file: "/etc/ssh/sshd_config.d/01-yoru-k02.conf"
+  isi: "PasswordAuthentication no"
+  validasi_sebelum_reload: "sshd -t"
+  reload: "systemctl reload ssh"
+  catatan_penamaan: >
+    Awalan 01- WAJIB, bukan 60-. Lihat catatan_lingkungan di bawah.
+
+kembalikan:
+  perintah: "rm -f /etc/ssh/sshd_config.d/01-yoru-k02.conf"
+  validasi_sebelum_reload: "sshd -t"
+  reload: "systemctl reload ssh"
+
+verifikasi:
+  perintah: "sshd -T | awk '/^passwordauthentication/ {print $2}'"
+  cek_layanan: "systemctl is-active ssh"
+  cek_layanan_harus: "active"
+  bukti_berfungsi: >
+    Coba SSH dari klien yang tidak punya key. Server harus menolak
+    dengan pesan "No supported authentication methods available
+    (server sent: publickey)". Pesan ini eksplisit dan konklusif -
+    berbeda dengan K01 yang alasan penolakannya sengaja disamarkan
+    OpenSSH. Terbukti di VM yoru-a, 3 Sep 2026, klien MobaXterm.
+
+catatan_lingkungan:
+  masalah: >
+    Ubuntu 24.04 mengirim file /etc/ssh/sshd_config.d/50-cloud-init.conf
+    yang berisi "PasswordAuthentication yes".
+  aturan_openssh: >
+    Untuk setiap setelan, nilai PERTAMA yang ditemukan yang dipakai.
+    Bukan yang terakhir. File di sshd_config.d dibaca urut abjad.
+  akibat: >
+    File bernama 60-yoru-k02.conf dibaca SETELAH 50-cloud-init.conf,
+    jadi nilainya diabaikan total. File dibuat, sshd -t valid, reload
+    tidak error - tapi setelan server sama sekali tidak berubah.
+    Tiga tanda hijau di atas server yang masih terbuka.
+  solusi: >
+    Pakai awalan 01- supaya file kita dibaca lebih dulu. Jangan mengubah
+    atau menghapus file cloud-init - itu bukan milik kita dan bisa
+    ditulis ulang kapan saja oleh cloud-init.
+  pelajaran_untuk_agent: >
+    Kontrol tidak boleh dianggap berhasil hanya karena file berhasil
+    ditulis dan reload tidak error. Verifikasi wajib membaca kembali
+    kondisi efektif lewat sshd -T.
+  ditemukan_pada: "VM yoru-a, Ubuntu 24.04, 3 Sep 2026"
+
+yang_rusak_kalau_diterapkan: >
+  Semua klien yang login pakai password berhenti bisa masuk. Termasuk
+  script otomatis, tool backup, dan aplikasi yang menyimpan password SSH.
+  Semua harus dipindah ke SSH key lebih dulu.
+
+catatan_panel:
+  aapanel: "aman, tapi pastikan admin sudah punya key sebelum diterapkan"
+  cpanel: "aman, tapi fitur transfer akun antar-server sering pakai password"
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026"
+rollback_teruji: true

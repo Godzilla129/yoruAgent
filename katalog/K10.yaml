@@ -1,0 +1,270 @@
+id: K10
+nama: "Setelan kernel jaringan"
+kode_cis: "BELUM_DIVERIFIKASI"
+kode_cis_catatan: >
+  CIS Ubuntu punya satu bagian khusus parameter jaringan kernel dengan
+  banyak sub-item (satu nomor per sakelar). Kami menggabungkannya jadi
+  satu kontrol karena diterapkan lewat satu file dan satu perintah.
+  Nomor per sakelar harus dicek ke PDF CIS asli sebelum dipakai di
+  laporan. Jangan mengarang nomor.
+risiko: AMAN
+kategori: jaringan
+
+kenapa: >
+  Linux punya ratusan sakelar kecil yang mengatur cara kernel melayani
+  paket jaringan. Beberapa peninggalan zaman ketika jaringan masih
+  dianggap ramah. Contoh paling jelas: ICMP redirect - dulu router boleh
+  bilang ke server "kalau mau ke sana lewat saya saja". Sekarang itu jalan
+  untuk membajak lalu lintas server. Kontrol ini mematikan sakelar
+  peninggalan itu dan menyalakan pencatatan paket mencurigakan.
+
+risiko_kenapa_aman: >
+  Tidak ada layanan yang direstart, tidak ada koneksi yang putus, efeknya
+  langsung terbaca. Ini kontrol paling jinak dari sepuluh yang ada -
+  ASALKAN daftar sakelarnya sudah disaring lebih dulu (lihat
+  dikecualikan_sengaja). Menerapkan daftar CIS mentah-mentah TIDAK aman.
+
+prasyarat:
+  - id: bukan_router_atau_host_container
+    cek: "systemctl is-active docker; ip -br link | grep -c 'docker\\|br-\\|veth'"
+    wajib: true
+    kalau_gagal: TANYA_PEMILIK
+    alasan: >
+      Server yang menjalankan Docker, container, VPN, atau NAT butuh
+      ip_forward = 1. Lihat dikecualikan_sengaja.
+  - id: ipv6_tidak_bergantung_ra
+    cek: "tanya pemilik / cek apakah alamat IPv6 didapat lewat SLAAC"
+    wajib: true
+    kalau_gagal: TANYA_PEMILIK
+    alasan: >
+      accept_ra = 0 mematikan penerimaan Router Advertisement. Di penyedia
+      yang membagikan IPv6 lewat SLAAC, ini memutus konektivitas IPv6.
+      Di penyedia yang memberi IPv6 statis, aman.
+
+periksa:
+  perintah: >
+    sysctl -a 2>/dev/null | grep -E 'conf\.(all|default)\.(accept_redirects|secure_redirects|accept_source_route|log_martians|accept_ra) |^net\.ipv4\.(icmp_echo_ignore_broadcasts|icmp_ignore_bogus_error_responses|tcp_syncookies|ip_forward) ' | sort
+  perintah_hitung: "perintah yang sama dengan grep -cE"
+  lolos_jika: "hitungannya 18 DAN tiap nilai sama dengan target"
+  catatan_pola: >
+    WAJIB pakai spasi sebelum tanda kurung tutup terakhir, bukan $.
+    Baris keluaran sysctl -a bentuknya "kunci = nilai", jadi baris tidak
+    pernah berakhir di nama kunci. Lihat catatan_verifier_rusak.
+    Spasi itu juga yang memisahkan accept_ra dari accept_ra_defrtr, dan
+    ip_forward dari ip_forward_use_pmtu.
+
+status_awal_server_ini: "GAGAL - 6 setelan meleset dari target"
+status_awal_rincian:
+  net.ipv4.conf.all.log_martians: "0 (target 1)"
+  net.ipv4.conf.default.log_martians: "0 (target 1)"
+  net.ipv4.conf.all.secure_redirects: "1 (target 0)"
+  net.ipv4.conf.default.secure_redirects: "1 (target 0)"
+  net.ipv4.conf.default.accept_source_route: "1 (target 0) - lihat alarm_palsu"
+  net.ipv6.conf.all.accept_ra: "1 (target 0)"
+  net.ipv6.conf.default.accept_ra: "1 (target 0)"
+  sudah_benar: >
+    accept_redirects (v4+v6, all+default), ipv4.all.accept_source_route,
+    ipv6 accept_source_route, icmp_echo_ignore_broadcasts,
+    icmp_ignore_bogus_error_responses, tcp_syncookies, ip_forward
+
+terapkan:
+  metode: drop-in
+  file: "/etc/sysctl.d/99-yoru-k10.conf"
+  isi: |
+    # K10 - setelan kernel jaringan (Yoru)
+    net.ipv4.conf.all.accept_redirects = 0
+    net.ipv4.conf.default.accept_redirects = 0
+    net.ipv4.conf.all.secure_redirects = 0
+    net.ipv4.conf.default.secure_redirects = 0
+    net.ipv4.conf.all.accept_source_route = 0
+    net.ipv4.conf.default.accept_source_route = 0
+    net.ipv4.conf.all.log_martians = 1
+    net.ipv4.conf.default.log_martians = 1
+    net.ipv4.icmp_echo_ignore_broadcasts = 1
+    net.ipv4.icmp_ignore_bogus_error_responses = 1
+    net.ipv4.icmp_echo_ignore_all = 0
+    net.ipv4.tcp_syncookies = 1
+    net.ipv6.conf.all.accept_redirects = 0
+    net.ipv6.conf.default.accept_redirects = 0
+    net.ipv6.conf.all.accept_source_route = 0
+    net.ipv6.conf.default.accept_source_route = 0
+    net.ipv6.conf.all.accept_ra = 0
+    net.ipv6.conf.default.accept_ra = 0
+  reload: "sysctl -p /etc/sysctl.d/99-yoru-k10.conf"
+  catatan_penamaan: >
+    Awalan 99- wajib. File di /etc/sysctl.d/ dibaca urut abjad dan nilai
+    TERAKHIR yang menang - sama seperti MariaDB, kebalikan dari sshd.
+    Ubuntu mengirim /usr/lib/sysctl.d/50-default.conf, jadi 99- pasti menang.
+  catatan_sebagian_sudah_benar: >
+    Sebelas dari tujuh belas baris sudah bernilai benar sebelum kontrol
+    diterapkan. Tetap ditulis, bukan mubazir: fungsinya MENGUNCI. Tanpa
+    ditulis eksplisit, paket atau file lain bisa mengubahnya kapan saja.
+    Alasan yang sama dengan K04.
+
+kembalikan:
+  peringatan_penting: >
+    INI BERBEDA DARI SEMUA KONTROL LAIN. Menghapus file TIDAK
+    mengembalikan apa pun. Kernel menyimpan nilai terakhir yang di-set;
+    tidak ada yang menyuruhnya kembali. Menjalankan "sysctl --system"
+    setelah file dihapus juga tidak menolong - perintah itu MENERAPKAN
+    yang ada di file, bukan MERESET yang tidak ada.
+  bukti: >
+    Diuji di VM yoru-a 3 Sep 2026: setelah rm file + sysctl --system,
+    log_martians tetap 1 dan secure_redirects tetap 0.
+  perintah: >
+    sysctl -w net.ipv4.conf.all.log_martians=<nilai_awal>
+    -w net.ipv4.conf.default.log_martians=<nilai_awal>
+    -w net.ipv4.conf.all.secure_redirects=<nilai_awal>
+    -w net.ipv4.conf.default.secure_redirects=<nilai_awal>
+    -w net.ipv4.conf.default.accept_source_route=<nilai_awal>
+    -w net.ipv6.conf.all.accept_ra=<nilai_awal>
+    -w net.ipv6.conf.default.accept_ra=<nilai_awal>
+  perintah_tambahan: "rm -f /etc/sysctl.d/99-yoru-k10.conf"
+  alternatif: "rm file lalu reboot - kernel lahir ulang dengan nilai bawaan"
+  konsekuensi_desain: >
+    status_awal BUKAN catatan pelengkap untuk kontrol ini - itu BAHAN
+    ROLLBACK. Agent yang tidak merekam nilai sebelum mengubah TIDAK BISA
+    mengembalikan K10. Ini satu-satunya kontrol yang rollback-nya
+    bergantung pada data hasil pemeriksaan.
+
+verifikasi:
+  perintah_hitung: >
+    sysctl -a 2>/dev/null | grep -cE 'conf\.(all|default)\.(accept_redirects|secure_redirects|accept_source_route|log_martians|accept_ra) |^net\.ipv4\.(icmp_echo_ignore_broadcasts|icmp_ignore_bogus_error_responses|tcp_syncookies|ip_forward) '
+  lolos_jika: "18"
+  urutan: >
+    Hitung DULU, baru tampilkan daftar. Kalau angkanya salah, tidak perlu
+    membaca 18 baris - langsung ketahuan pemeriksanya yang rusak.
+    Daftar untuk dilihat manusia; hitungan yang jadi ujian mesin.
+  hasil_nyata: "18, semua nilai sesuai target - VM yoru-a, 3 Sep 2026"
+
+catatan_verifier_rusak:
+  masalah: >
+    Perintah verifikasi versi pertama memakai jangkar $ di akhir pola:
+    "...|accept_ra)$". Baris keluaran sysctl -a berbentuk "kunci = nilai",
+    jadi baris tidak pernah berakhir di nama kunci.
+  akibat: >
+    Separuh pola tidak pernah cocok dengan apa pun. grep mengembalikan
+    6 baris bukan 18, TANPA error, dan hasilnya terlihat seperti jawaban
+    yang sah. Kalau dipercaya, kesimpulannya "K10 gagal total" padahal
+    kontrolnya berhasil.
+  pelajaran_untuk_agent: >
+    Alat verifikasi juga bisa rusak diam-diam. Verifikasi tidak boleh
+    hanya mencetak daftar - dia harus MENGHITUNG dan membandingkan dengan
+    angka yang diharapkan. Hasil kosong atau pendek adalah pertanyaan,
+    bukan kesimpulan.
+  ditemukan_pada: "VM yoru-a, 3 Sep 2026 - kesalahan ditulis oleh pendamping, ketahuan saat verifikasi"
+
+alarm_palsu:
+  setelan: "net.ipv4.conf.default.accept_source_route = 1"
+  kelihatannya: "lubang keamanan - source routing menyala"
+  kenyataannya: >
+    Kernel butuh conf.all.accept_source_route DAN conf.<kartu> sama-sama
+    bernilai 1 supaya source routing aktif. Di server ini all sudah 0,
+    jadi pintunya sudah tertutup. Tetap kami set 0 supaya rapi, tapi ini
+    BUKAN lubang.
+  pelajaran_untuk_agent: >
+    Sebagian setelan hanya berarti kalau dibaca berpasangan. Agent yang
+    cuma grep mencari "= 1" akan memberi alarm palsu di sini, dan alarm
+    palsu menghabiskan kepercayaan pemilik lebih cepat daripada apa pun.
+
+dikecualikan_sengaja:
+  - setelan: "net.ipv4.ip_forward"
+    nilai_di_server_ini: "0 (sudah sesuai CIS)"
+    keputusan: TANYA_PEMILIK
+    alasan: >
+      Nilainya sudah benar, tapi tidak boleh DIKUNCI diam-diam. Kalau
+      pemilik kemudian memasang Docker, container, VPN, atau NAT, sakelar
+      ini harus 1. File Yoru yang memaksanya 0 akan mematikan jaringan
+      semua container, dan penyebabnya sangat sulit dilacak.
+  - setelan: "net.ipv4.conf.{all,default}.rp_filter"
+    nilai_di_server_ini: "2 (longgar); CIS meminta 1 (ketat)"
+    keputusan: TIDAK_DITERAPKAN
+    alasan_1: >
+      Mode ketat memutus lalu lintas dengan jalur tidak simetris. VPN,
+      container, dan server multi-kartu sering kena.
+    alasan_2: >
+      Menulis conf.all.rp_filter = 1 saja TIDAK BERPENGARUH. Kernel memakai
+      max(conf.all.rp_filter, conf.<kartu>.rp_filter). Kartu ens32 sudah
+      bernilai 2, jadi hasilnya tetap max(1,2) = 2. Setelan tertulis,
+      tidak ada error, tidak ada yang berubah - penyakit yang sama dengan
+      K02.
+    cara_benar_kalau_nanti_diperlukan: >
+      Set conf.default.rp_filter = 1 lalu reboot (kartu lahir ulang dan
+      mewarisi dari default), ATAU set nilai per kartu satu per satu
+      untuk kartu yang sudah ada.
+    status: "belum diuji di VM yoru-a - sengaja tidak dijalankan"
+
+konflik_dengan_k05:
+  ringkasan: >
+    ufw (K05) menimpa net.ipv4.conf.{all,default}.log_martians menjadi 0
+    setiap kali servicenya start, membatalkan setelan K10 yang menetapkan 1.
+  mekanisme: >
+    /etc/default/ufw memuat IPT_SYSCTL=/etc/ufw/sysctl.conf. Sembilan baris
+    aktif di file itu diterapkan ulang tiap ufw start. Delapan di antaranya
+    bernilai sama dengan K10; satu (log_martians) berlawanan.
+  kenapa_hanya_log_martians_yang_gagal: >
+    Diagnosis dimulai dari fakta ini: nilai K10 yang lain semuanya benar.
+    Kalau file 99-yoru-k10.conf tidak terbaca, SEMUA nilainya akan salah.
+    Yang salah hanya satu, jadi masalahnya bukan file kita tidak terbaca -
+    ada pihak lain yang menimpa satu nilai itu setelah kita.
+  bukti_sebab_akibat: >
+    sysctl -w net.ipv4.conf.all.log_martians=1 -> 1
+    systemctl restart ufw                      -> 0
+    Setelah IPT_SYSCTL dikomentari, tes yang sama menghasilkan 1.
+    Alat ukurnya sudah terbukti bisa mendeteksi kegagalan sebelum dipakai
+    untuk menyatakan keberhasilan.
+  tes_yang_meleset: >
+    Dugaan awal diuji lewat rp_filter (bawaan Ubuntu 2, ufw dianggap
+    menetapkan 1). Hasilnya tetap 2, sehingga dugaan sempat dianggap salah.
+    Penyebabnya: baris rp_filter DIKOMENTARI di /etc/ufw/sysctl.conf versi
+    ini. Pelajaran: jangan memakai baris yang belum dipastikan aktif
+    sebagai alat ukur.
+  solusi_diterapkan: >
+    (1) Tambahkan net.ipv4.icmp_echo_ignore_all = 0 ke K10 supaya K10 jadi
+    superset penuh dari yang ufw atur - tidak ada setelan yang jatuh tanpa
+    pemilik. (2) Komentari IPT_SYSCTL di /etc/default/ufw.
+  hasil: "cek-semua.sh setelah reboot: LULUS 18 GAGAL 0 - VM yoru-a, 4 Sep 2026"
+
+pengecualian_metode_drop_in:
+  file: "/etc/default/ufw"
+  perintah: "sed -i 's|^IPT_SYSCTL=|#IPT_SYSCTL=|' /etc/default/ufw"
+  kembalikan: "sed -i 's|^#IPT_SYSCTL=|IPT_SYSCTL=|' /etc/default/ufw"
+  verifikasi: "grep -n 'IPT_SYSCTL' /etc/default/ufw harus menampilkan baris berawalan #"
+  kenapa_menyimpang: >
+    Ini satu-satunya tempat di seluruh katalog di mana kami MENGEDIT file
+    bawaan, bukan menambah drop-in. Alasannya: /etc/default/ufw tidak punya
+    mekanisme drop-in sama sekali, dan file di /etc/default/ memang
+    dirancang untuk diedit administrator. Rollbacknya sederhana dan
+    reversibel penuh: buang tanda pagar.
+  catatan_upgrade: >
+    Karena ini conffile paket, upgrade ufw bisa memunculkan pertanyaan
+    tentang perubahan lokal. Agent harus memberitahu pemilik bahwa file ini
+    diubah, bukan mengubahnya diam-diam.
+
+interaksi_dengan_kontrol_lain: >
+  log_martians = 1 MENAMBAH volume log. Di jaringan yang ramai atau server
+  yang sering di-scan, tambahannya bisa besar. K09 (log tidak membanjiri
+  disk) karena itu wajib diterapkan bersama K10, bukan opsional.
+  Kalau K10 dipasang tanpa K09, kontrol keamanan justru bisa memenuhi disk.
+
+yang_rusak_kalau_diterapkan: >
+  Untuk daftar yang sudah disaring di atas: tidak ada di server biasa.
+  Yang perlu diperhatikan: (1) accept_ra = 0 memutus IPv6 di penyedia yang
+  membagikan alamat lewat SLAAC; (2) log_martians = 1 menambah volume log;
+  (3) secure_redirects = 0 menolak ICMP redirect bahkan dari gateway sah -
+  aman di jaringan datar, perlu dicek di jaringan dengan banyak router.
+
+catatan_panel:
+  aapanel: "aman"
+  cpanel: "aman"
+  catatan_umum: >
+    Panel yang menjalankan container atau Docker akan terganggu kalau
+    ip_forward dikunci 0 - itu sebabnya sakelar itu dikecualikan.
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; konflik ufw ditemukan dan diperbaiki 4 Sep 2026"
+rollback_teruji: true
+lulus_tes_reboot: true
+rollback_teruji_catatan: >
+  Diuji dua kali dan berhasil dua kali, TAPI hanya lewat sysctl -w
+  eksplisit. Metode "hapus file" sudah diuji dan TERBUKTI GAGAL.
+snapshot_sebelum: "sebelum-K10"

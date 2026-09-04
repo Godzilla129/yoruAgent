@@ -1,0 +1,49 @@
+id: K03
+nama: "Batasi percobaan login SSH"
+kode_cis: "5.2.x"
+risiko: AMAN
+kategori: ssh
+
+kenapa: >
+  Default Ubuntu ngasih 6 kali percobaan password per koneksi
+  dan 120 detik waktu tunggu. Dipersempit jadi 3 kali dan 30 detik
+  bikin serangan brute force jauh lebih lambat dan lebih gampang
+  ketahuan di log.
+
+periksa:
+  perintah: "sshd -T | grep -E 'maxauthtries|logingracetime'"
+  lolos_jika: "maxauthtries 3 DAN logingracetime 30"
+  nilai_default_ubuntu: "maxauthtries 6, logingracetime 120"
+
+status_awal_server_ini: GAGAL
+
+terapkan:
+  metode: drop-in
+  file: "/etc/ssh/sshd_config.d/01-yoru-k03.conf"
+  isi: |
+    MaxAuthTries 3
+    LoginGraceTime 30
+  validasi_sebelum_reload: "sshd -t"
+  reload: "systemctl reload ssh"
+
+kembalikan:
+  perintah: "rm -f /etc/ssh/sshd_config.d/01-yoru-k03.conf"
+  validasi_sebelum_reload: "sshd -t"
+  reload: "systemctl reload ssh"
+
+verifikasi:
+  perintah: "sshd -T | grep -E 'maxauthtries|logingracetime'"
+  cek_layanan: "systemctl is-active ssh"
+  cek_layanan_harus: "active"
+
+yang_rusak_kalau_diterapkan: >
+  Tidak ada. Kontrol ini aman untuk hampir semua server.
+  Efek satu-satunya: user yang sering salah ketik password
+  harus reconnect lebih cepat.
+
+catatan_panel:
+  aapanel: "aman"
+  cpanel: "aman"
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026"
+rollback_teruji: true

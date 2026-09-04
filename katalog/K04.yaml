@@ -1,0 +1,189 @@
+id: K04
+nama: "Buang algoritma kripto yang lemah di SSH"
+kode_cis: "5.2.x"
+kode_cis_catatan: >
+  Nomor pasti belum kami verifikasi dari dokumen CIS asli. Yang sudah
+  pasti: kontrol ini menutup tiga rekomendasi CIS sekaligus, yaitu
+  "Ensure sshd Ciphers are configured", "Ensure sshd MACs are configured",
+  dan "Ensure sshd KexAlgorithms are configured". Nomornya harus dicek
+  ulang ke PDF CIS Ubuntu 24.04 sebelum masuk laporan atau demo.
+risiko: BERISIKO
+kategori: ssh
+
+kenapa: >
+  SSH menyepakati algoritma enkripsi di awal koneksi, sebelum password
+  atau key diminta sama sekali. Kalau ada algoritma lemah di daftar,
+  penyerang yang bisa menyadap jalur bisa memaksa koneksi turun ke
+  algoritma itu. SHA-1 sudah patah (bisa dibuat tabrakan), dan umac-64
+  cuma menghasilkan tanda keaslian 64 bit - terlalu pendek. Kontrol ini
+  juga punya fungsi kedua yang sama pentingnya: MENGUNCI daftar. Selama
+  daftar tidak ditulis eksplisit, paket atau file lain bisa menambah
+  algoritma jelek kapan saja tanpa ketahuan.
+
+prasyarat:
+  - id: nama_algoritma_ada_di_build
+    cek: "ssh -Q cipher; ssh -Q mac; ssh -Q kex"
+    lolos_jika: "setiap nama yang mau dipasang muncul di output"
+    wajib: true
+    kalau_gagal: BATALKAN
+    alasan: >
+      Nama algoritma berbeda antar versi OpenSSH. Nama yang tidak dikenal
+      membuat sshd -t gagal, dan kalau nekat reload, layanan SSH bisa
+      tidak mau start. Daftar WAJIB disusun dari hasil ssh -Q di server
+      itu sendiri, bukan dari template atau dari ingatan.
+  - id: punya_jalur_pemulihan
+    cek: "ada console/VNC dari penyedia, atau snapshot yang baru diambil"
+    wajib: true
+    kalau_gagal: BATALKAN
+    alasan: >
+      Ini satu-satunya kontrol SSH yang bisa menolak klien SEBELUM tahap
+      autentikasi. Kalau daftar terlalu ketat, pemilik tidak akan bisa
+      masuk lagi lewat SSH sama sekali - key yang benar pun tidak menolong.
+  - id: klien_pemilik_didata
+    cek: "tanya pemilik: klien dan script apa saja yang masuk ke server ini"
+    wajib: false
+    kalau_gagal: TANYA_PEMILIK
+    alasan: >
+      Klien lama (PuTTY versi tua, library paramiko lama, Java 8, appliance
+      jaringan) bisa jadi hanya mendukung algoritma yang justru mau dibuang.
+
+periksa:
+  perintah: "sshd -T | grep -E '^(ciphers|macs|kexalgorithms) '"
+  lolos_jika: >
+    Tidak ada nama yang mengandung 'sha1', 'md5', 'cbc', '3des',
+    'umac-64', atau 'diffie-hellman-group1-' / 'group14-sha1'
+    di ketiga baris tersebut.
+  hitung_cepat: "sshd -T | grep -E '^macs ' | grep -c 'sha1'"
+  hitung_cepat_lolos_jika: "0"
+
+status_awal_server_ini: "SEBAGIAN"
+status_awal_rincian:
+  ciphers: >
+    chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,
+    aes128-gcm@openssh.com,aes256-gcm@openssh.com
+    -- sudah bersih, tidak ada CBC atau 3DES. CIS tidak menuntut apa-apa.
+  macs: >
+    umac-64-etm@openssh.com,umac-128-etm@openssh.com,
+    hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,
+    hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,
+    hmac-sha2-256,hmac-sha2-512,hmac-sha1
+    -- GAGAL. Empat item lemah aktif: hmac-sha1-etm@openssh.com,
+    hmac-sha1, umac-64-etm@openssh.com, umac-64@openssh.com.
+  kexalgorithms: >
+    sntrup761x25519-sha512@openssh.com,curve25519-sha256,
+    curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,
+    ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,
+    diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,
+    diffie-hellman-group14-sha256
+    -- tidak ada yang sha1. CIS tidak menuntut apa-apa. Yang kita buang
+    di bawah (kurva NIST dan group14) adalah pengetatan tambahan,
+    bukan syarat CIS. Catat bedanya, jangan diklaim sebagai temuan CIS.
+
+terapkan:
+  metode: drop-in
+  file: "/etc/ssh/sshd_config.d/01-yoru-k04.conf"
+  isi: |
+    Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr
+    MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com
+    KexAlgorithms sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512
+  validasi_sebelum_reload: "sshd -t"
+  reload: "systemctl reload ssh"
+  catatan_penamaan: >
+    Awalan 01- wajib, sama alasannya dengan K02: file di sshd_config.d
+    dibaca urut abjad dan nilai PERTAMA yang menang.
+  catatan_isi: >
+    aes256-ctr, aes192-ctr, aes128-ctr sengaja DIPERTAHANKAN walau lebih
+    lemah dari GCM/ChaCha20. Alasannya dua: masih diizinkan CIS, dan
+    dibutuhkan untuk menjalankan tes verifikasi di bawah - tanpa satu pun
+    cipher non-AEAD, daftar MACs tidak bisa diuji sama sekali.
+
+kembalikan:
+  perintah: "rm -f /etc/ssh/sshd_config.d/01-yoru-k04.conf"
+  validasi_sebelum_reload: "sshd -t"
+  reload: "systemctl reload ssh"
+  catatan: >
+    rm -f tidak pernah mengeluh walau file tidak ada. Jangan pakai exit
+    code perintah ini sebagai bukti rollback berhasil. Bukti rollback
+    yang sah cuma satu: sshd -T menunjukkan daftar panjang bawaan lagi.
+
+verifikasi:
+  perintah: "sshd -T | grep -E '^(ciphers|macs|kexalgorithms) '"
+  cek_layanan: "systemctl is-active ssh"
+  cek_layanan_harus: "active"
+
+  tes_negatif:
+    perintah: >
+      ssh -o Ciphers=aes256-ctr -o MACs=hmac-sha1
+      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+      -o BatchMode=yes yoru@localhost 2>&1 | tail -3
+    lolos_jika: "output memuat 'no matching MAC found'"
+    hasil_nyata: >
+      Unable to negotiate with 127.0.0.1 port 22: no matching MAC found.
+      Their offer: hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com
+    kenapa_kuat: >
+      Server tidak cuma menolak, dia menyebutkan daftar tawarannya sendiri
+      dan isinya persis tiga MAC yang kita pasang. Ini bukti dari sisi
+      jaringan, bukan pembacaan konfigurasi.
+
+  tes_positif:
+    perintah: >
+      ssh -o Ciphers=aes256-ctr -o MACs=hmac-sha2-256-etm@openssh.com
+      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+      -o BatchMode=yes yoru@localhost 2>&1 | tail -3
+    lolos_jika: "output memuat 'Permission denied (publickey)'"
+    hasil_nyata: "yoru@localhost: Permission denied (publickey)."
+    kenapa_ini_sukses: >
+      Permission denied artinya negosiasi enkripsi SUDAH LEWAT dan koneksi
+      sampai ke tahap autentikasi. Gagalnya cuma karena VM tidak menyimpan
+      kunci privat untuk login ke dirinya sendiri. Tanpa tes positif ini,
+      tes negatif tidak membuktikan apa-apa - server yang mati juga
+      menolak semua koneksi.
+
+  catatan_batchmode: >
+    BatchMode=yes dan StrictHostKeyChecking=no wajib ada. Tanpa itu ssh
+    bisa berhenti menunggu jawaban manusia ("Are you sure you want to
+    continue connecting?") dan agent akan menggantung selamanya.
+    UserKnownHostsFile=/dev/null supaya tes tidak mengotori known_hosts
+    milik pemilik server.
+
+catatan_lingkungan:
+  masalah: >
+    Cipher AEAD (chacha20-poly1305 dan semua aes-gcm) membawa pengaman
+    keaslian di dalam ciphernya sendiri.
+  aturan_openssh: >
+    Kalau cipher yang terpilih adalah AEAD, OpenSSH MELEWATI negosiasi MAC
+    sepenuhnya. Daftar MACs tidak dilihat sama sekali.
+  akibat: >
+    Menguji daftar MACs tanpa memaksa cipher non-AEAD memberi hasil hijau
+    yang bohong: hmac-sha1 tampak "diterima" padahal sebenarnya cuma
+    diabaikan. Verifikasi lolos, padahal yang diuji tidak pernah dipakai.
+  solusi: >
+    Paksa -o Ciphers=aes256-ctr pada kedua tes verifikasi, supaya MAC
+    benar-benar dinegosiasikan dan benar-benar diuji.
+  pelajaran_untuk_agent: >
+    Tes yang lulus belum tentu menguji apa yang kita kira. Sebelum
+    mempercayai hasil hijau, pastikan jalur yang diuji memang dilewati.
+    Ini keluarga masalah yang sama dengan K02: bukan salah jawaban,
+    tapi salah pertanyaan.
+  ditemukan_pada: "VM yoru-a, Ubuntu 24.04, 3 Sep 2026"
+
+yang_rusak_kalau_diterapkan: >
+  Klien lama berhenti bisa masuk, dan gagalnya terjadi SEBELUM tahap
+  autentikasi - jadi pesan errornya bukan "password salah" melainkan
+  "Unable to negotiate" atau "no matching MAC found". Yang paling sering
+  kena: PuTTY versi tua, library paramiko lama, aplikasi Java 8, alat
+  monitoring/backup bawaan appliance, dan perangkat jaringan lama.
+  Sesi SSH yang sudah terhubung TIDAK putus saat reload, karena algoritma
+  hanya dipakai saat jabat tangan di awal.
+
+catatan_panel:
+  aapanel: >
+    aman untuk panelnya sendiri; yang perlu dicek adalah fitur backup
+    ke server lain yang memakai klien SSH internal versi lama
+  cpanel: >
+    aman untuk panelnya sendiri; fitur transfer akun antar-server memakai
+    klien SSH sendiri - uji dulu setelah kontrol ini diterapkan
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026"
+rollback_teruji: true
+snapshot_sebelum: "sebelum-K04"

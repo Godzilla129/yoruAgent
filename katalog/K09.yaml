@@ -1,0 +1,193 @@
+id: K09
+nama: "Log tersimpan permanen dan tidak membanjiri disk"
+kode_cis: "BELUM_DIVERIFIKASI"
+kode_cis_catatan: >
+  CIS punya bagian tentang journald (persistent storage, compression,
+  ukuran maksimum) dengan beberapa sub-item. Nomor pastinya harus dicek
+  ke PDF CIS Ubuntu 24.04 asli. Jangan mengarang nomor.
+risiko: AMAN
+kategori: log
+
+kenapa: >
+  Dua masalah yang terdengar bertentangan tapi satu paket. Pertama, log
+  yang hilang: kalau journal cuma disimpan di RAM, satu reboot menghapus
+  semua jejak. Penyerang yang berhasil masuk lalu me-reboot server
+  menghapus buktinya tanpa perlu usaha apa pun. Kedua, log yang
+  membanjiri: disimpan permanen tanpa pagu, log bisa memenuhi disk sampai
+  layanan mati. Jalan tengahnya: simpan permanen, tapi beri pagu yang
+  eksplisit dan bisa diaudit.
+
+kejujuran_soal_nilai_kontrol: >
+  PENTING untuk tidak dilebih-lebihkan saat presentasi. Tanpa K09, log
+  TIDAK akan memenuhi disk - journald sudah punya pagu bawaan diam-diam
+  sebesar 10 persen ukuran filesystem (terbukti 997.9M di VM yoru-a yang
+  disknya 9.8G). Nilai K09 yang sebenarnya ada di tiga hal lain:
+  (1) mengunci Storage=persistent supaya tidak bisa jatuh diam-diam ke RAM,
+  (2) membuat angka pagu tertulis dan bisa diaudit, bukan hasil hitungan
+  tersembunyi yang ikut ukuran disk,
+  (3) menambah batas umur, yang tidak ada di setelan bawaan.
+  Kalau juri bertanya "tanpa ini apa disk akan penuh?", jawaban jujurnya
+  TIDAK. Jawab apa adanya lalu jelaskan nilai yang sebenarnya.
+
+prasyarat:
+  - id: disk_cukup_untuk_pagu
+    cek: "df -h / | awk 'NR==2 {print $4}'"
+    lolos_jika: "sisa disk minimal 3x nilai SystemMaxUse yang akan dipasang"
+    wajib: true
+    kalau_gagal: TANYA_PEMILIK
+    alasan: >
+      Pagu log harus disesuaikan ukuran disk. Angka mati tidak boleh
+      dipakai lintas server. Di VM yoru-a (disk 9.8G, sisa 4.4G) dipakai
+      500M. Di server dengan disk kecil, angka ini harus turun.
+  - id: folder_journal_ada_atau_bisa_dibuat
+    cek: "test -d /var/log/journal"
+    wajib: false
+    kalau_gagal: PERBAIKI_DULU
+    alasan: >
+      Storage=persistent akan membuat foldernya sendiri kalau belum ada,
+      jadi ini bukan penghalang - tapi statusnya perlu dicatat karena
+      itulah pembeda antara log permanen dan log yang hilang tiap reboot.
+
+periksa:
+  perintah_ukuran: "journalctl --disk-usage"
+  perintah_folder: "ls -ld /var/log/journal"
+  perintah_setelan: "grep -vE '^\\s*#|^\\s*$' /etc/systemd/journald.conf"
+  perintah_disk: "df -h /"
+  lolos_jika: >
+    Storage bernilai persistent secara eksplisit DAN SystemMaxUse tertulis
+    DAN MaxRetentionSec tertulis.
+  catatan_pola_grep: >
+    grep -v artinya kebalikan - buang baris yang cocok. Pola di atas
+    membuang baris komentar dan baris kosong, jadi yang tersisa hanya
+    setelan yang benar-benar aktif. File journald.conf bawaan isinya
+    hampir semua komentar, jadi keluaran satu-dua baris itu NORMAL,
+    bukan tanda file rusak.
+
+status_awal_server_ini: "GAGAL - nol setelan aktif, semuanya bawaan"
+status_awal_rincian:
+  ukuran_log: "82.6M"
+  folder_journal: "ADA - jadi log sudah permanen, tapi karena kebetulan"
+  setelan_aktif: "tidak ada satu pun; journald.conf hanya berisi baris [Journal]"
+  pagu_efektif_sebelum: "997.9M (10 persen dari filesystem, dihitung diam-diam)"
+  disk: "9.8G total, 4.4G sisa, 53 persen terpakai"
+
+terapkan:
+  metode: drop-in
+  buat_folder_dulu: "mkdir -p /etc/systemd/journald.conf.d"
+  file: "/etc/systemd/journald.conf.d/99-yoru-k09.conf"
+  isi: |
+    [Journal]
+    Storage=persistent
+    Compress=yes
+    SystemMaxUse=500M
+    SystemKeepFree=1G
+    MaxRetentionSec=1month
+  reload: "systemctl restart systemd-journald"
+  catatan_penamaan: >
+    Awalan 99- wajib. Direktori drop-in systemd juga TERAKHIR yang menang,
+    sama seperti sysctl.d dan mariadb.conf.d. Yang berbeda sendiri cuma
+    sshd_config.d (pertama yang menang).
+  catatan_angka: >
+    500M dipilih untuk disk 9.8G. Angka ini BUKAN konstanta - harus
+    dihitung ulang per server. Aturan praktis: jangan lebih dari 10 persen
+    disk, dan SystemKeepFree harus lebih besar dari kebutuhan darurat
+    server itu.
+
+kembalikan:
+  perintah: "rm -f /etc/systemd/journald.conf.d/99-yoru-k09.conf"
+  reload: "systemctl restart systemd-journald"
+  bukti: >
+    Diuji di VM yoru-a 4 Sep 2026: setelah rm + restart, pagu kembali ke
+    max 997.9M. Hapus file CUKUP untuk kontrol ini.
+  kontras_dengan_k10: >
+    PERHATIKAN BEDANYA. Di K09 hapus file sudah cukup, karena journald
+    membaca ulang konfigurasi setiap kali dia lahir. Di K10 hapus file
+    TIDAK berpengaruh, karena kernel menyimpan nilai terakhir yang di-set.
+    Dua kontrol, dua cara rollback. Agent TIDAK BOLEH menyamakan resep
+    rollback antar kontrol - itu sebabnya setiap kontrol punya blok
+    kembalikan sendiri di katalog, bukan satu resep global.
+
+verifikasi:
+  perintah: "journalctl -b -t systemd-journald --no-pager | tail -3"
+  lolos_jika: "baris System Journal menyebut 'max 500.0M'"
+  hasil_nyata_sesudah: >
+    Sep 04 01:52:44 systemd-journald[305678]: System Journal
+    (/var/log/journal/6c2c9b9a34ca4392b741103749d99865) is 82.6M,
+    max 500.0M, 417.3M free.
+  hasil_nyata_sebelum: >
+    Sep 03 12:29:13 systemd-journald[430]: System Journal (...) is 74.7M,
+    max 997.9M, 923.2M free.
+  kenapa_kuat: >
+    Ini journald SENDIRI yang melaporkan pagu efektifnya saat lahir, bukan
+    pembacaan file yang kita tulis. Setara sshd -T untuk kontrol SSH.
+    Bonusnya: dua baris yang sama dari dua kelahiran berbeda memberi
+    perbandingan sebelum-sesudah dalam satu keluaran.
+  cek_tambahan: "ls -ld /var/log/journal && journalctl --disk-usage && systemctl is-active systemd-journald"
+  cek_tambahan_harus: "folder ada, ukuran wajar, layanan active"
+
+catatan_lingkungan:
+  masalah: >
+    Setelan bawaan journald adalah Storage=auto, dan "auto" TIDAK berarti
+    otomatis pintar.
+  aturan_systemd: >
+    Storage=auto berarti "simpan permanen KALAU folder /var/log/journal
+    ada; kalau tidak ada, simpan di RAM". Folder itu yang menentukan,
+    bukan setelannya.
+  akibat: >
+    Server yang hari ini menyimpan log permanen bisa diam-diam kembali
+    menyimpan di RAM kalau folder /var/log/journal terhapus - misalnya
+    saat seseorang membersihkan disk, atau saat restore dari image yang
+    tidak punya folder itu. Tidak ada error. Tidak ada peringatan. Log
+    hanya mulai hilang setiap reboot, dan tidak ada yang sadar sampai
+    terjadi insiden dan jejaknya dibutuhkan.
+  solusi: >
+    Tulis Storage=persistent secara eksplisit. Itu perintah, bukan syarat -
+    journald akan membuat foldernya sendiri kalau belum ada.
+  pelajaran_untuk_agent: >
+    Ini keluarga penyakit yang sama dengan K02, K06, dan K10, tapi versi
+    paling berbahaya: yang bisa rusak diam-diam adalah ALAT PENCATAT
+    JEJAKNYA SENDIRI. Kalau K09 gagal tanpa ketahuan, semua kontrol lain
+    kehilangan bukti kerjanya.
+  ditemukan_pada: "VM yoru-a, Ubuntu 24.04, 4 Sep 2026"
+
+dikecualikan_sengaja:
+  - setelan: "ForwardToSyslog"
+    nilai_di_server_ini: "bawaan (menyala)"
+    keputusan: TANYA_PEMILIK
+    alasan: >
+      Ubuntu masih menjalankan rsyslog yang menulis salinan kedua ke
+      /var/log/syslog, jadi log tertulis dua kali dan makan disk dua kali.
+      Mematikannya menghemat disk, tapi bisa merusak tool pemantauan atau
+      pengiriman log yang dipasang pemilik dan membaca /var/log/syslog.
+      Ini keputusan pemilik, bukan keputusan agent.
+
+interaksi_dengan_kontrol_lain: >
+  K10 menyalakan log_martians = 1 yang MENAMBAH volume log. K09 wajib
+  diterapkan bersama K10, bukan opsional. Menerapkan K10 tanpa K09 berarti
+  menambah laju penulisan log tanpa memastikan ada pagu yang terkendali.
+
+petunjuk_untuk_k08: >
+  Saat verifikasi K09, journald mencetak baris "Collecting audit messages
+  is disabled." Itu server melaporkan sendiri bahwa auditd belum aktif -
+  persis yang dikerjakan K08. Baris ini bisa dipakai sebagai pemeriksaan
+  cepat status K08 tanpa perintah tambahan.
+
+yang_rusak_kalau_diterapkan: >
+  Tidak ada di server biasa. Yang perlu diperhatikan: SystemMaxUse yang
+  terlalu kecil membuat log lama terbuang lebih cepat dari yang diharapkan
+  pemilik, dan itu baru terasa saat sedang menyelidiki insiden. Angka
+  pagu harus disepakati, bukan ditebak. Restart systemd-journald sendiri
+  aman dan sangat singkat.
+
+catatan_panel:
+  aapanel: "aman"
+  cpanel: "aman"
+  catatan_umum: >
+    Panel yang punya fitur viewer log sendiri biasanya membaca file di
+    /var/log, bukan journal biner, jadi tidak terpengaruh. Yang perlu
+    dicek adalah kalau pemilik mematikan ForwardToSyslog - lihat
+    dikecualikan_sengaja.
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 4 Sep 2026"
+rollback_teruji: true
+snapshot_sebelum: "sebelum-K09"

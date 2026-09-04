@@ -1,0 +1,119 @@
+id: K05
+nama: "Firewall aktif, tolak semua koneksi masuk"
+kode_cis: "3.5.1"
+risiko: BERISIKO
+kategori: firewall
+
+kenapa: >
+  Tanpa firewall, semua port yang kebuka bisa diakses siapa saja
+  dari internet. Termasuk port yang kebuka gak sengaja karena
+  aplikasi salah konfigurasi. Ini kontrol dengan dampak terbesar
+  dari sepuluh.
+
+prasyarat:
+  - id: ssh_diizinkan_dulu
+    cek: "ufw show added | grep -q '22/tcp'"
+    wajib: true
+    kalau_gagal: BATALKAN
+    alasan: >
+      ufw enable langsung menerapkan tolak-semua saat itu juga.
+      Kalau izin SSH belum terdaftar, koneksi pemilik server
+      putus detik itu dan tidak bisa tersambung lagi.
+  - id: port_layanan_terdata
+    cek: "ss -tulpn | grep LISTEN"
+    wajib: true
+    kalau_gagal: TANYA_PEMILIK
+    alasan: >
+      Port layanan lain (web, panel, database) harus diizinkan
+      dulu, atau layanannya ikut mati.
+
+periksa:
+  perintah: "ufw status verbose"
+  lolos_jika: "Status: active DAN Default: deny (incoming)"
+  kondisi_awal_umum: "Status: inactive di Ubuntu bawaan"
+
+status_awal_server_ini: GAGAL
+
+terapkan:
+  urutan_wajib: true
+  langkah:
+    - "ufw allow 22/tcp comment 'SSH - yoru K05'"
+    - "ufw default deny incoming"
+    - "ufw default allow outgoing"
+    - "ufw --force enable"
+  catatan: >
+    Pakai --force karena tanpa itu ufw menampilkan konfirmasi
+    interaktif dan menunggu input manusia.
+
+kembalikan:
+  perintah: "ufw --force reset"
+  catatan: >
+    reset otomatis mem-backup semua file aturan ke nama bertanggal
+    sebelum menghapus. Hasil akhirnya Status: inactive, sama
+    seperti kondisi awal Ubuntu.
+
+verifikasi:
+  perintah: "ufw status verbose"
+  cek_layanan: "systemctl is-active ssh"
+  cek_layanan_harus: "active"
+  bukti_berfungsi: >
+    Buka koneksi SSH BARU dari mesin lain. Kalau berhasil,
+    firewall aktif tanpa memutus akses. Sesi lama jangan ditutup
+    sebelum sesi baru terbukti bisa masuk.
+
+yang_rusak_kalau_diterapkan: >
+  Semua layanan yang portnya tidak diizinkan akan tidak bisa
+  diakses dari luar. Web (80/443), panel, database remote,
+  semuanya harus didaftarkan dulu.
+
+catatan_panel:
+  aapanel: "WAJIB izinkan port 8888 dulu, atau pemilik terkunci dari panelnya"
+  cyberpanel: "WAJIB izinkan port 8090"
+  cpanel: >
+    JANGAN aktifkan ufw. cPanel umumnya memakai CSF yang mengelola
+    iptables sendiri. Dua firewall akan saling menimpa aturan.
+    Yoru harus melewati kontrol ini dan hanya memberi saran.
+
+konflik_dengan_k10:
+  ringkasan: >
+    ufw TIDAK HANYA mengurus firewall. Dia juga menerapkan setelan
+    kernel (sysctl) setiap kali servicenya start, dan salah satu
+    setelannya bertabrakan langsung dengan K10.
+  mekanisme: >
+    /etc/default/ufw berisi IPT_SYSCTL=/etc/ufw/sysctl.conf. Setiap ufw
+    start, dia menerapkan isi file itu. File tersebut memuat
+    net/ipv4/conf/all/log_martians=0 dan .../default/log_martians=0.
+    K10 menetapkan nilai 1 untuk keduanya.
+  urutan_saat_boot: >
+    systemd-sysctl jalan LEBIH DULU (menerapkan file K10, log_martians=1),
+    lalu ufw start dan MENIMPA jadi 0. ufw menang karena belakangan.
+  kenapa_tidak_ketahuan_saat_penerapan: >
+    Saat kontrol diterapkan manual, ufw sudah berjalan lebih dulu, jadi
+    sysctl -p milik K10 yang jalan belakangan dan MENANG. Semua verifikasi
+    lulus. Kemenangan itu hanya bertahan sampai restart berikutnya.
+    HANYA TES REBOOT yang bisa memperlihatkannya.
+  bukti_sebab_akibat: >
+    sysctl -w net.ipv4.conf.all.log_martians=1 -> nilai jadi 1
+    systemctl restart ufw                      -> nilai kembali jadi 0
+    Diuji di VM yoru-a, 4 Sep 2026. Bukan teori, sebab-akibat langsung.
+  solusi: >
+    Komentari baris IPT_SYSCTL di /etc/default/ufw supaya ufw berhenti
+    mengurus sysctl, dan pindahkan seluruh tanggung jawab itu ke
+    /etc/sysctl.d/ (K10). Aman karena dari sembilan baris aktif di
+    /etc/ufw/sysctl.conf, delapan sudah diatur K10 dengan nilai yang sama,
+    dan satu sisanya (icmp_echo_ignore_all=0) ditambahkan ke K10 supaya
+    tidak ada setelan yang jatuh tanpa pemilik.
+  prinsip: >
+    SATU SETELAN, SATU PEMILIK. Setelan yang punya dua pengelola dengan
+    perintah berbeda bukan konfigurasi - itu lomba lari, dan pemenangnya
+    berubah tergantung urutan start layanan.
+  pelajaran_untuk_agent: >
+    Kontrol tidak boleh diperiksa hanya sesaat setelah diterapkan. Layanan
+    lain bisa menimpanya saat boot berikutnya. Setiap kontrol yang
+    menyentuh setelan bersama (sysctl, iptables, limits) WAJIB diuji ulang
+    setelah reboot, bukan hanya setelah penerapan.
+  ditemukan_pada: "VM yoru-a, 4 Sep 2026, lewat tes reboot cek-semua.sh"
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; konflik sysctl ditemukan 4 Sep 2026"
+rollback_teruji: true
+lulus_tes_reboot: true
