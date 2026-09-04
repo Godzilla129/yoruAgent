@@ -62,11 +62,19 @@ terbuka.
 
 ## Pembagian lane
 
-| Lane | Orang | Kerjaan |
-|---|---|---|
-| 1 — Sistem | julmukcur | dispatcher + sudoers, installer, katalog |
-| 2 — Web | — | dashboard, API, bot Telegram, lalu kontrol web K11–K14 |
-| 3 — Agent | — | wiring Hermes, eval set |
+Rincian tiap lane ada di folder `tugas/`. Baca punyamu sampai habis sebelum
+mulai — di situ ada juga daftar hal yang **tidak** dikerjakan, supaya kita
+tidak berjalan ke arah yang berbeda-beda.
+
+| Lane | Orang | Kerjaan | Rincian |
+|---|---|---|---|
+| 1 — Sistem | julmukcur | dispatcher + sudoers, installer, katalog | `tugas/lane-1-sistem.md` |
+| 2 — Web | — | dashboard, API, bot Telegram | `tugas/lane-2-web.md` |
+| 3 — Agent | — | wiring Hermes, eval set | `tugas/lane-3-agent.md` |
+
+Batas ruang lingkup proyek ada di **`RUANG-LINGKUP.md`** dan sudah dikunci
+tanggal 4 September. Ide baru ditulis di bagian bawah dokumen itu, tidak
+langsung dikerjakan.
 
 ---
 
