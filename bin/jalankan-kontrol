@@ -1,0 +1,362 @@
+#!/bin/bash
+# jalankan-kontrol - satu-satunya pintu Yoru ke hak root.
+#
+# Pakai:  jalankan-kontrol <K01..K10> <periksa|terapkan|kembalikan|verifikasi>
+#
+# Agent hanya boleh memanggil skrip ini lewat sudo. Perintah aslinya ada di
+# dalam sini, bukan dikirim agent. Artinya agent tidak bisa menjalankan
+# perintah sembarangan - dia cuma bisa meminta salah satu dari 40 tindakan
+# yang sudah ditulis dan diuji manusia.
+
+set -uo pipefail
+umask 022
+export LC_ALL=C
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+VERSI="0.1.0"
+LOG_DIR=/var/log/yoru
+LOG="$LOG_DIR/tindakan.log"
+
+# ---------------------------------------------------------------- keluaran
+# Semua keluaran berbentuk JSON satu baris supaya gampang dibaca agent.
+lolos=""; nilai=""; pesan=""
+
+selesai() {  # selesai <status> <berhasil> [nilai] [pesan]
+  local status="$1" berhasil="$2" nilai="${3-}" pesan="${4-}"
+  printf '{"versi":"%s","id":"%s","tindakan":"%s","status":"%s","berhasil":%s,"nilai":%s,"pesan":%s}\n' \
+    "$VERSI" "${KID:-?}" "${AKSI:-?}" "$status" "$berhasil" \
+    "$(kutip "$nilai")" "$(kutip "$pesan")"
+  catat "$status" "$berhasil" "$nilai" "$pesan"
+  [ "$berhasil" = "true" ] && exit 0 || exit 1
+}
+
+kutip() {  # bikin string aman untuk JSON, atau null kalau kosong
+  local s="${1-}"
+  [ -z "$s" ] && { printf 'null'; return; }
+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/ }"; s="${s//$'\t'/ }"
+  printf '"%s"' "$s"
+}
+
+catat() {
+  [ -d "$LOG_DIR" ] || mkdir -p "$LOG_DIR" 2>/dev/null || return 0
+  printf '%s  %s  %s  status=%s berhasil=%s nilai=%s %s\n' \
+    "$(date -Is)" "${SUDO_USER:-?}" "${KID:-?}/${AKSI:-?}" \
+    "$1" "$2" "${3:--}" "${4:-}" >> "$LOG" 2>/dev/null || true
+}
+
+tolak() { KID="${KID:-?}"; AKSI="${AKSI:-?}"; selesai "DITOLAK" "false" "" "$1"; }
+
+# ------------------------------------------------------- pemeriksaan diri
+# Kalau skrip ini bisa ditulis selain root, agent tinggal menulis ulang
+# isinya lalu menjalankannya lewat sudo - dan pembatasan sudoers jadi tidak
+# ada gunanya sama sekali. Jadi diperiksa dulu sebelum melakukan apa pun.
+aman_dari_tulis() {
+  local p="$1" pemilik izin
+  pemilik=$(stat -c '%U' "$p" 2>/dev/null) || return 1
+  izin=$(stat -c '%a' "$p" 2>/dev/null) || return 1
+  [ "$pemilik" = "root" ] || return 1
+  (( (8#$izin & 8#022) == 0 )) || return 1
+  return 0
+}
+
+periksa_diri() {
+  [ "$(id -u)" -eq 0 ] || tolak "harus dijalankan sebagai root lewat sudo"
+  local diri; diri="$(readlink -f "$0")"
+  local d
+  for d in "$diri" "$(dirname "$diri")" /opt/yoru; do
+    [ -e "$d" ] || continue
+    aman_dari_tulis "$d" || tolak "berhenti: $d bisa ditulis selain root"
+  done
+}
+
+# ------------------------------------------------------------- alat bantu
+tulis_ssh() {  # tulis_ssh <namafile> <isi>
+  printf '%s\n' "$2" > "/etc/ssh/sshd_config.d/$1" || return 1
+  chmod 644 "/etc/ssh/sshd_config.d/$1"
+  sshd -t 2>/dev/null || { rm -f "/etc/ssh/sshd_config.d/$1"; return 2; }
+  systemctl reload ssh
+}
+
+hapus_ssh() {
+  rm -f "/etc/ssh/sshd_config.d/$1"
+  sshd -t 2>/dev/null || return 2
+  systemctl reload ssh
+}
+
+sshd_nilai() { sshd -T 2>/dev/null | awk -v k="^$1\$" '$1 ~ k {print $2; exit}'; }
+
+# Hasil kosong bukan kesimpulan, itu pertanyaan. Kalau alat pemeriksanya tidak
+# bisa dibaca sama sekali, statusnya ERROR - bukan GAGAL. Agent yang membaca
+# GAGAL akan mencoba menerapkan kontrol, padahal kita belum tahu keadaannya.
+pastikan_terbaca() {  # pastikan_terbaca <nilai> <pesan>
+  local v="${1//\//}"
+  [ -n "$v" ] || selesai ERROR false "$1" "$2"
+}
+
+# --------------------------------------------------------- prasyarat keras
+# Dicek lagi di sini walaupun agent sudah mengeceknya. Agent bilang "sudah
+# saya cek" itu janji, bukan jaminan keamanan.
+ada_user_sudo_lain() {
+  local u anggota
+  anggota=$(getent group sudo | cut -d: -f4 | tr ',' ' ')
+  for u in $anggota; do
+    [ "$u" = "root" ] && continue
+    local shell status
+    shell=$(getent passwd "$u" | cut -d: -f7)
+    case "$shell" in */nologin|*/false|"") continue ;; esac
+    status=$(passwd -S "$u" 2>/dev/null | awk '{print $2}')
+    [ "$status" = "P" ] || [ "$status" = "PS" ] || continue
+    return 0
+  done
+  return 1
+}
+
+# Siapa "pemilik server" - yaitu manusia yang kunci SSH-nya harus sudah
+# terbukti bekerja sebelum K02 boleh mematikan login password.
+# Dibaca dari berkas milik root. SUDO_USER TIDAK dipakai sebagai sumber utama
+# karena agent berjalan sebagai yoru-agent, yang memang tidak punya kunci.
+pemilik_server() {
+  local u=""
+  [ -r /etc/yoru/pemilik ] && u=$(head -1 /etc/yoru/pemilik 2>/dev/null | tr -dc 'a-z0-9_-')
+  [ -n "$u" ] || u="${SUDO_USER:-}"
+  printf '%s' "$u"
+}
+
+kunci_ssh_terbukti() {
+  local u; u="$(pemilik_server)"
+  [ -n "$u" ] || return 1
+  getent passwd "$u" >/dev/null || return 1
+  local rumah; rumah=$(getent passwd "$u" | cut -d: -f6)
+  [ -s "$rumah/.ssh/authorized_keys" ] || return 1
+  journalctl -t sshd --since "-30 days" 2>/dev/null \
+    | grep -q "Accepted publickey for $u" || return 1
+  return 0
+}
+
+# ------------------------------------------------------------- 10 kontrol
+k01() { case "$1" in
+  periksa|verifikasi) nilai=$(sshd_nilai permitrootlogin)
+    pastikan_terbaca "$nilai" "sshd -T tidak bisa dibaca - openssh-server terpasang?"
+    [ "$nilai" = "no" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
+  terapkan)
+    ada_user_sudo_lain || tolak "tidak ada user sudo lain yang aktif - menerapkan ini mengunci pemilik"
+    tulis_ssh 01-yoru-k01.conf "PermitRootLogin no" || tolak "sshd menolak konfigurasi"
+    nilai=$(sshd_nilai permitrootlogin)
+    [ "$nilai" = "no" ] && selesai LULUS true "$nilai" || { hapus_ssh 01-yoru-k01.conf; tolak "verifikasi gagal, sudah dikembalikan"; } ;;
+  kembalikan) hapus_ssh 01-yoru-k01.conf; selesai DIKEMBALIKAN true "$(sshd_nilai permitrootlogin)" ;;
+esac }
+
+k02() { case "$1" in
+  periksa|verifikasi) nilai=$(sshd_nilai passwordauthentication)
+    pastikan_terbaca "$nilai" "sshd -T tidak bisa dibaca - openssh-server terpasang?"
+    [ "$nilai" = "no" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
+  terapkan)
+    kunci_ssh_terbukti || tolak "belum ada bukti login SSH key berhasil - menerapkan ini menutup satu-satunya jalan masuk"
+    tulis_ssh 01-yoru-k02.conf "PasswordAuthentication no" || tolak "sshd menolak konfigurasi"
+    nilai=$(sshd_nilai passwordauthentication)
+    [ "$nilai" = "no" ] && selesai LULUS true "$nilai" || { hapus_ssh 01-yoru-k02.conf; tolak "verifikasi gagal, sudah dikembalikan"; } ;;
+  kembalikan) hapus_ssh 01-yoru-k02.conf; selesai DIKEMBALIKAN true "$(sshd_nilai passwordauthentication)" ;;
+esac }
+
+k03() { case "$1" in
+  periksa|verifikasi) nilai="$(sshd_nilai maxauthtries)/$(sshd_nilai logingracetime)"
+    pastikan_terbaca "$nilai" "sshd -T tidak bisa dibaca - openssh-server terpasang?"
+    [ "$nilai" = "3/30" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
+  terapkan)
+    tulis_ssh 01-yoru-k03.conf "MaxAuthTries 3
+LoginGraceTime 30" || tolak "sshd menolak konfigurasi"
+    nilai="$(sshd_nilai maxauthtries)/$(sshd_nilai logingracetime)"
+    [ "$nilai" = "3/30" ] && selesai LULUS true "$nilai" || { hapus_ssh 01-yoru-k03.conf; tolak "verifikasi gagal, sudah dikembalikan"; } ;;
+  kembalikan) hapus_ssh 01-yoru-k03.conf; selesai DIKEMBALIKAN true "$(sshd_nilai maxauthtries)/$(sshd_nilai logingracetime)" ;;
+esac }
+
+K04_ISI="Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com
+KexAlgorithms sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512"
+
+k04() { local lemah; case "$1" in
+  periksa|verifikasi)
+    sshd -T >/dev/null 2>&1 || selesai ERROR false "" "sshd -T tidak bisa dibaca - openssh-server terpasang?"
+    lemah=$(sshd -T 2>/dev/null | grep -E '^macs ' | grep -c 'sha1'); nilai="mac_sha1=$lemah"
+    [ "$lemah" = "0" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
+  terapkan)
+    tulis_ssh 01-yoru-k04.conf "$K04_ISI" || tolak "sshd menolak daftar algoritma"
+    lemah=$(sshd -T 2>/dev/null | grep -E '^macs ' | grep -c 'sha1'); nilai="mac_sha1=$lemah"
+    [ "$lemah" = "0" ] && selesai LULUS true "$nilai" || { hapus_ssh 01-yoru-k04.conf; tolak "verifikasi gagal, sudah dikembalikan"; } ;;
+  kembalikan) hapus_ssh 01-yoru-k04.conf
+    selesai DIKEMBALIKAN true "mac_sha1=$(sshd -T 2>/dev/null | grep -E '^macs ' | grep -c 'sha1')" ;;
+esac }
+
+k05() { case "$1" in
+  periksa|verifikasi)
+    command -v ufw >/dev/null 2>&1 || selesai ERROR false "" "ufw tidak terpasang - tidak bisa diperiksa"
+    nilai=$(ufw status verbose 2>/dev/null | awk '/^Status:/ {print $2}')
+    if [ "$nilai" = "active" ] && ufw status verbose 2>/dev/null | grep -q 'deny (incoming)'
+      then selesai LULUS true "$nilai"; else selesai GAGAL true "${nilai:-tidak-aktif}"; fi ;;
+  terapkan)
+    ss -tulpn 2>/dev/null | grep -q ':22 ' || tolak "sshd tidak terdeteksi di port 22"
+    ufw allow 22/tcp comment 'SSH - yoru K05' >/dev/null 2>&1
+    ufw default deny incoming  >/dev/null 2>&1
+    ufw default allow outgoing >/dev/null 2>&1
+    ufw --force enable         >/dev/null 2>&1
+    nilai=$(ufw status 2>/dev/null | awk '/^Status:/ {print $2}')
+    [ "$nilai" = "active" ] && selesai LULUS true "$nilai" || tolak "ufw gagal aktif" ;;
+  kembalikan) ufw --force reset >/dev/null 2>&1
+    selesai DIKEMBALIKAN true "$(ufw status 2>/dev/null | awk '/^Status:/ {print $2}')" ;;
+esac }
+
+K06_BERKAS=/etc/mysql/mariadb.conf.d/zz-yoru-k06.cnf
+k06() { case "$1" in
+  periksa|verifikasi)
+    if ss -tulpn 2>/dev/null | grep -q '0.0.0.0:3306'; then nilai="0.0.0.0:3306"; selesai GAGAL true "$nilai"
+    elif ss -tulpn 2>/dev/null | grep -q '127.0.0.1:3306'; then selesai LULUS true "127.0.0.1:3306"
+    else selesai DILEWATI true "tidak ada layanan di 3306"; fi ;;
+  terapkan)
+    [ -d /etc/mysql/mariadb.conf.d ] || tolak "MariaDB tidak terpasang"
+    printf '[mysqld]\nbind-address = 127.0.0.1\n' > "$K06_BERKAS"; chmod 644 "$K06_BERKAS"
+    systemctl restart mariadb || { rm -f "$K06_BERKAS"; tolak "mariadb gagal start, sudah dikembalikan"; }
+    sleep 2
+    if ss -tulpn 2>/dev/null | grep -q '127.0.0.1:3306'
+      then selesai LULUS true "127.0.0.1:3306"
+      else rm -f "$K06_BERKAS"; systemctl restart mariadb; tolak "verifikasi gagal, sudah dikembalikan"; fi ;;
+  kembalikan) rm -f "$K06_BERKAS"; systemctl restart mariadb; sleep 2
+    selesai DIKEMBALIKAN true "$(ss -tulpn 2>/dev/null | grep -o '[0-9.]*:3306' | head -1)" ;;
+esac }
+
+k07() { case "$1" in
+  periksa|verifikasi) nilai=$(systemctl is-enabled unattended-upgrades 2>/dev/null)
+    [ "$nilai" = "enabled" ] && selesai LULUS true "$nilai" || selesai GAGAL true "${nilai:-tidak-terpasang}" ;;
+  terapkan)
+    DEBIAN_FRONTEND=noninteractive apt-get install -y unattended-upgrades >/dev/null 2>&1 \
+      || tolak "gagal memasang paket - periksa koneksi internet server"
+    printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' \
+      > /etc/apt/apt.conf.d/20auto-upgrades
+    systemctl enable --now unattended-upgrades >/dev/null 2>&1
+    nilai=$(systemctl is-enabled unattended-upgrades 2>/dev/null)
+    [ "$nilai" = "enabled" ] && selesai LULUS true "$nilai" || tolak "layanan tidak enabled setelah dipasang" ;;
+  kembalikan) systemctl disable --now unattended-upgrades >/dev/null 2>&1
+    selesai DIKEMBALIKAN true "$(systemctl is-enabled unattended-upgrades 2>/dev/null)" ;;
+esac }
+
+K08_BERKAS=/etc/audit/rules.d/zz-yoru-k08.rules
+K08_ISI='# K08 - jejak audit Yoru
+-w /etc/passwd -p wa -k identitas
+-w /etc/shadow -p wa -k identitas
+-w /etc/group -p wa -k identitas
+-w /etc/gshadow -p wa -k identitas
+-w /etc/sudoers -p wa -k hak_akses
+-w /etc/sudoers.d/ -p wa -k hak_akses
+-w /etc/ssh/sshd_config -p wa -k ssh_config
+-w /etc/ssh/sshd_config.d/ -p wa -k ssh_config
+-w /etc/ufw/ -p wa -k firewall
+-w /etc/sysctl.d/99-yoru-k10.conf -p wa -k yoru_kontrol
+-w /etc/systemd/journald.conf.d/99-yoru-k09.conf -p wa -k yoru_kontrol
+-w /etc/mysql/mariadb.conf.d/zz-yoru-k06.cnf -p wa -k yoru_kontrol'
+
+k08() { local n; case "$1" in
+  periksa|verifikasi) n=$(auditctl -l 2>/dev/null | grep -c '^-w'); nilai="aturan=$n"
+    [ "$n" -ge 12 ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
+  terapkan)
+    command -v auditctl >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get install -y auditd >/dev/null 2>&1
+    command -v auditctl >/dev/null 2>&1 || tolak "auditd gagal dipasang"
+    # awalan zz- wajib: audit.rules bawaan diawali -D yang menghapus semua
+    # aturan, dan file bernama angka dimuat lebih dulu lalu ikut terhapus.
+    printf '%s\n' "$K08_ISI" > "$K08_BERKAS"; chmod 640 "$K08_BERKAS"
+    systemctl start auditd >/dev/null 2>&1
+    augenrules --load >/dev/null 2>&1
+    n=$(auditctl -l 2>/dev/null | grep -c '^-w'); nilai="aturan=$n"
+    [ "$n" -ge 12 ] && selesai LULUS true "$nilai" || { rm -f "$K08_BERKAS"; augenrules --load >/dev/null 2>&1; tolak "aturan tidak termuat, sudah dikembalikan"; } ;;
+  kembalikan) rm -f "$K08_BERKAS"; augenrules --load >/dev/null 2>&1
+    selesai DIKEMBALIKAN true "aturan=$(auditctl -l 2>/dev/null | grep -c '^-w')" ;;
+esac }
+
+K09_BERKAS=/etc/systemd/journald.conf.d/99-yoru-k09.conf
+k09_max() { journalctl -b -t systemd-journald --no-pager 2>/dev/null | grep -o 'max [0-9.]*M' | tail -1; }
+k09() { case "$1" in
+  periksa|verifikasi) nilai=$(k09_max)
+    journalctl --disk-usage >/dev/null 2>&1 || selesai ERROR false "" "journalctl tidak bisa dibaca"
+    if [ -d /var/log/journal ] && [ "$nilai" = "max 500.0M" ]
+      then selesai LULUS true "$nilai"; else selesai GAGAL true "${nilai:-tidak-terbaca}"; fi ;;
+  terapkan)
+    mkdir -p /etc/systemd/journald.conf.d
+    printf '[Journal]\nStorage=persistent\nCompress=yes\nSystemMaxUse=500M\nSystemKeepFree=1G\nMaxRetentionSec=1month\n' > "$K09_BERKAS"
+    chmod 644 "$K09_BERKAS"; systemctl restart systemd-journald; sleep 1
+    nilai=$(k09_max)
+    [ "$nilai" = "max 500.0M" ] && selesai LULUS true "$nilai" || { rm -f "$K09_BERKAS"; systemctl restart systemd-journald; tolak "verifikasi gagal, sudah dikembalikan"; } ;;
+  kembalikan) rm -f "$K09_BERKAS"; systemctl restart systemd-journald; sleep 1
+    selesai DIKEMBALIKAN true "$(k09_max)" ;;
+esac }
+
+K10_BERKAS=/etc/sysctl.d/99-yoru-k10.conf
+K10_ISI='# K10 - setelan kernel jaringan (Yoru)
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv4.conf.default.secure_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.log_martians = 1
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.icmp_ignore_bogus_error_responses = 1
+net.ipv4.icmp_echo_ignore_all = 0
+net.ipv4.tcp_syncookies = 1
+net.ipv6.conf.all.accept_redirects = 0
+net.ipv6.conf.default.accept_redirects = 0
+net.ipv6.conf.all.accept_source_route = 0
+net.ipv6.conf.default.accept_source_route = 0
+net.ipv6.conf.all.accept_ra = 0
+net.ipv6.conf.default.accept_ra = 0'
+
+k10_baca() {
+  local lm sr ra
+  lm=$(sysctl -n net.ipv4.conf.all.log_martians    2>/dev/null)
+  sr=$(sysctl -n net.ipv4.conf.all.secure_redirects 2>/dev/null)
+  ra=$(sysctl -n net.ipv6.conf.all.accept_ra       2>/dev/null)
+  # Server yang IPv6-nya dimatikan total tidak punya saklar ini sama sekali.
+  # Itu bukan kegagalan - tidak ada IPv6 berarti tidak ada yang diamankan.
+  # Tanpa penanganan ini K10 akan melapor GAGAL selamanya di VPS tanpa IPv6.
+  [ -n "$ra" ] || ra="na"
+  printf '%s/%s/%s' "${lm:-?}" "${sr:-?}" "$ra"
+}
+k10_lulus() { case "$1" in "1/0/0"|"1/0/na") return 0 ;; *) return 1 ;; esac; }
+k10() { case "$1" in
+  periksa|verifikasi) nilai=$(k10_baca)
+    case "$nilai" in *'?'*) selesai ERROR false "$nilai" "sysctl ipv4 tidak bisa dibaca" ;; esac
+    k10_lulus "$nilai" && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
+  terapkan)
+    printf '%s\n' "$K10_ISI" > "$K10_BERKAS"; chmod 644 "$K10_BERKAS"
+    # ufw menerapkan sysctl-nya sendiri setiap start dan menimpa log_martians
+    # jadi 0. Lepaskan ufw dari urusan sysctl supaya satu setelan punya satu
+    # pemilik. Semua yang tadinya diatur ufw sudah tercakup di berkas ini.
+    if grep -q '^IPT_SYSCTL=' /etc/default/ufw 2>/dev/null; then
+      sed -i 's|^IPT_SYSCTL=|#IPT_SYSCTL= # dinonaktifkan Yoru K10, lihat katalog|' /etc/default/ufw
+    fi
+    sysctl -p "$K10_BERKAS" >/dev/null 2>&1
+    nilai=$(k10_baca)
+    k10_lulus "$nilai" && selesai LULUS true "$nilai" || tolak "verifikasi gagal, nilai=$nilai" ;;
+  kembalikan)
+    # kernel menyimpan nilai terakhir - menghapus berkas saja TIDAK cukup
+    rm -f "$K10_BERKAS"
+    sed -i 's|^#IPT_SYSCTL=\( #[^\n]*\)\?|IPT_SYSCTL=|' /etc/default/ufw 2>/dev/null
+    sysctl -w net.ipv4.conf.all.log_martians=0 \
+             -w net.ipv4.conf.default.log_martians=0 \
+             -w net.ipv4.conf.all.secure_redirects=1 \
+             -w net.ipv4.conf.default.secure_redirects=1 \
+             -w net.ipv4.conf.default.accept_source_route=1 \
+             -w net.ipv6.conf.all.accept_ra=1 \
+             -w net.ipv6.conf.default.accept_ra=1 >/dev/null 2>&1
+    selesai DIKEMBALIKAN true "$(k10_baca)" ;;
+esac }
+
+# ----------------------------------------------------------------- jalan
+KID=""; AKSI=""
+[ $# -eq 2 ] || { KID="?"; AKSI="?"; tolak "pakai: jalankan-kontrol <K01..K10> <periksa|terapkan|kembalikan|verifikasi>"; }
+
+KID="$1"; AKSI="$2"
+[[ "$KID"  =~ ^K(0[1-9]|10)$ ]] || tolak "nomor kontrol tidak dikenal"
+[[ "$AKSI" =~ ^(periksa|terapkan|kembalikan|verifikasi)$ ]] || tolak "tindakan tidak dikenal"
+
+periksa_diri
+"$(printf 'k%02d' "$((10#${KID#K}))")" "$AKSI"
+tolak "tindakan tidak tertangani"

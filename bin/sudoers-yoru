@@ -1,0 +1,13 @@
+# /etc/sudoers.d/yoru   (izin 0440, milik root)
+#
+# Agent Yoru berjalan sebagai pengguna sistem "yoru-agent" dan HANYA boleh
+# memanggil satu berkas ini. Bukan bash, bukan rm, bukan apt - satu berkas.
+#
+# Pengguna ini sengaja TIDAK dimasukkan ke grup sudo. Kalau dimasukkan, dia
+# mewarisi izin penuh grup itu dan baris di bawah jadi tidak ada artinya.
+#
+# Pasang dengan:
+#   sudo install -o root -g root -m 0440 sudoers-yoru /etc/sudoers.d/yoru
+#   sudo visudo -c -f /etc/sudoers.d/yoru
+
+yoru-agent ALL=(root) NOPASSWD: /opt/yoru/bin/jalankan-kontrol
