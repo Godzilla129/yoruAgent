@@ -1,0 +1,11 @@
+@'
+# Semua berkas di repo ini dipakai di Linux. Paksa akhir baris LF supaya
+# berkas yang diedit atau di-checkout di Windows tidak berubah jadi CRLF.
+# Skrip bash yang ber-CRLF ditolak dengan error yang menyesatkan.
+
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gz  binary
+'@ | Set-Content -Encoding ascii .gitattributes
