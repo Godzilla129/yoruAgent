@@ -7,7 +7,7 @@
 # mewarisi izin penuh grup itu dan baris di bawah jadi tidak ada artinya.
 #
 # Pasang dengan:
-#   sudo install -o root -g root -m 0440 sudoers-yoru /etc/sudoers.d/yoru
+#   sudo install -o root -g root -m 0440 yoru.sudoers /etc/sudoers.d/yoru
 #   sudo visudo -c -f /etc/sudoers.d/yoru
 
-yoru-agent ALL=(root) NOPASSWD: /opt/yoru/bin/jalankan-kontrol
+yoru-agent ALL=(root) NOPASSWD: /opt/yoru/bin/yoructl

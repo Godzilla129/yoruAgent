@@ -1,4 +1,13 @@
-# Semua berkas dipakai di Linux - paksa akhir baris LF, bukan CRLF
+# Semua berkas teks di repo ini dipakai di Linux - skrip bash, YAML katalog,
+# aturan auditd, berkas konfigurasi. Paksa akhir baris LF supaya berkas yang
+# diedit atau di-checkout di Windows tidak berubah jadi CRLF.
+#
+# Kalau berkas bash sampai ber-CRLF, bash menolaknya dengan pesan
+# "$'\r': command not found" yang menunjuk ke baris yang kelihatan normal.
+# Susah dilacak, dan biasanya baru ketahuan di saat paling tidak enak.
+
 * text=auto eol=lf
+
 *.png binary
+*.jpg binary
 *.gz  binary

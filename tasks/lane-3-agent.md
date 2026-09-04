@@ -38,13 +38,13 @@ salah perintah, karena perintah langsung jalan.
 
 Bikin agent yang:
 
-1. membaca semua file di `katalog/*.yaml`
+1. membaca semua file di `catalog/*.yaml`
 2. menjalankan bagian `periksa` tiap kontrol
 3. membandingkan hasilnya dengan `periksa.lolos_jika`
-4. mengeluarkan JSON persis bentuk `kontrak/laporan.md`
+4. mengeluarkan JSON persis bentuk `contract/report.md`
 
 Kalau agent kamu sudah bisa menghasilkan file yang bentuknya sama dengan
-`contoh/laporan-perbaikan.json` dari server sungguhan, **setengah pekerjaan
+`examples/report-fix.json` dari server sungguhan, **setengah pekerjaan
 sudah selesai**. Lane 2 langsung bisa memakainya.
 
 Tahap ini tidak menyentuh apa pun di server. Aman dicoba berulang kali.
@@ -55,7 +55,7 @@ Setelah tahap 1 stabil:
 
 - kontrol `AMAN` boleh diterapkan agent sendiri
 - kontrol `BERISIKO` dan `BERBAHAYA` **wajib** minta izin per item
-- semua penerapan lewat dispatcher `/opt/yoru/bin/jalankan-kontrol`, bukan
+- semua penerapan lewat dispatcher `/opt/yoru/bin/yoructl`, bukan
   perintah langsung. Dispatcher dibuat Lane 1
 - setelah menerapkan, **wajib** menjalankan `verifikasi`. Kalau verifikasi
   gagal, rollback otomatis
@@ -108,7 +108,7 @@ proyeknya tidak ikut macet.
 ## Tiga langkah pertama
 
 1. Pasang VM Ubuntu Server 24.04 di laptop sendiri
-2. Baca `katalog/K01.yaml`, `K06.yaml`, dan `K10.yaml` — tiga itu yang paling
+2. Baca `catalog/K01.yaml`, `K06.yaml`, dan `K10.yaml` — tiga itu yang paling
    kaya isinya, dan `K10.yaml` punya catatan soal cara verifikasi yang salah
 3. Bikin skrip yang membaca satu file YAML dan menjalankan `periksa`-nya.
    Satu kontrol dulu, jangan sepuluh sekaligus

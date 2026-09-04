@@ -3,7 +3,7 @@
 Kamu **tidak butuh server sama sekali** untuk mulai. Semua data yang kamu
 perlukan sudah ada di repo ini sebagai file contoh.
 
-Baca `kontrak/laporan.md` dulu sebelum menulis kode. Itu satu-satunya bentuk
+Baca `contract/report.md` dulu sebelum menulis kode. Itu satu-satunya bentuk
 data yang menghubungkan kita bertiga, dan sudah final.
 
 ---
@@ -12,8 +12,8 @@ data yang menghubungkan kita bertiga, dan sudah final.
 
 ### 1. Dashboard baca file JSON (prioritas utama)
 
-Bikin halaman yang membaca `contoh/laporan-perbaikan.json` dan
-`contoh/laporan-penjagaan.json`, lalu menampilkannya.
+Bikin halaman yang membaca `examples/report-fix.json` dan
+`examples/report-watch.json`, lalu menampilkannya.
 
 Dua file itu bentuknya **persis sama** dengan yang nanti dikeluarkan agent.
 Kalau dashboard jalan di dua file itu, dia akan jalan di server sungguhan
@@ -55,7 +55,7 @@ datanya sama, cuma tampilannya beda.
 ### 3. Kontrol web K11–K14 — hanya kalau waktunya cukup
 
 Kalau dashboard dan bot sudah jalan dan masih ada waktu. Bentuk file YAML-nya
-ikut pola `katalog/K01.yaml`. Aturannya sama: **satu kontrol baru masuk
+ikut pola `catalog/K01.yaml`. Aturannya sama: **satu kontrol baru masuk
 katalog kalau kamu sudah menjalankannya manual dan rollbacknya benar-benar
 diuji.** Bukan disalin dari artikel.
 
@@ -72,7 +72,7 @@ diuji.** Bukan disalin dari artikel.
 
 ## Yang tidak dikerjakan
 
-Baca `RUANG-LINGKUP.md`. Ringkasnya:
+Baca `SCOPE.md`. Ringkasnya:
 
 - **Jangan bikin grafik CPU, RAM, atau jaringan.** Bukan itu produknya, dan
   itu bikin kita kelihatan seperti Netdata versi kurang matang
@@ -86,8 +86,8 @@ Baca `RUANG-LINGKUP.md`. Ringkasnya:
 
 ## Tiga langkah pertama
 
-1. Clone repo, baca `kontrak/laporan.md` sampai habis
-2. Buka `contoh/laporan-perbaikan.json`, cocokkan tiap field dengan
+1. Clone repo, baca `contract/report.md` sampai habis
+2. Buka `examples/report-fix.json`, cocokkan tiap field dengan
    penjelasannya di kontrak
 3. Bikin halaman paling sederhana: skor besar + 10 baris berwarna. Itu saja
    dulu. Sisanya menyusul

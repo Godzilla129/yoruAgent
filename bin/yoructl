@@ -1,7 +1,7 @@
 #!/bin/bash
-# jalankan-kontrol - satu-satunya pintu Yoru ke hak root.
+# yoructl - satu-satunya pintu Yoru ke hak root.
 #
-# Pakai:  jalankan-kontrol <K01..K10> <periksa|terapkan|kembalikan|verifikasi>
+# Pakai:  yoructl <K01..K10> <periksa|terapkan|kembalikan|verifikasi>
 #
 # Agent hanya boleh memanggil skrip ini lewat sudo. Perintah aslinya ada di
 # dalam sini, bukan dikirim agent. Artinya agent tidak bisa menjalankan
@@ -351,7 +351,7 @@ esac }
 
 # ----------------------------------------------------------------- jalan
 KID=""; AKSI=""
-[ $# -eq 2 ] || { KID="?"; AKSI="?"; tolak "pakai: jalankan-kontrol <K01..K10> <periksa|terapkan|kembalikan|verifikasi>"; }
+[ $# -eq 2 ] || { KID="?"; AKSI="?"; tolak "pakai: yoructl <K01..K10> <periksa|terapkan|kembalikan|verifikasi>"; }
 
 KID="$1"; AKSI="$2"
 [[ "$KID"  =~ ^K(0[1-9]|10)$ ]] || tolak "nomor kontrol tidak dikenal"

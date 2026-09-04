@@ -7,19 +7,19 @@ Lane ini yang memegang jalur ke hak root. Semua yang lain lewat sini.
 ## Yang sudah selesai
 
 - Katalog 10 kontrol OS, rollback diuji satu per satu
-- `cek-semua.sh` — 18 pemeriksaan, lulus setelah reboot
+- `check-all.sh` — 18 pemeriksaan, lulus setelah reboot
 - Satu konflik antar-kontrol ditemukan dan diperbaiki (ufw menimpa sysctl K10)
 
 ---
 
 ## Yang dikerjakan
 
-### 1. Dispatcher `/opt/yoru/bin/jalankan-kontrol`
+### 1. Dispatcher `/opt/yoru/bin/yoructl`
 
 Satu-satunya pintu agent ke hak root. Baris sudoersnya:
 
 ```
-yoru ALL=(root) NOPASSWD: /opt/yoru/bin/jalankan-kontrol
+yoru ALL=(root) NOPASSWD: /opt/yoru/bin/yoructl
 ```
 
 Satu skrip. Itu saja. Agent tidak bisa memanggil `rm`, tidak bisa memanggil
@@ -55,8 +55,8 @@ yang tidak tahu Hermes itu apa.
 Isi paketnya:
 
 ```
-/opt/yoru/bin/jalankan-kontrol    dispatcher root
-/usr/share/yoru/katalog/*.yaml    katalog, milik root, tidak bisa ditulis yoru
+/opt/yoru/bin/yoructl    dispatcher root
+/usr/share/yoru/catalog/*.yaml    katalog, milik root, tidak bisa ditulis yoru
 /opt/yoru/agent/                  Hermes dan prompt
 /etc/yoru/config.yaml             milik pemilik: token telegram, jadwal
 ```
@@ -76,7 +76,7 @@ yang salah, semua hal lain jadi ikut diragukan.
 
 ## Dianggap selesai kalau
 
-- `sudo -u yoru sudo /opt/yoru/bin/jalankan-kontrol K01 periksa` mengeluarkan
+- `sudo -u yoru sudo /opt/yoru/bin/yoructl K01 periksa` mengeluarkan
   JSON yang benar
 - `sudo -u yoru sudo rm /etc/passwd` ditolak — sudoers benar-benar membatasi
 - Dispatcher menolak jalan kalau file skripnya bisa ditulis selain root

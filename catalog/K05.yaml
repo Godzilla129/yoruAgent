@@ -112,7 +112,7 @@ konflik_dengan_k10:
     lain bisa menimpanya saat boot berikutnya. Setiap kontrol yang
     menyentuh setelan bersama (sysctl, iptables, limits) WAJIB diuji ulang
     setelah reboot, bukan hanya setelah penerapan.
-  ditemukan_pada: "VM yoru-a, 4 Sep 2026, lewat tes reboot cek-semua.sh"
+  ditemukan_pada: "VM yoru-a, 4 Sep 2026, lewat tes reboot check-all.sh"
 
 diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; konflik sysctl ditemukan 4 Sep 2026"
 rollback_teruji: true

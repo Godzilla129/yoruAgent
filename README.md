@@ -23,10 +23,10 @@ mengecek apakah masih seperti yang disepakati.
 ## Isi repo
 
 ```
-katalog/        10 kontrol keamanan OS, satu file YAML per kontrol
-kontrak/        bentuk data yang dipakai bersama tiga lane — baca ini dulu
-contoh/         contoh laporan JSON, supaya bisa mulai tanpa server
-cek-semua.sh    periksa 10 kontrol sekaligus (cikal bakal fungsi periksa())
+catalog/        10 kontrol keamanan OS, satu file YAML per kontrol
+contract/        bentuk data yang dipakai bersama tiga lane — baca ini dulu
+examples/         contoh laporan JSON, supaya bisa mulai tanpa server
+check-all.sh    periksa 10 kontrol sekaligus (cikal bakal fungsi periksa())
 ```
 
 ---
@@ -36,7 +36,7 @@ cek-semua.sh    periksa 10 kontrol sekaligus (cikal bakal fungsi periksa())
 Ini bukan aturan birokrasi. Semuanya lahir dari hal yang sudah pernah
 menjebak kami sendiri.
 
-**1. Baca `kontrak/laporan.md` sebelum menulis kode.**
+**1. Baca `contract/report.md` sebelum menulis kode.**
 Itu satu-satunya bentuk data yang menyambungkan tiga lane. Selama bentuknya
 stabil, kita bertiga bisa kerja tanpa saling menunggu. Kalau ada yang perlu
 diubah, bahas dulu di grup — jangan diubah sendiri, karena dua orang lain
@@ -44,7 +44,7 @@ sedang membangun di atasnya.
 
 **2. Tidak perlu server bersama.**
 Masing-masing jalankan VM lokal. Lane web bahkan tidak butuh VM sama sekali,
-cukup bangun di atas `contoh/*.json`.
+cukup bangun di atas `examples/*.json`.
 
 **3. Sebuah kontrol baru masuk katalog kalau sudah dijalankan manual dan
 rollbacknya benar-benar diuji.**
@@ -62,17 +62,17 @@ terbuka.
 
 ## Pembagian lane
 
-Rincian tiap lane ada di folder `tugas/`. Baca punyamu sampai habis sebelum
+Rincian tiap lane ada di folder `tasks/`. Baca punyamu sampai habis sebelum
 mulai — di situ ada juga daftar hal yang **tidak** dikerjakan, supaya kita
 tidak berjalan ke arah yang berbeda-beda.
 
 | Lane | Orang | Kerjaan | Rincian |
 |---|---|---|---|
-| 1 — Sistem | julmukcur | dispatcher + sudoers, installer, katalog | `tugas/lane-1-sistem.md` |
-| 2 — Web | — | dashboard, API, bot Telegram | `tugas/lane-2-web.md` |
-| 3 — Agent | — | wiring Hermes, eval set | `tugas/lane-3-agent.md` |
+| 1 — Sistem | julmukcur | dispatcher + sudoers, installer, katalog | `tasks/lane-1-system.md` |
+| 2 — Web | — | dashboard, API, bot Telegram | `tasks/lane-2-web.md` |
+| 3 — Agent | — | wiring Hermes, eval set | `tasks/lane-3-agent.md` |
 
-Batas ruang lingkup proyek ada di **`RUANG-LINGKUP.md`** dan sudah dikunci
+Batas ruang lingkup proyek ada di **`SCOPE.md`** dan sudah dikunci
 tanggal 4 September. Ide baru ditulis di bagian bawah dokumen itu, tidak
 langsung dikerjakan.
 
@@ -84,7 +84,7 @@ langsung dikerjakan.
 - Lulus tes reboot: 18 pemeriksaan, semuanya lewat
 - Satu konflik antar-kontrol ditemukan dan diperbaiki — ufw ternyata menimpa
   setelan kernel milik K10 setiap kali servicenya start. Ceritanya lengkap
-  ada di `katalog/K05.yaml` dan `katalog/K10.yaml`
+  ada di `catalog/K05.yaml` dan `catalog/K10.yaml`
 
 ---
 
@@ -95,5 +95,5 @@ langsung dikerjakan.
 laporan atau demo sebelum dicek ke dokumen CIS aslinya. Kalau juri bertanya
 dan kita menyebut nomor yang salah, semua hal lain jadi ikut diragukan.
 
-**`rp_filter` sengaja tidak diterapkan.** Alasannya ada di `katalog/K10.yaml`,
+**`rp_filter` sengaja tidak diterapkan.** Alasannya ada di `catalog/K10.yaml`,
 lengkap dengan penjelasan teknisnya. Ini keputusan, bukan kelalaian.

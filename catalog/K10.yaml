@@ -223,7 +223,7 @@ konflik_dengan_k05:
     (1) Tambahkan net.ipv4.icmp_echo_ignore_all = 0 ke K10 supaya K10 jadi
     superset penuh dari yang ufw atur - tidak ada setelan yang jatuh tanpa
     pemilik. (2) Komentari IPT_SYSCTL di /etc/default/ufw.
-  hasil: "cek-semua.sh setelah reboot: LULUS 18 GAGAL 0 - VM yoru-a, 4 Sep 2026"
+  hasil: "check-all.sh setelah reboot: LULUS 18 GAGAL 0 - VM yoru-a, 4 Sep 2026"
 
 pengecualian_metode_drop_in:
   file: "/etc/default/ufw"

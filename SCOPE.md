@@ -14,7 +14,7 @@ Jangan langsung dikerjakan.
 | | Isi | Lane |
 |---|---|---|
 | Katalog OS | 10 kontrol, K01–K10 — **sudah selesai** | 1 |
-| Dispatcher | `/opt/yoru/bin/jalankan-kontrol` + sudoers | 1 |
+| Dispatcher | `/opt/yoru/bin/yoructl` + sudoers | 1 |
 | Installer | satu perintah, sudah termasuk Hermes | 1 |
 | Agent | Siklus Perbaikan dan Siklus Penjagaan | 3 |
 | Eval | minimal 5 kasus + kunci jawaban | 3 |

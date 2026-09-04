@@ -1,6 +1,6 @@
 #!/bin/bash
-# cek-semua.sh - periksa 10 kontrol Yoru sekaligus
-# Jalankan: sudo bash cek-semua.sh
+# check-all.sh - periksa 10 kontrol Yoru sekaligus
+# Jalankan: sudo bash check-all.sh
 # Ini versi pertama fungsi periksa() milik Yoru, masih ditulis tangan.
 
 if [ "$EUID" -ne 0 ]; then echo "Harus dijalankan dengan sudo."; exit 1; fi

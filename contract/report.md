@@ -20,7 +20,7 @@ Mengubahnya sendiri berarti memecahkan kode dua orang lain tanpa mereka tahu.
 /var/lib/yoru/riwayat/<ISO8601>.json    arsip, tidak dihapus otomatis
 ```
 
-Selama pengembangan, Lane 2 cukup pakai `contoh/laporan-*.json` di repo ini.
+Selama pengembangan, Lane 2 cukup pakai `examples/laporan-*.json` di repo ini.
 Jangan menunggu server nyata untuk mulai membangun tampilan — bentuknya sudah
 sama persis.
 
@@ -185,4 +185,4 @@ boleh dipercaya menyentuh server orang.
 ## Kalau kontrak ini perlu berubah
 
 Naikkan `versi_kontrak`, kabari dua lane lain, dan simpan contoh JSON versi
-lama di `contoh/`. Jangan mengganti arti sebuah field tanpa menaikkan versi.
+lama di `examples/`. Jangan mengganti arti sebuah field tanpa menaikkan versi.
