@@ -1,0 +1,180 @@
+{
+  "versi_kontrak": "1",
+  "versi_yoru": "0.1.0",
+  "server": {
+    "nama": "yoru-a",
+    "os": "Ubuntu 24.04.4 LTS",
+    "kernel": "6.8.0-138-generic",
+    "ip_utama": "192.168.206.132",
+    "panel_terdeteksi": null
+  },
+  "waktu": "2026-09-08T03:00:12+07:00",
+  "siklus": "penjagaan",
+  "ringkasan": {
+    "total": 10,
+    "lulus": 9,
+    "gagal": 1,
+    "sebagian": 0,
+    "dilewati": 0,
+    "skor": 90
+  },
+  "kontrol": [
+    {
+      "id": "K01",
+      "nama": "Root tidak bisa login lewat SSH",
+      "kategori": "ssh",
+      "risiko": "BERISIKO",
+      "status": "LULUS",
+      "nilai_terbaca": "no",
+      "nilai_target": "no",
+      "kenapa": "Kalau akun root bisa login langsung dari internet, penyerang cuma perlu menebak satu password untuk menguasai seluruh server. Selain itu semua aktivitas tercatat sebagai “root”, jadi kalau ada masalah kamu tidak bisa tahu siapa yang melakukannya.",
+      "yang_rusak_kalau_diterapkan": "Script otomatis yang selama ini login sebagai root akan berhenti jalan — misalnya tool backup atau deploy. Kalau kamu punya yang seperti itu, pindahkan dulu ke akun biasa.",
+      "butuh_izin": true,
+      "prasyarat_gagal": [],
+      "hasil": null
+    },
+    {
+      "id": "K02",
+      "nama": "Login pakai password dimatikan (SSH key saja)",
+      "kategori": "ssh",
+      "risiko": "BERISIKO",
+      "status": "LULUS",
+      "nilai_terbaca": "no",
+      "nilai_target": "no",
+      "kenapa": "Password bisa ditebak. Mesin sanggup mencoba jutaan kombinasi tanpa lelah, dan itu yang paling sering menimpa server yang baru online. Kunci SSH tidak bisa dijebol dengan cara seperti itu.",
+      "yang_rusak_kalau_diterapkan": "Semua yang login pakai password berhenti bisa masuk, termasuk aplikasi dan script yang menyimpan password SSH. Kunci SSH kamu harus sudah terpasang dan sudah pernah dipakai berhasil sebelum ini dinyalakan.",
+      "butuh_izin": true,
+      "prasyarat_gagal": [],
+      "hasil": null
+    },
+    {
+      "id": "K03",
+      "nama": "Batasi percobaan login SSH",
+      "kategori": "ssh",
+      "risiko": "AMAN",
+      "status": "LULUS",
+      "nilai_terbaca": "maxauthtries 3, logingracetime 30",
+      "nilai_target": "maxauthtries 3, logingracetime 30",
+      "kenapa": "Bawaan Ubuntu memberi 6 kali percobaan password dan 2 menit waktu tunggu untuk setiap koneksi. Dipersempit jadi 3 kali dan 30 detik, serangan tebak-tebakan berjalan jauh lebih lambat dan lebih mudah terlihat di catatan.",
+      "yang_rusak_kalau_diterapkan": "Tidak ada. Paling-paling kamu perlu menyambung ulang lebih cepat kalau salah ketik password.",
+      "butuh_izin": false,
+      "prasyarat_gagal": [],
+      "hasil": null
+    },
+    {
+      "id": "K04",
+      "nama": "Buang algoritma kripto yang lemah di SSH",
+      "kategori": "ssh",
+      "risiko": "BERISIKO",
+      "status": "LULUS",
+      "nilai_terbaca": "tanpa sha1 dan tanpa umac-64",
+      "nilai_target": "tanpa sha1 dan tanpa umac-64",
+      "kenapa": "Sebelum password diminta, SSH menyepakati dulu cara mengacak data dengan komputer yang menghubungi. Beberapa cara lama sudah bisa dipecahkan. Selama masih ada di daftar, penyerang yang bisa menyadap jaringan punya peluang memaksa koneksi memakai yang lemah.",
+      "yang_rusak_kalau_diterapkan": "Aplikasi atau perangkat lama mungkin tidak bisa lagi menyambung — misalnya PuTTY versi lama atau alat bawaan perangkat jaringan. Gagalnya terjadi sebelum tahap password, jadi pesannya bukan “password salah” melainkan gagal menyepakati cara enkripsi.",
+      "butuh_izin": true,
+      "prasyarat_gagal": [],
+      "hasil": null
+    },
+    {
+      "id": "K05",
+      "nama": "Firewall aktif, tolak semua koneksi masuk",
+      "kategori": "firewall",
+      "risiko": "BERISIKO",
+      "status": "LULUS",
+      "nilai_terbaca": "active, tolak semua koneksi masuk",
+      "nilai_target": "active, tolak semua koneksi masuk",
+      "kenapa": "Tanpa firewall, semua pintu yang kebetulan terbuka di server bisa dicoba siapa saja dari internet — termasuk pintu yang terbuka tanpa kamu sadari karena aplikasi salah setelan.",
+      "yang_rusak_kalau_diterapkan": "Layanan yang portnya belum didaftarkan jadi tidak bisa diakses dari luar. Web, panel, database — semuanya harus diizinkan lebih dulu.",
+      "butuh_izin": true,
+      "prasyarat_gagal": [],
+      "hasil": null
+    },
+    {
+      "id": "K06",
+      "nama": "Cuma port yang dipakai yang boleh terbuka",
+      "kategori": "jaringan",
+      "risiko": "BERISIKO",
+      "status": "GAGAL",
+      "nilai_terbaca": "0.0.0.0:3306",
+      "nilai_target": "tidak ada layanan basis data di 0.0.0.0",
+      "kenapa": "Database dan layanan internal biasanya cuma dipakai aplikasi di server yang sama. Kalau mereka ikut mendengarkan ke internet, isinya bisa dicoba diakses dari mana saja. Firewall memang menutupnya, tapi firewall bisa mati atau salah atur — lebih aman kalau pintunya memang tidak ada.",
+      "yang_rusak_kalau_diterapkan": "Aplikasi di server LAIN yang menyambung ke database ini akan berhenti bisa konek. Kalau kamu memang butuh itu — replikasi, atau aplikasi yang dipisah dari databasenya — beri tahu dulu. Selain itu database akan restart sebentar, jadi sebaiknya di jam sepi.",
+      "butuh_izin": true,
+      "prasyarat_gagal": [],
+      "hasil": null
+    },
+    {
+      "id": "K07",
+      "nama": "Pembaruan keamanan otomatis",
+      "kategori": "pembaruan",
+      "risiko": "AMAN",
+      "status": "LULUS",
+      "nilai_terbaca": "enabled",
+      "nilai_target": "enabled",
+      "kenapa": "Sebagian besar server dibobol lewat celah yang tambalannya sudah lama tersedia, cuma belum dipasang. Pembaruan otomatis menutup jarak antara “tambalannya sudah ada” dan “tambalannya sudah terpasang”.",
+      "yang_rusak_kalau_diterapkan": "Pembaruan dipasang otomatis, jadi bisa terjadi di jam yang tidak kamu pilih. Untuk sebagian besar server ini justru yang diinginkan, tapi kalau ada aplikasi yang sensitif terhadap versi, kabari dulu.",
+      "butuh_izin": false,
+      "prasyarat_gagal": [],
+      "hasil": null
+    },
+    {
+      "id": "K08",
+      "nama": "Jejak audit aktif (auditd)",
+      "kategori": "audit",
+      "risiko": "AMAN",
+      "status": "LULUS",
+      "nilai_terbaca": "aktif dengan 12 aturan",
+      "nilai_target": "aktif dengan 12 aturan",
+      "kenapa": "Kalau suatu hari ada yang berhasil masuk atau ada setelan yang berubah, ini yang menyimpan jejaknya: siapa, jam berapa, pakai perintah apa. Tanpa ini kamu cuma tahu ada yang berubah, tanpa tahu siapa yang mengubah.",
+      "yang_rusak_kalau_diterapkan": "Tidak ada. Pencatat jejak ini hanya mengamati, tidak memblokir apa pun. Yang bertambah cuma ukuran catatan.",
+      "butuh_izin": false,
+      "prasyarat_gagal": [],
+      "hasil": null
+    },
+    {
+      "id": "K09",
+      "nama": "Log tersimpan permanen dan tidak membanjiri disk",
+      "kategori": "log",
+      "risiko": "AMAN",
+      "status": "LULUS",
+      "nilai_terbaca": "permanen, batas 500M",
+      "nilai_target": "permanen, batas 500M",
+      "kenapa": "Bawaan Ubuntu menyimpan catatan di memori, jadi hilang setiap kali server restart. Kalau ada yang masuk lalu me-restart server, jejaknya ikut hilang. Di sisi lain, catatan tanpa batas bisa memenuhi disk sampai server berhenti jalan. Ini menyimpannya permanen sekaligus memberi batas.",
+      "yang_rusak_kalau_diterapkan": "Tidak ada. Yang perlu disepakati cuma seberapa besar batasnya — kalau kekecilan, catatan lama terhapus lebih cepat dari yang kamu harapkan.",
+      "butuh_izin": false,
+      "prasyarat_gagal": [],
+      "hasil": null
+    },
+    {
+      "id": "K10",
+      "nama": "Setelan kernel jaringan",
+      "kategori": "jaringan",
+      "risiko": "AMAN",
+      "status": "LULUS",
+      "nilai_terbaca": "18 setelan sesuai target",
+      "nilai_target": "18 setelan sesuai target",
+      "kenapa": "Linux punya banyak saklar kecil yang mengatur cara server memperlakukan lalu lintas jaringan. Beberapa peninggalan zaman ketika jaringan masih dianggap tempat yang ramah, dan sekarang bisa dipakai untuk membelokkan lalu lintas server kamu.",
+      "yang_rusak_kalau_diterapkan": "Untuk server biasa tidak ada. Satu hal yang perlu dicek: kalau penyedia server kamu membagikan alamat IPv6 lewat cara otomatis, salah satu setelan di sini bisa memutusnya.",
+      "butuh_izin": false,
+      "prasyarat_gagal": [],
+      "hasil": null
+    }
+  ],
+  "drift": [
+    {
+      "id": "K06",
+      "nama": "Cuma port yang dipakai yang boleh terbuka",
+      "berubah_dari": "127.0.0.1:3306",
+      "berubah_jadi": "0.0.0.0:3306",
+      "terdeteksi": "2026-09-08T03:00:12+07:00",
+      "siapa": "budi",
+      "kapan_diubah": "2026-09-07T22:14:08+07:00",
+      "perintah": "vim /etc/mysql/mariadb.conf.d/zz-yoru-k06.cnf",
+      "sumber_bukti": "auditd",
+      "keputusan_pemilik": null
+    }
+  ],
+  "butuh_keputusan": [
+    "K06"
+  ]
+}
