@@ -13,7 +13,7 @@ umask 022
 export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-VERSI="0.1.0"
+VERSI="0.1.1"
 LOG_DIR=/var/log/yoru
 LOG="$LOG_DIR/tindakan.log"
 
@@ -329,8 +329,13 @@ k10() { case "$1" in
     # ufw menerapkan sysctl-nya sendiri setiap start dan menimpa log_martians
     # jadi 0. Lepaskan ufw dari urusan sysctl supaya satu setelan punya satu
     # pemilik. Semua yang tadinya diatur ufw sudah tercakup di berkas ini.
+    #
+    # Penanda ditaruh di DEPAN dan tidak ada teks yang ditambahkan di belakang.
+    # Nilai aslinya wajib tetap utuh, karena itulah satu-satunya bahan yang
+    # dipunya kembalikan untuk memulihkan baris ini persis seperti semula.
+    # Penjelasan panjangnya ada di catalog/K10.yaml.
     if grep -q '^IPT_SYSCTL=' /etc/default/ufw 2>/dev/null; then
-      sed -i 's|^IPT_SYSCTL=|#IPT_SYSCTL= # dinonaktifkan Yoru K10, lihat katalog|' /etc/default/ufw
+      sed -i 's|^IPT_SYSCTL=|#yoru-k10#IPT_SYSCTL=|' /etc/default/ufw
     fi
     sysctl -p "$K10_BERKAS" >/dev/null 2>&1
     nilai=$(k10_baca)
@@ -338,7 +343,10 @@ k10() { case "$1" in
   kembalikan)
     # kernel menyimpan nilai terakhir - menghapus berkas saja TIDAK cukup
     rm -f "$K10_BERKAS"
-    sed -i 's|^#IPT_SYSCTL=\( #[^\n]*\)\?|IPT_SYSCTL=|' /etc/default/ufw 2>/dev/null
+    # Hanya membuka baris yang ditandai Yoru sendiri. Baris yang dikomentari
+    # pemilik server atau distronya TIDAK disentuh - Yoru cuma membatalkan
+    # perbuatannya sendiri, bukan menebak apa yang seharusnya aktif.
+    sed -i 's|^#yoru-k10#IPT_SYSCTL=|IPT_SYSCTL=|' /etc/default/ufw 2>/dev/null
     sysctl -w net.ipv4.conf.all.log_martians=0 \
              -w net.ipv4.conf.default.log_martians=0 \
              -w net.ipv4.conf.all.secure_redirects=1 \
