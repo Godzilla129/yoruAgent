@@ -1,0 +1,29 @@
+[Unit]
+Description=Yoru - jadwal Siklus Penjagaan harian
+Documentation=https://github.com/Godzilla129/yoruAgent
+
+[Timer]
+# Jam dan zona waktu di baris berikut ditulis ulang oleh install.sh, diambil
+# dari JAM_PENJAGAAN dan ZONA_WAKTU di /etc/yoru/yoru.conf.
+#
+# Jangan menyunting berkas ini langsung - suntingannya akan tertimpa saat
+# pemasangan dijalankan ulang. Ubah di yoru.conf, lalu jalankan installer.
+#
+# Zona waktu ditulis eksplisit karena jam server biasanya UTC sementara
+# pemiliknya hidup di zona lain. "Jam 3 pagi" harus berarti jam 3 pagi
+# menurut pemiliknya, bukan menurut penyedia VPS.
+OnCalendar=*-*-* @JAM@:00 @ZONA@
+
+# Kalau server sedang mati saat jadwalnya lewat, jalankan setelah menyala
+# lagi. Tanpa ini, VPS yang kebetulan di-reboot tengah malam melewatkan
+# penjagaan hari itu tanpa ada yang tahu.
+Persistent=true
+
+# Sebar sedikit, supaya banyak server tidak mengetuk dashboard yang sama
+# pada detik yang sama.
+RandomizedDelaySec=300
+
+Unit=yoru-penjagaan.service
+
+[Install]
+WantedBy=timers.target

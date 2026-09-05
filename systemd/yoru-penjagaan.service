@@ -1,0 +1,61 @@
+[Unit]
+Description=Yoru - Siklus Penjagaan harian
+Documentation=https://github.com/Godzilla129/yoruAgent
+
+# Butuh jaringan sungguhan, bukan sekadar antarmuka menyala: agent memanggil
+# model AI dan mengirim laporan ke dashboard.
+Wants=network-online.target
+After=network-online.target
+
+# auditd adalah sumber jawaban "siapa yang mengubah" di laporan drift.
+# Kalau dia belum siap, laporannya kehilangan bagian itu tanpa error apa pun.
+After=auditd.service
+
+[Service]
+Type=oneshot
+User=yoru-agent
+Group=yoru-agent
+ExecStart=/opt/yoru/bin/yoru-penjagaan
+
+# yoru-agent sengaja dibuat tanpa folder rumah. Sebagian pustaka dan SDK
+# model AI tetap mencari $HOME dan gagal dengan pesan yang membingungkan
+# kalau tidak ketemu. Diarahkan ke folder yang memang miliknya.
+Environment=HOME=/var/lib/yoru
+
+# --------------------------------------------------------------------
+# SOAL PENGERASAN UNIT - baca sebelum menambah apa pun di sini
+# --------------------------------------------------------------------
+# Tiga arahan yang hampir selalu dipasang orang di unit systemd JANGAN
+# dipasang di sini. Ketiganya terlihat seperti mengeraskan, padahal
+# mematikan kontrolnya:
+#
+#   NoNewPrivileges=yes
+#       Mematikan setuid, artinya sudo tidak jalan. Seluruh desain Yoru
+#       bertumpu pada agent memanggil yoructl lewat sudo. Dengan ini,
+#       tidak ada satu pun kontrol yang bisa dikerjakan.
+#
+#   ProtectHome=yes
+#       Menyembunyikan /home. Prasyarat K02 membaca
+#       /home/<pemilik>/.ssh/authorized_keys, jadi K02 akan selalu menolak -
+#       dan menolaknya terdengar bijaksana. Itu jenis kerusakan yang paling
+#       sulit dicurigai, dan kami sudah pernah kena sekali (lihat
+#       bug_terparah_yang_pernah_ada di catalog/K02.yaml).
+#
+#   ProtectSystem=strict
+#       Membuat /etc dan /usr hanya-baca. Itu persis tempat semua kontrol
+#       menulis berkas drop-in mereka.
+#
+# Satu-satunya yang dipasang:
+PrivateTmp=yes
+# Kalau suatu saat K07 (pemasangan paket) bermasalah hanya ketika dijalankan
+# lewat timer tapi normal kalau dipanggil manual, baris inilah yang pertama
+# harus dicurigai. Belum sempat diuji sampai ke situ.
+
+# Jangan mengulang sendiri. Kalau gagal, biarkan merah sampai ada manusia
+# yang melihatnya. Siklus berikutnya toh besok, dan unit yang mencoba ulang
+# diam-diam menyembunyikan bahwa ada yang rusak.
+Restart=no
+TimeoutStartSec=1200
+
+[Install]
+WantedBy=multi-user.target
