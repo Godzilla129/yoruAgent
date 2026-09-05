@@ -1,10 +1,27 @@
 id: K09
 nama: "Log tersimpan permanen dan tidak membanjiri disk"
-kode_cis: "BELUM_DIVERIFIKASI"
-kode_cis_catatan: >
-  CIS punya bagian tentang journald (persistent storage, compression,
-  ukuran maksimum) dengan beberapa sub-item. Nomor pastinya harus dicek
-  ke PDF CIS Ubuntu 24.04 asli. Jangan mengarang nomor.
+kode_cis: "6.1.2.4, 6.1.2.3, 6.1.1.3 dan 6.1.1.1"
+kode_cis_judul_asli:
+  - "6.1.2.4 Ensure journald Storage is configured"
+  - "6.1.2.3 Ensure journald Compress is configured"
+  - "6.1.1.3 Ensure journald log file rotation is configured"
+  - "6.1.1.1 Ensure journald service is enabled and active"
+kode_cis_sumber: "Tenable audit CIS_Ubuntu_Linux_24.04_LTS_v1.0.0_L1_Server.audit rev 1.14 (17 Jul 2026), dicocokkan 5 Sep 2026. Bukan dari PDF CIS asli."
+kode_cis_pemetaan:
+  Storage_persistent: "6.1.2.4"
+  Compress_yes: "6.1.2.3"
+  SystemMaxUse_dan_MaxRetentionSec: "6.1.1.3"
+  layanan_journald_hidup: "6.1.1.1"
+kode_cis_yang_belum_kami_kerjakan:
+  daftar:
+    - "6.1.1.2 Ensure journald log file access is configured"
+    - "6.1.1.4 Ensure only one logging system is in use"
+    - "6.1.2.2 Ensure journald ForwardToSyslog is disabled"
+  catatan: >
+    6.1.2.2 memang sengaja tidak dikerjakan - lihat dikecualikan_sengaja di
+    bawah. Sekarang kita tahu itu bukan cuma pertimbangan kami sendiri,
+    tapi juga item CIS yang kami putuskan untuk tidak diambil, dan
+    alasannya sudah tertulis. Dua yang lain belum dikerjakan.
 risiko: AMAN
 kategori: log
 

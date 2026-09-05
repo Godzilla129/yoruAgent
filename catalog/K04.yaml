@@ -1,12 +1,15 @@
 id: K04
 nama: "Buang algoritma kripto yang lemah di SSH"
-kode_cis: "5.2.x"
-kode_cis_catatan: >
-  Nomor pasti belum kami verifikasi dari dokumen CIS asli. Yang sudah
-  pasti: kontrol ini menutup tiga rekomendasi CIS sekaligus, yaitu
-  "Ensure sshd Ciphers are configured", "Ensure sshd MACs are configured",
-  dan "Ensure sshd KexAlgorithms are configured". Nomornya harus dicek
-  ulang ke PDF CIS Ubuntu 24.04 sebelum masuk laporan atau demo.
+kode_cis: "5.1.6, 5.1.15 dan 5.1.12"
+kode_cis_judul_asli:
+  - "5.1.6 Ensure sshd Ciphers are configured"
+  - "5.1.15 Ensure sshd MACs are configured"
+  - "5.1.12 Ensure sshd KexAlgorithms is configured"
+kode_cis_sumber: "Tenable audit CIS_Ubuntu_Linux_24.04_LTS_v1.0.0_L1_Server.audit rev 1.14 (17 Jul 2026), dicocokkan 5 Sep 2026. Bukan dari PDF CIS asli."
+kode_cis_koreksi: >
+  Dugaan yang ditulis sebelumnya ternyata tepat: kontrol ini memang menutup
+  tiga rekomendasi CIS sekaligus, dan ketiga judulnya persis seperti yang
+  kami tebak. Yang belum diketahui cuma nomornya, dan sekarang sudah.
 risiko: BERISIKO
 kategori: ssh
 

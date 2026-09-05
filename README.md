@@ -60,18 +60,31 @@ benar-benar aktif.
 
 ## Kontrol yang tersedia
 
-| | Kontrol | Risiko |
-|---|---|---|
-| `K01` | Root tidak bisa login lewat SSH | BERISIKO |
-| `K02` | Login pakai password dimatikan (SSH key saja) | BERISIKO |
-| `K03` | Batasi percobaan login SSH | AMAN |
-| `K04` | Buang algoritma kripto yang lemah di SSH | BERISIKO |
-| `K05` | Firewall aktif, tolak semua koneksi masuk | BERISIKO |
-| `K06` | Cuma port yang dipakai yang boleh terbuka | BERISIKO |
-| `K07` | Pembaruan keamanan otomatis | AMAN |
-| `K08` | Jejak audit aktif (auditd) | AMAN |
-| `K09` | Log tersimpan permanen dan tidak membanjiri disk | AMAN |
-| `K10` | Setelan kernel jaringan | AMAN |
+| | Kontrol | Risiko | CIS Ubuntu 24.04 v1.0.0 |
+|---|---|---|---|
+| `K01` | Root tidak bisa login lewat SSH | BERISIKO | 5.1.20 |
+| `K02` | Login pakai password dimatikan (SSH key saja) | BERISIKO | — tidak ada di CIS |
+| `K03` | Batasi percobaan login SSH | AMAN | 5.1.16, 5.1.13 |
+| `K04` | Buang algoritma kripto yang lemah di SSH | BERISIKO | 5.1.6, 5.1.15, 5.1.12 |
+| `K05` | Firewall aktif, tolak semua koneksi masuk | BERISIKO | 4.2.1, 4.2.3, 4.2.7 |
+| `K06` | Cuma port yang dipakai yang boleh terbuka | BERISIKO | 2.1.22 (sebagian) |
+| `K07` | Pembaruan keamanan otomatis | AMAN | 1.2.2.1 (sebagian) |
+| `K08` | Jejak audit aktif (auditd) | AMAN | — Level 2, bukan L1 |
+| `K09` | Log tersimpan permanen dan tidak membanjiri disk | AMAN | 6.1.2.4, 6.1.2.3, 6.1.1.3 |
+| `K10` | Setelan kernel jaringan | AMAN | 3.3.3–3.3.6, 3.3.8–3.3.11 |
+
+Nomor CIS di atas dicocokkan satu per satu ke berkas audit
+`CIS_Ubuntu_Linux_24.04_LTS_v1.0.0_L1_Server` terbitan Tenable, bukan ke PDF
+CIS aslinya — jadi kami menulisnya begitu, bukan "sesuai CIS".
+
+Tiga baris yang tidak berisi nomor juga sengaja ditulis apa adanya. **K02
+tidak ada padanannya di CIS**: seluruh bagian SSH sudah diperiksa dan tidak
+ada satu pun rekomendasi tentang mematikan login password. Itu pilihan kami,
+karena sasaran Yoru satu server milik satu orang, bukan armada perusahaan
+yang belum tentu bisa pakai kunci SSH di semua mesin. **K08 ada di CIS Level
+2**, bukan Level 1 — jadi menyertakannya di paket dasar itu kelebihan, bukan
+kekurangan. Dan yang bertanda *sebagian* memang belum menutup seluruh isi
+item CIS-nya.
 
 **AMAN** berarti Yoru boleh menjalankannya sendiri. **BERISIKO** berarti dia
 harus minta izin per item, dan menampilkan dulu apa yang bisa rusak sebelum
@@ -210,9 +223,17 @@ check-all.sh    periksa 10 kontrol sekaligus
 
 Ini masih versi awal. Yang belum ada, ditulis apa adanya:
 
-- **Nomor CIS belum diverifikasi.** Sebagian berkas katalog menandai
-  `kode_cis` sebagai `BELUM_DIVERIFIKASI`. Kontrolnya sendiri sudah diuji,
-  tapi penomorannya belum dicocokkan ke dokumen CIS asli.
+- **Nomor CIS dicocokkan dari sumber sekunder.** Rujukannya berkas audit
+  Tenable untuk CIS Ubuntu 24.04 v1.0.0 L1 Server, bukan PDF CIS aslinya.
+  Nomor dan judulnya sama, tapi kami tidak memegang dokumen primernya, dan
+  itu ditulis di setiap berkas katalog. Bagian auditd juga belum dicocokkan
+  sama sekali karena ada di profil Level 2, dan berkas itu belum kami buka.
+- **Satu setelan CIS terlewat di K10: `3.3.2 packet redirect sending`.**
+  Yang sudah ditangani cuma `accept_redirects` (server ini *menerima*
+  redirect); `send_redirects` (server ini *mengirim* redirect) belum. Baru
+  ketahuan waktu penomoran dicocokkan, sehari sebelum deploy, jadi kami
+  memilih menuliskannya daripada menambal semalam. Rinciannya di
+  `catalog/K10.yaml`.
 - **`rp_filter` sengaja tidak diterapkan.** Alasannya ada di
   `catalog/K10.yaml` — singkatnya, menulis `conf.all.rp_filter` saja tidak
   berpengaruh karena kernel memakai nilai maksimum antara `all` dan

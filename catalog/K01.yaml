@@ -1,6 +1,11 @@
 id: K01
 nama: "Root tidak bisa login lewat SSH"
-kode_cis: "5.2.10"
+kode_cis: "5.1.20"
+kode_cis_judul_asli: "5.1.20 Ensure sshd PermitRootLogin is disabled"
+kode_cis_sumber: "Tenable audit CIS_Ubuntu_Linux_24.04_LTS_v1.0.0_L1_Server.audit rev 1.14 (17 Jul 2026), dicocokkan 5 Sep 2026. Bukan dari PDF CIS asli - jangan menulis 'sesuai CIS' seolah kami memegang dokumen primernya."
+kode_cis_koreksi: >
+  Sebelum dicocokkan, berkas ini menulis "5.2.10". Itu penomoran benchmark
+  Ubuntu versi lama, bukan 24.04. Salah, dan sekarang sudah dibetulkan.
 risiko: BERISIKO
 kategori: ssh
 

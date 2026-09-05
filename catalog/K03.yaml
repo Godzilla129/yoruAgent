@@ -1,6 +1,15 @@
 id: K03
 nama: "Batasi percobaan login SSH"
-kode_cis: "5.2.x"
+kode_cis: "5.1.16 dan 5.1.13"
+kode_cis_judul_asli:
+  - "5.1.16 Ensure sshd MaxAuthTries is configured"
+  - "5.1.13 Ensure sshd LoginGraceTime is configured"
+kode_cis_sumber: "Tenable audit CIS_Ubuntu_Linux_24.04_LTS_v1.0.0_L1_Server.audit rev 1.14 (17 Jul 2026), dicocokkan 5 Sep 2026. Bukan dari PDF CIS asli."
+kode_cis_koreksi: >
+  Sebelum dicocokkan, berkas ini menulis "5.2.x" - penanda bahwa nomornya
+  memang belum diketahui. Sekarang sudah, dan ternyata dua nomor, bukan satu.
+  Satu kontrol Yoru menutup dua rekomendasi CIS sekaligus karena keduanya
+  ditulis ke berkas drop-in yang sama.
 risiko: AMAN
 kategori: ssh
 

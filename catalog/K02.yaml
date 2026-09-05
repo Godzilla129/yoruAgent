@@ -1,6 +1,24 @@
 id: K02
 nama: "Login pakai password dimatikan (SSH key saja)"
-kode_cis: "5.2.11"
+kode_cis: "TIDAK_ADA_DI_CIS_L1"
+kode_cis_sumber: "Tenable audit CIS_Ubuntu_Linux_24.04_LTS_v1.0.0_L1_Server.audit rev 1.14 (17 Jul 2026), dicocokkan 5 Sep 2026. Bukan dari PDF CIS asli."
+kode_cis_koreksi: >
+  Sebelum dicocokkan, berkas ini menulis "5.2.11". Itu penomoran benchmark
+  Ubuntu versi lama, dan lebih dari itu: nomornya tidak menunjuk ke apa pun
+  yang benar. Sudah dihapus.
+kode_cis_temuan: >
+  CIS Ubuntu 24.04 v1.0.0 profil L1 Server TIDAK punya rekomendasi tentang
+  PasswordAuthentication sama sekali. Seluruh bagian SSH-nya sudah diperiksa
+  satu per satu: 5.1.1 sampai 5.1.22, tidak ada satu pun yang menyinggung
+  mematikan login password. Yang ada cuma 5.1.19 (PermitEmptyPasswords) dan
+  5.1.10 (HostbasedAuthentication), dan dua-duanya soal lain.
+kode_cis_kenapa_kami_tetap_pakai: >
+  Karena CIS menulis aturan untuk semua jenis organisasi, termasuk yang
+  belum tentu bisa memakai kunci SSH di seluruh armadanya. Yoru punya
+  sasaran yang jauh lebih sempit - satu server, satu pemilik, tanpa tim IT -
+  dan di situ login password adalah pintu yang bisa ditebak terus-menerus
+  oleh bot tanpa henti. Jadi ini kontrol PILIHAN KAMI, bukan kutipan CIS.
+  Kalau ditanya juri, jawabannya persis itu, jangan mengaku ini item CIS.
 risiko: BERISIKO
 kategori: ssh
 

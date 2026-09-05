@@ -1,6 +1,19 @@
 id: K07
 nama: "Pembaruan keamanan otomatis"
-kode_cis: "1.9"
+kode_cis: "1.2.2.1 (sebagian)"
+kode_cis_judul_asli: "1.2.2.1 Ensure updates, patches, and additional security software are installed"
+kode_cis_sumber: "Tenable audit CIS_Ubuntu_Linux_24.04_LTS_v1.0.0_L1_Server.audit rev 1.14 (17 Jul 2026), dicocokkan 5 Sep 2026. Bukan dari PDF CIS asli."
+kode_cis_koreksi: >
+  Sebelum dicocokkan, berkas ini menulis "1.9". Penomoran benchmark lama,
+  salah, sudah dibetulkan.
+kode_cis_catatan_cakupan: >
+  Ini padanan SEBAGIAN, dan bedanya penting. CIS mewajibkan pembaruannya
+  TERPASANG; CIS tidak mewajibkan mekanisme otomatis. Seluruh berkas L1
+  Server sudah dicari dan tidak ada satu pun item tentang
+  unattended-upgrades. Jadi K07 memenuhi tujuan 1.2.2.1 dengan cara yang
+  kami pilih sendiri - dan cara itulah yang justru masuk akal untuk sasaran
+  Yoru, yaitu server yang tidak ada orang yang mengurus. Jangan mengklaim
+  "menerapkan CIS 1.2.2.1" tanpa menyebut bedanya.
 risiko: AMAN
 kategori: pembaruan
 

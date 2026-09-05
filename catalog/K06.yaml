@@ -1,13 +1,20 @@
 id: K06
 nama: "Cuma port yang dipakai yang boleh terbuka"
-kode_cis: "BELUM_DIVERIFIKASI"
-kode_cis_catatan: >
-  Kontrol ini tidak memetakan bersih ke satu nomor CIS. CIS punya
-  rekomendasi terkait di bagian layanan ("Ensure <service> is not
-  installed/enabled"), tapi tidak ada satu item CIS yang berbunyi
-  "ikat layanan ke localhost". Jangan mengarang nomor. Kalau dipakai
-  di laporan, sebut apa adanya: kontrol turunan dari prinsip minimasi
-  permukaan serang, bukan kutipan langsung CIS.
+kode_cis: "2.1.22"
+kode_cis_judul_asli: "2.1.22 Ensure only approved services are listening on a network interface"
+kode_cis_sumber: "Tenable audit CIS_Ubuntu_Linux_24.04_LTS_v1.0.0_L1_Server.audit rev 1.14 (17 Jul 2026), dicocokkan 5 Sep 2026. Bukan dari PDF CIS asli."
+kode_cis_koreksi: >
+  Dugaan sebelumnya keliru. Kami menulis bahwa CIS tidak punya item yang
+  cocok, dan hanya punya rekomendasi per-layanan seperti "Ensure <service>
+  is not installed". Ternyata ada satu item yang bunyinya persis sasaran
+  K06: 2.1.22. Pelajarannya - "kami belum menemukan" bukan hal yang sama
+  dengan "tidak ada", dan kalimat pertama tadi ditulis seolah yang kedua.
+kode_cis_catatan_cakupan: >
+  2.1.22 lebih luas daripada K06. Item CIS itu bicara tentang SEMUA layanan
+  yang mendengar di antarmuka jaringan; K06 baru mengurus MariaDB. Jadi
+  penyebutan nomor ini harus disertai keterangan cakupan, bukan diklaim
+  tertutup penuh. Item terkait yang juga belum tertutup:
+  "4.2.6 Ensure ufw firewall rules exist for all open ports".
 risiko: BERISIKO
 kategori: jaringan
 

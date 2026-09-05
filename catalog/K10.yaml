@@ -1,12 +1,48 @@
 id: K10
 nama: "Setelan kernel jaringan"
-kode_cis: "BELUM_DIVERIFIKASI"
-kode_cis_catatan: >
-  CIS Ubuntu punya satu bagian khusus parameter jaringan kernel dengan
-  banyak sub-item (satu nomor per sakelar). Kami menggabungkannya jadi
-  satu kontrol karena diterapkan lewat satu file dan satu perintah.
-  Nomor per sakelar harus dicek ke PDF CIS asli sebelum dipakai di
-  laporan. Jangan mengarang nomor.
+kode_cis: "3.3.3 sampai 3.3.6, 3.3.8 sampai 3.3.11"
+kode_cis_sumber: "Tenable audit CIS_Ubuntu_Linux_24.04_LTS_v1.0.0_L1_Server.audit rev 1.14 (17 Jul 2026), dicocokkan 5 Sep 2026. Bukan dari PDF CIS asli."
+kode_cis_pemetaan_per_sakelar:
+  "3.3.3 Ensure bogus icmp responses are ignored": "net.ipv4.icmp_ignore_bogus_error_responses = 1"
+  "3.3.4 Ensure broadcast icmp requests are ignored": "net.ipv4.icmp_echo_ignore_broadcasts = 1"
+  "3.3.5 Ensure icmp redirects are not accepted": "net.ipv4/ipv6.conf.all+default.accept_redirects = 0"
+  "3.3.6 Ensure secure icmp redirects are not accepted": "net.ipv4.conf.all+default.secure_redirects = 0"
+  "3.3.8 Ensure source routed packets are not accepted": "net.ipv4/ipv6.conf.all+default.accept_source_route = 0"
+  "3.3.9 Ensure suspicious packets are logged": "net.ipv4.conf.all+default.log_martians = 1"
+  "3.3.10 Ensure tcp syn cookies is enabled": "net.ipv4.tcp_syncookies = 1"
+  "3.3.11 Ensure ipv6 router advertisements are not accepted": "net.ipv6.conf.all+default.accept_ra = 0"
+kode_cis_dikecualikan_dengan_nomornya:
+  "3.3.1 Ensure ip forwarding is disabled": >
+    Sengaja tidak diterapkan. Mengunci ip_forward ke 0 mematikan jaringan
+    Docker dan container lain. Alasan lengkapnya di dikecualikan_sengaja.
+  "3.3.7 Ensure reverse path filtering is enabled": >
+    Sengaja tidak diterapkan. Kernel memakai nilai maksimum antara
+    conf.all dan per-kartu, jadi menulis all saja tidak berpengaruh; dan
+    mode ketat memutus lalu lintas yang jalurnya tidak simetris. Alasan
+    lengkapnya di dikecualikan_sengaja.
+kode_cis_lubang_yang_baru_ketahuan:
+  item: "3.3.2 Ensure packet redirect sending is disabled"
+  sakelar: "net.ipv4.conf.all.send_redirects dan net.ipv4.conf.default.send_redirects"
+  keadaan: BELUM_DITERAPKAN_DAN_BUKAN_KEPUTUSAN
+  penjelasan: >
+    Ini bukan pengecualian yang disengaja seperti 3.3.1 dan 3.3.7 - ini
+    memang terlewat. Baru ketahuan saat penomoran CIS dicocokkan satu per
+    satu, 5 Sep 2026. Sakelar send_redirects mengatur apakah server ini
+    MENGIRIM ICMP redirect; yang sudah kami tangani cuma yang MENERIMA
+    (accept_redirects). Dua hal yang berbeda dan gampang tertukar karena
+    namanya mirip.
+  kenapa_belum_ditambahkan: >
+    Ditemukan sehari sebelum deploy, saat sepuluh kontrol sudah hijau dan
+    sudah didorong ke repo. Menambah dua baris memang kecil, tapi berarti
+    K10 harus diuji ulang bolak-balik, daftar rollbacknya bertambah, dan
+    hitungan di check-all.sh ikut berubah. Menuliskannya apa adanya lebih
+    aman daripada menambal semalam sebelum hari-H.
+  yang_harus_dilakukan: >
+    Tambahkan net.ipv4.conf.all.send_redirects = 0 dan
+    net.ipv4.conf.default.send_redirects = 0 ke daftar K10, tambahkan
+    keduanya ke perintah rollback dengan nilai asal 1, lalu jalankan lagi
+    siklus kembalikan-terapkan lewat dispatcher. Risikonya rendah: sakelar
+    ini hanya berpengaruh kalau server bertindak sebagai router.
 risiko: AMAN
 kategori: jaringan
 

@@ -1,11 +1,25 @@
 id: K08
 nama: "Jejak audit aktif (auditd)"
-kode_cis: "BELUM_DIVERIFIKASI"
-kode_cis_catatan: >
-  CIS punya bagian besar tentang auditd dengan puluhan sub-item (satu
-  nomor per aturan). Kami TIDAK menerapkan daftar itu bulat-bulat -
-  lihat kenapa_aturan_sedikit. Nomor per item harus dicek ke PDF CIS
-  Ubuntu 24.04 asli sebelum dipakai di laporan. Jangan mengarang nomor.
+kode_cis: "TIDAK_ADA_DI_CIS_L1 - auditd ada di profil Level 2"
+kode_cis_sumber: "Tenable audit CIS_Ubuntu_Linux_24.04_LTS_v1.0.0_L1_Server.audit rev 1.14 (17 Jul 2026), dicocokkan 5 Sep 2026. Bukan dari PDF CIS asli."
+kode_cis_temuan: >
+  Seluruh berkas L1 Server sudah diperiksa: TIDAK ADA satu pun item auditd
+  di dalamnya. Bagian 6.2 (System Auditing) sama sekali tidak muncul di L1;
+  yang ada di bagian 6 cuma 6.1.x (logging/journald) dan 6.3.x (AIDE).
+  Artinya CIS menempatkan seluruh auditd di profil Level 2, yaitu profil
+  untuk lingkungan berkeamanan tinggi, bukan pengerasan dasar.
+kode_cis_artinya_apa: >
+  Dua hal, dan dua-duanya enak dipakai saat presentasi.
+  Pertama: K08 adalah kontrol Level 2 yang kami masukkan ke paket dasar,
+  jadi ini KELEBIHAN dibanding pengerasan L1 biasa, bukan kekurangan.
+  Kedua: nomor per aturan audit memang tidak akan pernah ketemu di berkas
+  ini, jadi berhenti mencarinya di sini. Kalau nomornya benar-benar
+  dibutuhkan, yang harus dibuka adalah berkas L2 Server, dan sampai itu
+  dilakukan tulis apa adanya: belum dicocokkan.
+kode_cis_catatan_cakupan: >
+  Berapa pun nomornya nanti, kami tetap TIDAK menerapkan daftar auditd CIS
+  bulat-bulat - lihat kenapa_aturan_sedikit. Dua belas aturan yang dipilih
+  adalah keputusan kami, bukan salinan.
 risiko: AMAN
 kategori: audit
 
