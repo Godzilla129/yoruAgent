@@ -184,6 +184,19 @@ catatan_panel:
     aman untuk panelnya sendiri; fitur transfer akun antar-server memakai
     klien SSH sendiri - uji dulu setelah kontrol ini diterapkan
 
-diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026"
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; jalur dispatcher diuji 5 Sep 2026"
 rollback_teruji: true
+rollback_teruji_lewat_dispatcher: true
+bukti_uji_dispatcher: >
+  5 Sep 2026, VM yoru-a, yoructl 0.1.1:
+  kembalikan -> DIKEMBALIKAN "mac_sha1=1";
+  verifikasi -> GAGAL "mac_sha1=1";
+  terapkan   -> LULUS "mac_sha1=0";
+  verifikasi -> LULUS "mac_sha1=0".
+catatan_cara_baca_nilai: >
+  mac_sha1 itu hitungan BARIS, bukan hitungan algoritma. sshd -T hanya
+  mencetak satu baris "macs", jadi nilainya cuma bisa 0 atau 1: 1 berarti
+  baris itu masih memuat sha1, 0 berarti sudah bersih. Jangan dibaca sebagai
+  "tersisa satu algoritma lemah" - itu salah tafsir yang gampang terjadi di
+  tampilan dashboard.
 snapshot_sebelum: "sebelum-K04"

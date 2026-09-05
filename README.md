@@ -81,6 +81,15 @@ Setiap kontrol dijalankan manual dan rollbacknya diuji sungguhan sebelum
 masuk katalog. Bukan disalin dari checklist. Kolom `rollback_teruji` di tiap
 berkas YAML itu janji, bukan hiasan.
 
+Dan janji itu diuji dua kali, lewat dua jalur yang berbeda. Sepuluh kontrol
+dikali empat fungsi berarti 40 tindakan — keempat puluhnya sudah pernah
+benar-benar dijalankan lewat `yoructl`, bukan cuma lewat tangan. Itu bukan
+formalitas: dari situ ketemu empat bug yang tidak akan pernah muncul kalau
+kami hanya menjalankan `periksa`. Salah satunya membuat K02 tidak pernah bisa
+diterapkan sama sekali — dan cara gagalnya berupa penolakan yang terdengar
+bijaksana, jenis kerusakan yang paling sulit dicurigai. Ceritanya lengkap ada
+di `catalog/K02.yaml`.
+
 ---
 
 ## Cara pasang
@@ -211,4 +220,17 @@ Ini masih versi awal. Yang belum ada, ditulis apa adanya:
   simetris.
 - **Dispatcher belum memaksa memeriksa keberadaan panel** sebelum menerapkan
   K05. Peringatannya sudah ada di katalog, tapi belum jadi penghalang.
+- **`kembalikan` pada K05 mengosongkan firewall, bukan memulihkannya.**
+  Perintahnya `ufw reset`, jadi aturan yang dipasang sendiri oleh pemilik
+  server ikut terhapus. ufw mengarsipkan berkasnya lebih dulu ke
+  `/etc/ufw/user.rules.<tanggal>`, jadi datanya tidak hilang — tapi Yoru
+  belum memulihkan dari arsip itu. Untuk kontrol ini, "kembalikan" lebih
+  tepat dibaca "dikosongkan".
+- **Prasyarat K02 hanya memeriksa satu pemilik.** Kalau server dipakai
+  beramai-ramai dan ada yang masih login pakai password, K02 tidak akan tahu,
+  dan orang itu terkunci di luar begitu kontrolnya diterapkan. Pastikan semua
+  yang perlu masuk sudah punya kunci SSH yang pernah dipakai login.
+- **Pagu log K09 masih dipatok 500M.** Katalognya sendiri bilang angka itu
+  harus dihitung ulang per server. Masuk akal untuk disk 10–100 GB, tidak
+  untuk di luar itu.
 - Dashboard, bot Telegram, dan kontrol untuk lapisan web sedang dikerjakan.

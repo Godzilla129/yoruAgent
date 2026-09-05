@@ -94,5 +94,81 @@ catatan_panel:
   aapanel: "aman, tapi pastikan admin sudah punya key sebelum diterapkan"
   cpanel: "aman, tapi fitur transfer akun antar-server sering pakai password"
 
-diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026"
+bug_terparah_yang_pernah_ada:
+  ditemukan: "5 Sep 2026, saat menguji jalur terapkan lewat dispatcher"
+  versi_kena: "yoructl 0.1.0 dan 0.1.1 - yaitu sejak hari pertama ditulis"
+  versi_perbaikan: "yoructl 0.1.2"
+  tingkat: MEMATIKAN
+  gejala: >
+    terapkan selalu DITOLAK dengan pesan "belum ada bukti login SSH key
+    berhasil". Padahal buktinya ada dan banyak: /etc/yoru/pemilik berisi
+    "yoru", authorized_keys tidak kosong, dan journal memuat 25 baris
+    "Accepted publickey for yoru". Keempat syaratnya lolos kalau diperiksa
+    manual sebagai root.
+  akar_masalah: >
+    Baris 11 skrip ini memasang "set -uo pipefail". Prasyarat K02 memeriksa
+    bukti dengan "journalctl ... | grep -q ...". grep -q berhenti begitu
+    menemukan yang dicari lalu menutup pipa; journalctl yang masih punya
+    ratusan baris untuk ditulis langsung mati kena SIGPIPE dengan kode 141;
+    pipefail membaca 141 sebagai "seluruh pipa gagal".
+  yang_bikin_ngeri: >
+    Pemeriksaannya gagal JUSTRU KARENA buktinya ketemu. Dan kalau buktinya
+    tidak ada, grep membaca sampai habis lalu mengembalikan 1 - juga gagal.
+    Dua-duanya gagal. Fungsi kunci_ssh_terbukti() tidak pernah bisa
+    mengembalikan sukses sekali pun, dalam keadaan apa pun. Artinya K02
+    terapkan mati total sejak hari pertama, dan matinya berbentuk penolakan
+    yang terdengar bijaksana - persis jenis kegagalan yang paling sulit
+    dicurigai.
+  kenapa_baru_ketahuan_sekarang: >
+    Karena sampai 5 Sep 2026 yang pernah dijalankan lewat dispatcher hanya
+    periksa dan verifikasi. Jalur terapkan tidak pernah dieksekusi sekali
+    pun, jadi bug ini duduk diam di jalur yang belum pernah dilewati.
+  dibuktikan_bagaimana: >
+    Perintah identik dijalankan dua kali di VM yoru-a, hanya berbeda satu
+    pengaturan:
+    'set -uo pipefail; journalctl -t sshd --since "-30 days" | grep -q
+    "Accepted publickey for yoru"' -> kode keluar 141;
+    'set -u; <perintah yang sama>' -> kode keluar 0.
+    Angka yang sama juga muncul di simulasi terpisah dengan keluaran besar.
+  perbaikan: >
+    Fungsi ada_teks() di bin/yoructl - menangkap keluaran perintah ke dalam
+    variabel lalu mencocokkan dengan operator bash, tanpa pipa sama sekali.
+    Pencocokannya harfiah seperti grep -F, bukan regex.
+  berlaku_juga_di: >
+    Pola "| grep -q" yang sama dipakai di lima tempat lain (K05 dua tempat,
+    K06 tiga tempat). Kelimanya kebetulan selamat karena keluaran ufw dan ss
+    cukup kecil untuk muat di penyangga pipa, sehingga penulisnya keburu
+    selesai sebelum grep menutup pipa. Itu keberuntungan, bukan kebenaran -
+    di server dengan sangat banyak port mendengar, keluaran ss bisa melewati
+    batas dan K05 serta K06 mulai gagal secara acak. Kelimanya ikut diganti.
+  pelajaran: >
+    Bug yang paling berbahaya bukan yang bikin error, tapi yang bikin sistem
+    menolak dengan alasan yang masuk akal. Tidak ada yang curiga pada penjaga
+    yang berhati-hati. Satu-satunya cara menemukannya adalah menjalankan
+    jalurnya sungguhan, bukan membacanya.
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; jalur dispatcher diuji 5 Sep 2026"
 rollback_teruji: true
+rollback_teruji_lewat_dispatcher: true
+bukti_uji_dispatcher: >
+  5 Sep 2026, VM yoru-a. Dengan yoructl 0.1.1:
+  kembalikan -> DIKEMBALIKAN "yes";
+  verifikasi -> GAGAL "yes";
+  terapkan   -> DITOLAK, prasyarat tidak pernah bisa lolos (lihat bug di atas).
+  Setelah diperbaiki, dengan yoructl 0.1.2:
+  verifikasi -> GAGAL "yes";
+  terapkan   -> LULUS "no";
+  verifikasi -> LULUS "no".
+peringatan_untuk_server_bersama:
+  masalah: >
+    Prasyarat kunci_ssh_terbukti hanya memeriksa PEMILIK yang tercatat di
+    /etc/yoru/pemilik. Kalau ada orang lain yang juga login ke server itu
+    memakai password, K02 tidak akan tahu - dan begitu diterapkan, mereka
+    terkunci di luar. Yang selamat hanya yang kuncinya terdaftar.
+  kapan_ini_gawat: >
+    Server yang dipakai bersama satu tim. Sebelum K02 diterapkan di server
+    seperti itu, pastikan SEMUA orang yang perlu masuk sudah memasang kunci
+    SSH dan sudah pernah memakainya untuk login minimal sekali.
+  rencana_perbaikan: >
+    Daftar pemilik dijadikan banyak baris, dan prasyaratnya memeriksa setiap
+    baris. Belum dikerjakan.

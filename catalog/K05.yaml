@@ -114,6 +114,46 @@ konflik_dengan_k10:
     setelah reboot, bukan hanya setelah penerapan.
   ditemukan_pada: "VM yoru-a, 4 Sep 2026, lewat tes reboot check-all.sh"
 
-diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; konflik sysctl ditemukan 4 Sep 2026"
+batas_penting_pada_kembalikan:
+  tingkat: WAJIB_DIBERITAHUKAN_KE_PEMILIK
+  apa_yang_terjadi: >
+    kembalikan menjalankan "ufw --force reset". Itu MENGHAPUS SEMUA aturan
+    firewall di server, bukan hanya aturan yang dibuat Yoru. Aturan yang
+    dipasang sendiri oleh pemilik server ikut hilang.
+  kabar_baiknya: >
+    ufw mengarsipkan berkas aturan lama sebelum menghapus, ke
+    /etc/ufw/user.rules.<tanggal_jam>, user6.rules.<...>, after6.rules.<...>
+    dan seterusnya. Terbukti di VM yoru-a 5 Sep 2026: setelah kembalikan,
+    muncul tiga berkas bertanggal 20260905_160650. Jadi datanya tidak lenyap.
+  kabar_buruknya: >
+    Yoru TIDAK memulihkan dari arsip itu. Jadi setelah kembalikan, firewall
+    berada dalam keadaan KOSONG - bukan kembali seperti sebelum Yoru
+    dipasang. Untuk kontrol lain kata "kembalikan" berarti pulih ke keadaan
+    semula; khusus di sini artinya lebih dekat ke "dikosongkan".
+  yang_harus_dilakukan_agent: >
+    Sebelum menjalankan kembalikan pada K05, beritahu pemilik bahwa aturan
+    firewall miliknya akan ikut terhapus, dan sebutkan letak arsipnya supaya
+    bisa dipulihkan manual. Jangan pakai kalimat "dikembalikan seperti
+    semula" untuk kontrol ini.
+  rencana_perbaikan: >
+    Sebelum reset, salin user.rules dan user6.rules ke tempat milik Yoru,
+    lalu kembalikan dari salinan itu. Belum dikerjakan.
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; konflik sysctl ditemukan 4 Sep 2026; jalur dispatcher diuji 5 Sep 2026"
 rollback_teruji: true
+rollback_teruji_lewat_dispatcher: true
+bukti_uji_dispatcher: >
+  5 Sep 2026, VM yoru-a, yoructl 0.1.2:
+  keadaan awal -> aktif, dua aturan 22/tcp bertanda "SSH - yoru K05";
+  kembalikan   -> DIKEMBALIKAN "inactive", muncul tiga berkas arsip bertanggal;
+  verifikasi   -> GAGAL "inactive";
+  terapkan     -> LULUS "active";
+  verifikasi   -> LULUS "active";
+  ufw status verbose -> "deny (incoming), allow (outgoing)" dengan dua
+  aturan 22/tcp. Sesi SSH yang sedang berjalan tidak terputus sama sekali.
+catatan_urutan_terapkan: >
+  Di dalam terapkan, port 22 diizinkan SEBELUM firewall dinyalakan, dan
+  keberadaan sshd di port 22 diperiksa lebih dulu. Urutan ini tidak boleh
+  dibalik. Menyalakan firewall dengan default tolak lalu baru membuka 22
+  adalah cara klasik mengunci diri sendiri di luar server.
 lulus_tes_reboot: true

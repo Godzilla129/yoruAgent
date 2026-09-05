@@ -76,5 +76,18 @@ catatan_panel:
   aapanel: "sebagian fitur backup pakai root SSH - tanyakan pemilik dulu"
   cpanel: "fitur transfer/migrasi butuh root SSH - berisiko tinggi"
 
-diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026"
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; jalur dispatcher diuji 5 Sep 2026"
 rollback_teruji: true
+rollback_teruji_lewat_dispatcher: true
+bukti_uji_dispatcher: >
+  5 Sep 2026, VM yoru-a, yoructl 0.1.1:
+  kembalikan -> DIKEMBALIKAN "without-password";
+  verifikasi -> GAGAL "without-password";
+  terapkan   -> LULUS "no";
+  verifikasi -> LULUS "no".
+  Prasyarat ada_user_sudo_lain lolos (pengguna yoru aktif di grup sudo).
+catatan_istilah: >
+  sshd -T mencetak nilai bawaannya sebagai "without-password", bukan
+  "prohibit-password" seperti yang tertulis di sshd_config. Dua-duanya
+  berarti hal yang sama - root boleh login tapi hanya dengan kunci. Dashboard
+  dan bot harus menampilkan apa adanya, jangan menerjemahkan sendiri.

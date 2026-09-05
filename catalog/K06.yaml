@@ -213,8 +213,20 @@ catatan_panel:
     cPanel punya fitur Remote MySQL yang memang butuh 3306 terbuka ke host
     tertentu. Jangan ditutup tanpa konfirmasi.
 
-diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026"
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; jalur dispatcher diuji 5 Sep 2026"
 rollback_teruji: true
+rollback_teruji_lewat_dispatcher: true
+bukti_uji_dispatcher: >
+  5 Sep 2026, VM yoru-a, yoructl 0.1.1:
+  kembalikan -> DIKEMBALIKAN "0.0.0.0:3306";
+  verifikasi -> GAGAL "0.0.0.0:3306";
+  terapkan   -> LULUS "127.0.0.1:3306";
+  verifikasi -> LULUS "127.0.0.1:3306".
+  Ujinya berarti karena berkas cacat buatan
+  /etc/mysql/mariadb.conf.d/60-lab-bocor.cnf masih terpasang - begitu berkas
+  Yoru dihapus, berkas itulah yang menang dan MariaDB kembali mendengar di
+  0.0.0.0. Tanpa berkas cacat itu, kembalikan akan menghasilkan 127.0.0.1
+  juga (bawaan MariaDB), dan ujinya tidak membuktikan apa-apa.
 snapshot_sebelum: "sebelum-K06"
 
 catatan_sisa_lab: >
