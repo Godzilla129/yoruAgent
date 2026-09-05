@@ -263,8 +263,31 @@ catatan_panel:
     otomatis) akan menghasilkan banyak entri identitas. Itu bukan alarm,
     itu pekerjaan normal panel. Yoru harus tahu bedanya sebelum melapor.
 
-diuji_pada: "Ubuntu 24.04, VM yoru-a, 4 Sep 2026, auditd 1:3.1.2-2.1build1.1"
+bug_diwariskan_dari_k07:
+  tingkat: WAJIB_DIPERBAIKI_SEBELUM_DEPLOY
+  masalah: >
+    terapkan memasang auditd dengan pola yang sama seperti K07:
+    'apt-get install -y auditd >/dev/null 2>&1'. Keluhan apt dibuang, dan
+    kalau gagal pesannya cuma "auditd gagal dipasang" tanpa alasan.
+    Lihat K07.yaml bagian bug_yang_ditemukan_saat_uji_dispatcher - dua
+    masalahnya berlaku sama persis di sini.
+  kenapa_belum_terlihat_di_uji: >
+    Di VM yoru-a auditd sudah terpasang, jadi baris apt itu dilewati dan
+    tidak pernah ikut diuji. Uji yang LULUS di sini TIDAK membuktikan jalur
+    pemasangan paketnya benar - itu jalur yang belum pernah dijalankan.
+  perbaikan: "sama dengan K07: periksa dpkg-query dulu, pakai DPkg::Lock::Timeout, jangan buang keluaran apt"
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 4 Sep 2026, auditd 1:3.1.2-2.1build1.1; jalur dispatcher diuji 5 Sep 2026"
 rollback_teruji: true
+rollback_teruji_lewat_dispatcher: true
+bukti_uji_dispatcher: >
+  5 Sep 2026, VM yoru-a, yoructl 0.1.1:
+  kembalikan -> DIKEMBALIKAN "aturan=0";
+  verifikasi -> GAGAL "aturan=0";
+  terapkan   -> LULUS "aturan=12";
+  verifikasi -> LULUS "aturan=12".
+  Catatan: auditd sudah terpasang di VM ini, jadi cabang pemasangan paket
+  di dalam terapkan tidak ikut teruji. Lihat bug_diwariskan_dari_k07.
 snapshot_sebelum: "sebelum-K08"
 
 catatan_insiden_saat_pemasangan: >

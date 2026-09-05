@@ -13,7 +13,7 @@ umask 022
 export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-VERSI="0.1.1"
+VERSI="0.1.2"
 LOG_DIR=/var/log/yoru
 LOG="$LOG_DIR/tindakan.log"
 
@@ -85,6 +85,63 @@ hapus_ssh() {
 
 sshd_nilai() { sshd -T 2>/dev/null | awk -v k="^$1\$" '$1 ~ k {print $2; exit}'; }
 
+# Mencari teks di dalam keluaran sebuah perintah, TANPA memakai pipa.
+#
+# JANGAN diganti kembali menjadi "perintah | grep -q teks". Skrip ini memakai
+# pipefail, dan grep -q berhenti begitu menemukan yang dicari lalu menutup
+# pipa. Perintah di depannya, yang biasanya masih punya banyak baris untuk
+# ditulis, langsung mati kena SIGPIPE dengan kode 141 - dan pipefail membaca
+# angka itu sebagai "seluruh pipa gagal".
+#
+# Akibatnya terbalik dan sangat menipu: pencarian yang BERHASIL justru
+# terbaca sebagai gagal. Kalau yang dicari tidak ada, grep membaca sampai
+# habis lalu mengembalikan 1 - juga gagal. Dua-duanya gagal, jadi fungsi
+# semacam itu tidak pernah bisa berhasil sekali pun.
+#
+# Ini bukan kekhawatiran teoretis. Persis inilah yang membuat prasyarat K02
+# selalu menolak, sehingga K02 terapkan tidak pernah bisa dijalankan sejak
+# hari pertama ditulis. Ditemukan 5 Sep 2026, dan hanya ketahuan karena
+# jalur terapkan akhirnya diuji, bukan cuma periksa.
+#
+# Pencocokannya HARFIAH, bukan regex - sama seperti grep -F. Itu disengaja:
+# pola yang dipakai di sini mengandung tanda kurung dan titik, misalnya
+# "deny (incoming)" dan "0.0.0.0:3306", yang artinya berubah kalau dibaca
+# sebagai regex.
+ada_teks() {  # ada_teks <teks-harfiah> <perintah...>
+  local teks="$1"; shift
+  local keluaran
+  keluaran=$("$@" 2>/dev/null) || true
+  [[ "$keluaran" == *"$teks"* ]]
+}
+
+# Memasang paket tanpa menyerah pada hal yang wajar, dan tanpa mengarang
+# alasan kalau gagal. Tiga hal yang diperbaiki dibanding versi lama:
+#
+# (1) Kalau paketnya sudah terpasang, apt tidak dipanggil sama sekali.
+# (2) DPkg::Lock::Timeout membuat apt MENUNGGU kunci, bukan langsung gagal.
+#     Kunci apt wajar terpegang beberapa detik, dan di VPS yang baru menyala
+#     apt-daily serta unattended-upgrades justru berjalan di menit-menit
+#     pertama - tepat saat Yoru menjalankan siklus perbaikannya.
+# (3) Keluhan apt DITANGKAP, bukan dibuang. Kalau gagal, yang dilaporkan
+#     adalah kata-kata apt sendiri.
+#
+# Versi lama membuang keluaran apt ke /dev/null lalu melapor "periksa
+# koneksi internet server" tanpa pernah memeriksa koneksi apa pun. Kejadian
+# 5 Sep 2026: pesan itu muncul padahal internetnya hidup dan paketnya sudah
+# versi terbaru. Menebak penyebab lalu menuliskannya seolah hasil pemeriksaan
+# adalah hal yang kita larang untuk agent - jangan sampai ada di kode sendiri.
+apt_kesalahan=""
+pasang_paket() {  # pasang_paket <nama-paket>
+  local paket="$1" status keluaran
+  apt_kesalahan=""
+  status=$(dpkg-query -W -f='${Status}' "$paket" 2>/dev/null) || status=""
+  [ "$status" = "install ok installed" ] && return 0
+  keluaran=$(DEBIAN_FRONTEND=noninteractive apt-get -y \
+               -o DPkg::Lock::Timeout=60 install "$paket" 2>&1) && return 0
+  apt_kesalahan=$(printf '%s' "$keluaran" | tail -2 | tr '\n' ' ')
+  return 1
+}
+
 # Hasil kosong bukan kesimpulan, itu pertanyaan. Kalau alat pemeriksanya tidak
 # bisa dibaca sama sekali, statusnya ERROR - bukan GAGAL. Agent yang membaca
 # GAGAL akan mencoba menerapkan kontrol, padahal kita belum tahu keadaannya.
@@ -128,8 +185,8 @@ kunci_ssh_terbukti() {
   getent passwd "$u" >/dev/null || return 1
   local rumah; rumah=$(getent passwd "$u" | cut -d: -f6)
   [ -s "$rumah/.ssh/authorized_keys" ] || return 1
-  journalctl -t sshd --since "-30 days" 2>/dev/null \
-    | grep -q "Accepted publickey for $u" || return 1
+  ada_teks "Accepted publickey for $u" journalctl -t sshd --since "-30 days" \
+    || return 1
   return 0
 }
 
@@ -191,10 +248,10 @@ k05() { case "$1" in
   periksa|verifikasi)
     command -v ufw >/dev/null 2>&1 || selesai ERROR false "" "ufw tidak terpasang - tidak bisa diperiksa"
     nilai=$(ufw status verbose 2>/dev/null | awk '/^Status:/ {print $2}')
-    if [ "$nilai" = "active" ] && ufw status verbose 2>/dev/null | grep -q 'deny (incoming)'
+    if [ "$nilai" = "active" ] && ada_teks 'deny (incoming)' ufw status verbose
       then selesai LULUS true "$nilai"; else selesai GAGAL true "${nilai:-tidak-aktif}"; fi ;;
   terapkan)
-    ss -tulpn 2>/dev/null | grep -q ':22 ' || tolak "sshd tidak terdeteksi di port 22"
+    ada_teks ':22 ' ss -tulpn || tolak "sshd tidak terdeteksi di port 22"
     ufw allow 22/tcp comment 'SSH - yoru K05' >/dev/null 2>&1
     ufw default deny incoming  >/dev/null 2>&1
     ufw default allow outgoing >/dev/null 2>&1
@@ -208,15 +265,15 @@ esac }
 K06_BERKAS=/etc/mysql/mariadb.conf.d/zz-yoru-k06.cnf
 k06() { case "$1" in
   periksa|verifikasi)
-    if ss -tulpn 2>/dev/null | grep -q '0.0.0.0:3306'; then nilai="0.0.0.0:3306"; selesai GAGAL true "$nilai"
-    elif ss -tulpn 2>/dev/null | grep -q '127.0.0.1:3306'; then selesai LULUS true "127.0.0.1:3306"
+    if ada_teks '0.0.0.0:3306' ss -tulpn; then nilai="0.0.0.0:3306"; selesai GAGAL true "$nilai"
+    elif ada_teks '127.0.0.1:3306' ss -tulpn; then selesai LULUS true "127.0.0.1:3306"
     else selesai DILEWATI true "tidak ada layanan di 3306"; fi ;;
   terapkan)
     [ -d /etc/mysql/mariadb.conf.d ] || tolak "MariaDB tidak terpasang"
     printf '[mysqld]\nbind-address = 127.0.0.1\n' > "$K06_BERKAS"; chmod 644 "$K06_BERKAS"
     systemctl restart mariadb || { rm -f "$K06_BERKAS"; tolak "mariadb gagal start, sudah dikembalikan"; }
     sleep 2
-    if ss -tulpn 2>/dev/null | grep -q '127.0.0.1:3306'
+    if ada_teks '127.0.0.1:3306' ss -tulpn
       then selesai LULUS true "127.0.0.1:3306"
       else rm -f "$K06_BERKAS"; systemctl restart mariadb; tolak "verifikasi gagal, sudah dikembalikan"; fi ;;
   kembalikan) rm -f "$K06_BERKAS"; systemctl restart mariadb; sleep 2
@@ -227,8 +284,8 @@ k07() { case "$1" in
   periksa|verifikasi) nilai=$(systemctl is-enabled unattended-upgrades 2>/dev/null)
     [ "$nilai" = "enabled" ] && selesai LULUS true "$nilai" || selesai GAGAL true "${nilai:-tidak-terpasang}" ;;
   terapkan)
-    DEBIAN_FRONTEND=noninteractive apt-get install -y unattended-upgrades >/dev/null 2>&1 \
-      || tolak "gagal memasang paket - periksa koneksi internet server"
+    pasang_paket unattended-upgrades \
+      || tolak "gagal memasang unattended-upgrades. apt bilang: ${apt_kesalahan:-tidak ada keterangan}"
     printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' \
       > /etc/apt/apt.conf.d/20auto-upgrades
     systemctl enable --now unattended-upgrades >/dev/null 2>&1
@@ -257,8 +314,11 @@ k08() { local n; case "$1" in
   periksa|verifikasi) n=$(auditctl -l 2>/dev/null | grep -c '^-w'); nilai="aturan=$n"
     [ "$n" -ge 12 ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
-    command -v auditctl >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get install -y auditd >/dev/null 2>&1
-    command -v auditctl >/dev/null 2>&1 || tolak "auditd gagal dipasang"
+    if ! command -v auditctl >/dev/null 2>&1; then
+      pasang_paket auditd \
+        || tolak "gagal memasang auditd. apt bilang: ${apt_kesalahan:-tidak ada keterangan}"
+    fi
+    command -v auditctl >/dev/null 2>&1 || tolak "paket auditd terpasang tapi perintah auditctl tidak ditemukan"
     # awalan zz- wajib: audit.rules bawaan diawali -D yang menghapus semua
     # aturan, dan file bernama angka dimuat lebih dulu lalu ikut terhapus.
     printf '%s\n' "$K08_ISI" > "$K08_BERKAS"; chmod 640 "$K08_BERKAS"
@@ -271,7 +331,11 @@ k08() { local n; case "$1" in
 esac }
 
 K09_BERKAS=/etc/systemd/journald.conf.d/99-yoru-k09.conf
-k09_max() { journalctl -b -t systemd-journald --no-pager 2>/dev/null | grep -o 'max [0-9.]*M' | tail -1; }
+# Satuan yang dicetak journald menyesuaikan besarnya - bisa M, bisa G di
+# server berdisk besar. Pola lama hanya mengenali M, jadi di VPS besar
+# pembacaannya kosong dan terbaca sebagai "tidak-terbaca" - hasil kosong
+# dipakai sebagai kesimpulan, persis yang kita larang.
+k09_max() { journalctl -b -t systemd-journald --no-pager 2>/dev/null | grep -oE 'max [0-9.]+[KMGT]' | tail -1; }
 k09() { case "$1" in
   periksa|verifikasi) nilai=$(k09_max)
     journalctl --disk-usage >/dev/null 2>&1 || selesai ERROR false "" "journalctl tidak bisa dibaca"

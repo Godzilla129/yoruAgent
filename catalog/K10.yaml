@@ -227,9 +227,21 @@ konflik_dengan_k05:
 
 pengecualian_metode_drop_in:
   file: "/etc/default/ufw"
-  perintah: "sed -i 's|^IPT_SYSCTL=|#IPT_SYSCTL=|' /etc/default/ufw"
-  kembalikan: "sed -i 's|^#IPT_SYSCTL=|IPT_SYSCTL=|' /etc/default/ufw"
-  verifikasi: "grep -n 'IPT_SYSCTL' /etc/default/ufw harus menampilkan baris berawalan #"
+  perintah: "sed -i 's|^IPT_SYSCTL=|#yoru-k10#IPT_SYSCTL=|' /etc/default/ufw"
+  kembalikan: "sed -i 's|^#yoru-k10#IPT_SYSCTL=|IPT_SYSCTL=|' /etc/default/ufw"
+  verifikasi: "grep -n 'IPT_SYSCTL' /etc/default/ufw harus menampilkan baris berawalan #yoru-k10#"
+  aturan_penandaan: >
+    Penanda ditaruh di DEPAN baris, dan TIDAK ADA teks yang ditambahkan di
+    belakang. Nilai asli baris itu wajib tetap utuh, karena nilai itulah
+    satu-satunya bahan yang dipunya kembalikan untuk memulihkan baris ini
+    persis seperti semula. Kalau agent suatu saat perlu mengomentari baris
+    lain di file bawaan, pola ini yang dipakai - jangan menyisipkan
+    penjelasan di baris yang sama. Penjelasan tempatnya di katalog.
+  hanya_membatalkan_perbuatan_sendiri: >
+    kembalikan HANYA membuka baris yang berawalan #yoru-k10#. Baris yang
+    sudah dikomentari pemilik server atau distronya sendiri tidak disentuh.
+    Yoru membatalkan perbuatannya sendiri, bukan menebak apa yang seharusnya
+    aktif di server orang.
   kenapa_menyimpang: >
     Ini satu-satunya tempat di seluruh katalog di mana kami MENGEDIT file
     bawaan, bukan menambah drop-in. Alasannya: /etc/default/ufw tidak punya
@@ -261,10 +273,48 @@ catatan_panel:
     Panel yang menjalankan container atau Docker akan terganggu kalau
     ip_forward dikunci 0 - itu sebabnya sakelar itu dikecualikan.
 
-diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; konflik ufw ditemukan dan diperbaiki 4 Sep 2026"
+bug_rollback_yang_pernah_ada:
+  ditemukan: "5 Sep 2026, saat menguji jalur terapkan/kembalikan lewat dispatcher"
+  versi_kena: "yoructl 0.1.0"
+  versi_perbaikan: "yoructl 0.1.1"
+  apa_yang_salah: >
+    Versi lama menulis penanda sebagai
+    's|^IPT_SYSCTL=|#IPT_SYSCTL= # dinonaktifkan Yoru K10, lihat katalog|'.
+    sed hanya mengganti bagian yang cocok, jadi sisa barisnya - yaitu nilai
+    aslinya /etc/ufw/sysctl.conf - tetap menempel di belakang teks komentar.
+    Lalu kembalikan memakai pola '^#IPT_SYSCTL=\( #[^\n]*\)\?' yang artinya
+    "spasi-pagar diikuti apa pun sampai ujung baris", sehingga nilai asli
+    yang menempel tadi ikut termakan.
+  akibat_nyata: >
+    Setelah terapkan lalu kembalikan, baris itu menjadi 'IPT_SYSCTL='
+    kosong - bukan kembali ke '/etc/ufw/sysctl.conf'. Rollback meninggalkan
+    server dalam setelan yang tidak pernah ada sebelumnya.
+  kenapa_lolos_selama_ini: >
+    Karena rollback K10 sebelumnya hanya pernah diuji MANUAL, dan uji manual
+    itu memakai bentuk komentar polos '#IPT_SYSCTL=...' yang ditulis tangan,
+    bukan bentuk yang dihasilkan dispatcher. Dua jalur berbeda menghasilkan
+    dua bentuk baris berbeda, dan yang diuji cuma salah satunya.
+  pelajaran: >
+    'rollback_teruji: true' harus menyebutkan LEWAT JALUR MANA rollback itu
+    diuji. Resep yang benar di katalog tidak menjamin implementasinya di
+    dispatcher juga benar. Sejak temuan ini, setiap kontrol wajib diuji
+    terapkan dan kembalikan lewat yoructl, bukan cuma lewat tangan.
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; konflik ufw ditemukan dan diperbaiki 4 Sep 2026; jalur dispatcher diuji 5 Sep 2026"
 rollback_teruji: true
 lulus_tes_reboot: true
 rollback_teruji_catatan: >
   Diuji dua kali dan berhasil dua kali, TAPI hanya lewat sysctl -w
   eksplisit. Metode "hapus file" sudah diuji dan TERBUKTI GAGAL.
+rollback_teruji_lewat_dispatcher: true
+bukti_uji_dispatcher: >
+  5 Sep 2026, VM yoru-a, yoructl 0.1.1. Urutan yang dijalankan dan hasilnya:
+  kembalikan -> DIKEMBALIKAN 0/1/1;
+  verifikasi -> GAGAL 0/1/1;
+  terapkan   -> LULUS 1/0/0, baris jadi '#yoru-k10#IPT_SYSCTL=/etc/ufw/sysctl.conf';
+  kembalikan -> DIKEMBALIKAN 0/1/1, baris kembali PERSIS 'IPT_SYSCTL=/etc/ufw/sysctl.conf';
+  terapkan   -> LULUS 1/0/0.
+  Lalu uji tandingan: dengan baris aktif, log_martians dipaksa 1 lalu ufw
+  di-restart -> jatuh ke 0 (membuktikan alat ujinya bisa mendeteksi gagal).
+  Dengan baris bertanda #yoru-k10#, ufw di-restart -> log_martians tetap 1.
 snapshot_sebelum: "sebelum-K10"

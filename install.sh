@@ -18,14 +18,22 @@ umask 022
 export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-VERSI="0.1.0"
+ASAL="$(dirname "$(readlink -f "$0")")"
+
+# Versinya DIBACA dari dispatcher, bukan ditulis ulang di sini. Dulu dua
+# angka ini ditulis terpisah dan langsung melenceng - installer memasang
+# yoructl 0.1.1 sambil mencetak "Yoru 0.1.0" di judulnya, dan itu bikin
+# orang mengira pemasangannya gagal. Satu angka, satu tempat.
+VERSI="$(awk -F'"' '/^VERSI=/ {print $2; exit}' "$ASAL/bin/yoructl" 2>/dev/null)"
+[ -n "$VERSI" ] || VERSI="tidak-terbaca"
+
 AGEN=yoru-agent
 DIR_BIN=/opt/yoru/bin
 DIR_CATALOG=/usr/share/yoru/catalog
 DIR_ETC=/etc/yoru
 DIR_LOG=/var/log/yoru
+DIR_DATA=/var/lib/yoru
 SUDOERS=/etc/sudoers.d/yoru
-ASAL="$(dirname "$(readlink -f "$0")")"
 
 H=$'\033[0m'; HIJAU=$'\033[32m'; MERAH=$'\033[31m'; KUNING=$'\033[33m'; TEBAL=$'\033[1m'
 langkah() { printf '\n%s==> %s%s\n' "$TEBAL" "$1" "$H"; }
@@ -100,7 +108,15 @@ buat_folder() {
   ok "$DIR_BIN"
   ok "$DIR_CATALOG"
   ok "$DIR_ETC"
-  ok "$DIR_LOG"
+  ok "$DIR_LOG (root:root - agent tidak bisa menulis, ini jejak audit)"
+
+  # Tempat laporan, sesuai contract/report.md. Ini SATU-SATUNYA folder yang
+  # boleh ditulis agent, karena laporan memang keluarannya sendiri.
+  # $DIR_LOG tetap milik root: alat keamanan tidak boleh bisa menyunting
+  # catatan tindakannya sendiri.
+  install -d -o "$AGEN" -g "$AGEN" -m 750 "$DIR_DATA" "$DIR_DATA/riwayat" \
+    || mati "gagal membuat $DIR_DATA"
+  ok "$DIR_DATA dan $DIR_DATA/riwayat ($AGEN:$AGEN 750)"
 }
 
 pasang_dispatcher() {
@@ -184,7 +200,7 @@ copot() {
   rm -rf /opt/yoru          && ok "/opt/yoru dihapus"
   rm -rf /usr/share/yoru    && ok "/usr/share/yoru dihapus"
   if id "$AGEN" >/dev/null 2>&1; then userdel "$AGEN" 2>/dev/null && ok "pengguna $AGEN dihapus"; fi
-  lewat "$DIR_LOG dan $DIR_ETC sengaja DIBIARKAN - itu catatan tindakan, jejak audit tidak dihapus otomatis"
+  lewat "$DIR_LOG, $DIR_ETC dan $DIR_DATA sengaja DIBIARKAN - itu catatan tindakan dan laporan, jejak tidak dihapus otomatis"
   printf '\n    Kontrol yang sudah diterapkan TIDAK dikembalikan.\n'
   printf '    Untuk mengembalikan, jalankan "kembalikan" per kontrol sebelum mencopot.\n\n'
   exit 0
@@ -219,7 +235,8 @@ ${TEBAL}Selesai.${H}
   Dispatcher   $DIR_BIN/yoructl
   Katalog      $DIR_CATALOG
   Pemilik      $PEMILIK
-  Catatan      $DIR_LOG/tindakan.log
+  Catatan      $DIR_LOG/tindakan.log   (root, agent tidak bisa menulis)
+  Laporan      $DIR_DATA/laporan-terakhir.json   (ditulis agent)
 
   Coba sendiri:
     sudo -u $AGEN sudo -n $DIR_BIN/yoructl K05 periksa

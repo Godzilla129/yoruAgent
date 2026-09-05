@@ -45,5 +45,13 @@ catatan_panel:
   aapanel: "aman"
   cpanel: "aman"
 
-diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026"
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; jalur dispatcher diuji 5 Sep 2026"
 rollback_teruji: true
+rollback_teruji_lewat_dispatcher: true
+bukti_uji_dispatcher: >
+  5 Sep 2026, VM yoru-a, yoructl 0.1.1:
+  kembalikan -> DIKEMBALIKAN "6/120" (bawaan OpenSSH, tidak ada yang menimpa);
+  verifikasi -> GAGAL "6/120";
+  terapkan   -> LULUS "3/30";
+  verifikasi -> LULUS "3/30".
+  Nilainya ditulis "maxauthtries/logingracetime".

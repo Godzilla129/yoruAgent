@@ -188,6 +188,45 @@ catatan_panel:
     dicek adalah kalau pemilik mematikan ForwardToSyslog - lihat
     dikecualikan_sengaja.
 
-diuji_pada: "Ubuntu 24.04, VM yoru-a, 4 Sep 2026"
+batas_yang_diketahui:
+  - id: pembacaan_pagu_hanya_mengenali_satuan_M
+    tingkat: PERLU_DIPERBAIKI
+    di_mana: "fungsi k09_max() di bin/yoructl"
+    masalah: >
+      Pembacaannya memakai pola 'max [0-9.]*M', jadi hanya mengenali angka
+      bersatuan M. journald mencetak satuan yang menyesuaikan besarnya, jadi
+      di server dengan disk besar pagu bawaannya bisa tercetak sebagai
+      'max 4.0G' - dan pola itu tidak akan cocok sama sekali.
+    akibat: >
+      periksa akan melapor GAGAL dengan nilai 'tidak-terbaca'. Kontrolnya
+      memang belum diterapkan, jadi GAGAL itu kebetulan benar - tapi
+      alasannya salah, dan nilainya kosong. Ini persis penyakit yang kita
+      hindari: hasil kosong dibaca sebagai kesimpulan.
+    tidak_terlihat_di_yoru_a: >
+      VM uji punya disk 9.8G, jadi pagu bawaannya 997.9M - masih bersatuan
+      M. Batas ini tidak akan pernah muncul di VM ini. Baru muncul di VPS
+      dengan disk lebih besar, yaitu justru tempat produksinya.
+    perbaikan: "pakai 'max [0-9.]+[KMGT]' dengan grep -E"
+  - id: angka_pagu_masih_dipatok_500M
+    tingkat: DIKETAHUI_DAN_DITERIMA
+    masalah: >
+      Dispatcher memakai SystemMaxUse=500M tetap, padahal katalog ini
+      sendiri menegaskan angka itu BUKAN konstanta dan harus dihitung ulang
+      per server. Untuk disk 10-100G angka ini masuk akal; di bawah itu
+      terlalu besar, jauh di atas itu terlalu kecil.
+    rencana: >
+      Hitung dari 'df' saat terapkan, lalu simpan angka yang dipakai supaya
+      verifikasi membandingkan ke angka itu, bukan ke 500M.
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 4 Sep 2026; jalur dispatcher diuji 5 Sep 2026"
 rollback_teruji: true
+rollback_teruji_lewat_dispatcher: true
+bukti_uji_dispatcher: >
+  5 Sep 2026, VM yoru-a, yoructl 0.1.1. Urutan dan hasilnya:
+  kembalikan -> DIKEMBALIKAN "max 997.9M";
+  verifikasi -> GAGAL "max 997.9M";
+  terapkan   -> LULUS "max 500.0M";
+  verifikasi -> LULUS "max 500.0M".
+  Kontrol pertama yang jalur tulisnya dibuktikan lewat dispatcher, bukan
+  lewat tangan.
 snapshot_sebelum: "sebelum-K09"

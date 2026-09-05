@@ -63,5 +63,58 @@ catatan_panel:
   aapanel: "aman"
   cpanel: "BENTROK - cPanel mengelola pembaruan paketnya sendiri. Lewati."
 
-diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026"
+bug_yang_ditemukan_saat_uji_dispatcher:
+  ditemukan: "5 Sep 2026, VM yoru-a, yoructl 0.1.1"
+  tingkat: WAJIB_DIPERBAIKI_SEBELUM_DEPLOY
+  gejala: >
+    terapkan mengembalikan DITOLAK dengan pesan "gagal memasang paket -
+    periksa koneksi internet server". Padahal internet server hidup: git
+    pull baru saja berhasil, dan perintah apt yang sama persis dijalankan
+    manual satu menit kemudian langsung sukses ("unattended-upgrades is
+    already the newest version"). Diulang lewat dispatcher tanpa mengubah
+    apa pun, hasilnya LULUS. Jadi kegagalannya sesaat, bukan menetap.
+  dugaan_penyebab: >
+    Kunci dpkg masih terpegang sebentar. Persis sebelum terapkan, kembalikan
+    menjalankan 'systemctl disable --now unattended-upgrades' - dan layanan
+    itu memang layanan yang memegang kunci apt. Timer apt-daily bawaan
+    Ubuntu juga bisa jadi penyebab. BELUM DIBUKTIKAN sampai ke akarnya;
+    ditulis sebagai dugaan, bukan kesimpulan.
+  kenapa_ini_gawat_di_produksi: >
+    Di VPS yang baru dinyalakan, apt-daily dan unattended-upgrades justru
+    berjalan pada menit-menit pertama setelah boot - dan itu tepat saat
+    Yoru menjalankan siklus perbaikan pertamanya. Jadi kondisi yang bikin
+    gagal ini BUKAN kasus langka, malah kemungkinan besar terjadi.
+  dua_masalah_terpisah:
+    - id: pesan_error_menuduh_tanpa_bukti
+      masalah: >
+        Perintah aptnya ditulis 'apt-get install ... >/dev/null 2>&1', jadi
+        seluruh keluhan apt dibuang, lalu kita mengarang penyebabnya sendiri
+        di teks pesan. Pemilik server dikirimi diagnosis yang tidak pernah
+        diperiksa siapa pun. Ini penyakit yang sama yang kita larang untuk
+        agent - hasil kosong dipakai sebagai kesimpulan - tapi kali ini ada
+        di kode kita sendiri.
+      perbaikan: >
+        Tangkap keluaran apt ke variabel, jangan dibuang. Teruskan baris
+        terakhirnya apa adanya ke field pesan. Kalau tidak tahu penyebabnya,
+        katakan tidak tahu dan lampirkan keluaran aslinya.
+      berlaku_juga_di: "K08 - pemasangan auditd memakai pola yang sama"
+    - id: tidak_tahan_kunci_apt_sesaat
+      masalah: >
+        Sekali gagal langsung menyerah, padahal kunci apt itu memang wajar
+        terpegang beberapa detik.
+      perbaikan: >
+        (1) Lewati apt sama sekali kalau paketnya sudah terpasang - periksa
+        dengan dpkg-query lebih dulu. (2) Kalau memang harus memasang, pakai
+        -o DPkg::Lock::Timeout=60 supaya apt menunggu kuncinya, bukan
+        langsung gagal.
+
+diuji_pada: "Ubuntu 24.04, VM yoru-a, 3 Sep 2026; jalur dispatcher diuji 5 Sep 2026"
 rollback_teruji: true
+rollback_teruji_lewat_dispatcher: true
+bukti_uji_dispatcher: >
+  5 Sep 2026, VM yoru-a, yoructl 0.1.1:
+  kembalikan -> DIKEMBALIKAN "disabled";
+  verifikasi -> GAGAL "disabled";
+  terapkan   -> DITOLAK berhasil:false (lihat bug di atas);
+  terapkan (diulang) -> LULUS "enabled".
+  Jalur kembalikan bersih. Jalur terapkan berfungsi tapi rapuh.

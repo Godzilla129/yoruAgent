@@ -20,7 +20,23 @@ Mengubahnya sendiri berarti memecahkan kode dua orang lain tanpa mereka tahu.
 /var/lib/yoru/riwayat/<ISO8601>.json    arsip, tidak dihapus otomatis
 ```
 
-Selama pengembangan, Lane 2 cukup pakai `examples/laporan-*.json` di repo ini.
+Kedua folder itu dibuat oleh `install.sh` dan dimiliki `yoru-agent` dengan izin
+`750`. Itu satu-satunya tempat yang boleh ditulis agent — laporan memang
+keluarannya sendiri. Catatan tindakan di `/var/log/yoru/tindakan.log` tetap
+milik root dan tidak bisa disentuh agent, karena alat keamanan tidak boleh
+bisa menyunting jejaknya sendiri.
+
+Kalau ada proses lain di server yang perlu membaca laporan langsung dari
+disk, masukkan penggunanya ke grup `yoru-agent`. Jangan melonggarkan izin
+foldernya.
+
+Selama pengembangan, Lane 2 cukup pakai dua contoh ini di repo:
+
+```
+examples/report-fix.json      siklus perbaikan, server sakit, skor 10
+examples/report-watch.json    siklus penjagaan, server sehat, ada satu drift
+```
+
 Jangan menunggu server nyata untuk mulai membangun tampilan — bentuknya sudah
 sama persis.
 
