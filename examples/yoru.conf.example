@@ -1,0 +1,127 @@
+# Konfigurasi Yoru
+#
+# Berkas asli ada di  /etc/yoru/yoru.conf
+# Berkas ini cuma contoh. Yang di /etc/yoru dibuat oleh install.sh, dan
+# installer TIDAK akan menimpanya kalau sudah ada - menjalankan ulang
+# pemasangan tidak boleh menghapus konfigurasi orang.
+#
+#   pemilik : root:yoru-agent
+#   izin    : 0640
+#
+# Kenapa begitu: di dalamnya ada kunci API dan token bot. Agent perlu
+# membacanya, jadi grupnya yoru-agent. Pengguna lain di server itu tidak
+# perlu, jadi mereka tidak boleh.
+#
+# ---------------------------------------------------------------------
+# CARA MEMBACANYA - untuk Lane 3
+# ---------------------------------------------------------------------
+#
+# Bentuknya  KUNCI="nilai"  satu per baris, tanda # untuk komentar.
+#
+# JANGAN pakai "source" atau "eval" untuk membaca berkas ini. Kalau suatu
+# saat ada nilai yang mengandung $(...) atau tanda petik terbalik, shell
+# akan menjalankannya - dan yang menjalankan adalah proses yang memegang
+# kunci API. Baca sebagai teks biasa. Contoh secukupnya di Python:
+#
+#     def baca_konfigurasi(jalur="/etc/yoru/yoru.conf"):
+#         konf = {}
+#         with open(jalur) as f:
+#             for baris in f:
+#                 baris = baris.strip()
+#                 if not baris or baris.startswith("#") or "=" not in baris:
+#                     continue
+#                 kunci, nilai = baris.split("=", 1)
+#                 konf[kunci.strip()] = nilai.strip().strip('"')
+#         return konf
+#
+# Nilai kosong berarti fitur itu MATI, bukan berarti salah konfigurasi.
+# Yoru harus tetap jalan walau Telegram dan dashboard dua-duanya kosong -
+# dalam keadaan itu dia mengerjakan kontrol dan menulis laporan ke disk,
+# cuma tidak ada yang dikabari. Jangan berhenti dengan error.
+
+
+# =====================================================================
+# IDENTITAS SERVER
+# =====================================================================
+
+# Nama yang muncul di dashboard dan bot. Boleh dikosongkan - kalau kosong,
+# pakai hostname. Berguna diisi kalau nama dari penyedia VPS tidak berarti
+# apa-apa buat pemiliknya, misalnya "vps-84213".
+NAMA_SERVER=""
+
+
+# =====================================================================
+# MODEL AI UNTUK HERMES  (wajib)
+# =====================================================================
+#
+# Tanpa ini agent tidak bisa menimbang apa pun. Yang bisa jalan cuma
+# pemeriksaan mentah lewat yoructl, tanpa penjelasan dan tanpa urutan
+# prioritas.
+
+AI_PENYEDIA=""
+AI_MODEL=""
+AI_API_KEY=""
+
+
+# =====================================================================
+# BOT TELEGRAM  (opsional)
+# =====================================================================
+#
+# Kosongkan kalau tidak dipakai.
+#
+# TELEGRAM_CHAT_ID boleh dibiarkan kosong walaupun tokennya diisi.
+# Kalau kosong, Yoru mencarinya sendiri: pemilik cukup mengirim /start ke
+# botnya, lalu Yoru menanyakan ke Telegram siapa yang barusan mengirim
+# pesan, dan menuliskan hasilnya ke sini. Pemilik server tidak perlu tahu
+# "chat id" itu apa - itu istilah kita, bukan istilah dia.
+
+TELEGRAM_TOKEN=""
+TELEGRAM_CHAT_ID=""
+
+
+# =====================================================================
+# DASHBOARD  (opsional)
+# =====================================================================
+#
+# Kosongkan kalau dashboardnya belum ada. Yoru tetap menulis laporan ke
+# /var/lib/yoru/laporan-terakhir.json.
+#
+# Arahnya SATU JALUR SAJA: agent mengirim laporan KELUAR ke alamat ini,
+# lalu mengambil keputusan pemilik dari alamat yang sama di siklus
+# berikutnya. Dashboard tidak pernah menghubungi server.
+#
+# Itu sebabnya server yang dijaga Yoru tidak perlu membuka satu port pun
+# untuk dashboard - dan kalau suatu saat dashboardnya jebol, yang bisa
+# dilakukan penyerang paling jauh cuma menyetujui kontrol yang memang
+# sudah ada di katalog. Dia tidak bisa menyuruh server melakukan hal baru.
+# Jangan pernah membalik arah ini demi kepraktisan.
+#
+# Isi dengan alamat lengkap termasuk http:// atau https://.
+# Contoh saat dashboard berada di mesin yang sama: http://127.0.0.1:8080
+
+DASHBOARD_URL=""
+DASHBOARD_TOKEN=""
+
+
+# =====================================================================
+# PERILAKU
+# =====================================================================
+
+# Jam Siklus Penjagaan harian, format 24 jam. Dipakai timer systemd.
+# Pilih jam sepi. Jangan tepat di menit 00 - kalau semua server memakai
+# angka bawaan yang sama, semuanya mengetuk dashboard di detik yang sama.
+JAM_PENJAGAAN="03:17"
+
+# Zona waktu untuk semua jam di laporan. Jam server biasanya UTC sementara
+# pemiliknya membaca waktu setempat, dan selisih itu sudah pernah membuat
+# kami salah paham sendiri. Lihat aturan nomor 3 di contract/report.md.
+ZONA_WAKTU="Asia/Jakarta"
+
+# Kontrol yang tidak boleh disentuh di server ini, dipisah koma.
+# Kosong berarti semua kontrol boleh dipertimbangkan.
+#
+# Gunanya untuk keadaan yang cuma diketahui pemiliknya. Contoh paling
+# nyata: server yang memakai aaPanel atau CyberPanel harus mengisi
+# LEWATI_KONTROL="K05", karena K05 menyalakan firewall dan hanya membuka
+# port 22, sehingga panel di port 8888 langsung tidak bisa diakses.
+LEWATI_KONTROL=""
