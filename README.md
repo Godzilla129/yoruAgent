@@ -130,7 +130,16 @@ cd yoruAgent
 sudo bash install.sh
 ```
 
-Tiga baris, tidak ada yang perlu dijawab selain password sudo.
+Pemasangnya akan menanyakan empat hal: kunci API model AI, nama modelnya,
+token bot Telegram, dan alamat dashboard. Cuma yang pertama yang benar-benar
+dibutuhkan — tiga sisanya boleh dikosongkan dan diisi belakangan di
+`/etc/yoru/yoru.conf`. Yang rahasia diketik tanpa ditampilkan di layar, dan
+tidak pernah lewat argumen perintah, karena argumen kelihatan oleh siapa pun
+yang sedang login dan tersimpan di riwayat shell.
+
+Kalau kamu memasangnya lewat skrip otomatis, pakai `--tanpa-tanya`. Yoru
+akan membuat berkas konfigurasi kosong dan memberitahu bahwa isinya harus
+dilengkapi.
 
 Kalau kamu perhatikan, tidak ada cara pasang model `curl ... | sudo bash`.
 Itu memang lebih ringkas, tapi ini alat keamanan — menyuruh orang
@@ -147,6 +156,8 @@ ok   agent bisa meminta tindakan yang sah
 ok   agent ditolak saat mencoba perintah lain
 ok   dispatcher menolak jalan saat dirinya sendiri bisa ditulis
 ok   dispatcher kembali normal setelah izin dipulihkan
+ok   penjagaan menolak berjalan sebagai root
+ok   timer penjagaan terdaftar di systemd
 ```
 
 Kalau salah satu gagal, pemasangan berhenti dan menyebutkan gagal di mana.
@@ -209,13 +220,28 @@ untuk tiap kontrol dulu, baru copot.
 ## Isi repo
 
 ```
-bin/            dispatcher yoructl dan berkas aturan sudoers
+bin/            dispatcher yoructl, pembungkus penjagaan, aturan sudoers
 catalog/        10 kontrol keamanan, satu berkas YAML per kontrol
 contract/       bentuk data laporan JSON
-examples/       contoh laporan, untuk membangun tanpa server
+systemd/        unit dan timer untuk siklus penjagaan harian
+examples/       contoh laporan dan contoh berkas konfigurasi
 install.sh      pemasang, sekalian menguji hasilnya sendiri
 check-all.sh    periksa 10 kontrol sekaligus
 ```
+
+Setelah terpasang, berkas-berkasnya duduk di sini:
+
+```
+/opt/yoru/bin/              dispatcher dan pembungkus, milik root
+/usr/share/yoru/catalog/    katalog, milik root - agent cuma boleh membaca
+/etc/yoru/yoru.conf         konfigurasi, root:yoru-agent 640
+/var/log/yoru/tindakan.log  catatan tindakan, milik root - agent TIDAK bisa menulis
+/var/lib/yoru/              laporan, milik yoru-agent - satu-satunya yang boleh ditulis agent
+```
+
+Pembagian izin itu inti desainnya: agent boleh menulis laporannya sendiri,
+tapi tidak boleh menyentuh katalog yang jadi acuannya, dan tidak boleh
+menyunting catatan tindakannya sendiri.
 
 ---
 

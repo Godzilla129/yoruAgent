@@ -81,12 +81,18 @@ printf '  LULUS %d   GAGAL %d\n' "$lulus" "$gagal"
 echo
 
 # Sinyal drift bonus: server mati tidak wajar?
-if journalctl -b -1 -n 30 --no-pager 2>/dev/null | grep -qE 'Stopping|Shutting down|Reached target.*(Shutdown|Power)'; then
-  echo "  Boot sebelumnya: dimatikan dengan rapi."
-else
+#
+# Tanpa pipa ke grep -q, sengaja. Skrip ini memang belum pakai pipefail, tapi
+# kalau suatu saat ada yang menambahkannya, pola "perintah | grep -q" bakal
+# terbaca gagal justru saat yang dicari ketemu. Sudah pernah kena di yoructl.
+boot_lalu=$(journalctl -b -1 -n 30 --no-pager 2>/dev/null)
+case "$boot_lalu" in
+  *Stopping*|*"Shutting down"*|*"Reached target"*Shutdown*|*"Reached target"*Power*)
+  echo "  Boot sebelumnya: dimatikan dengan rapi." ;;
+  *)
   echo "  PERINGATAN  Boot sebelumnya berhenti tanpa baris shutdown."
-  echo "              Server kemungkinan mati tidak wajar. Periksa penyebabnya."
-fi
+  echo "              Server kemungkinan mati tidak wajar. Periksa penyebabnya." ;;
+esac
 echo
 
 [ "$gagal" -eq 0 ]

@@ -85,28 +85,17 @@ hapus_ssh() {
 
 sshd_nilai() { sshd -T 2>/dev/null | awk -v k="^$1\$" '$1 ~ k {print $2; exit}'; }
 
-# Mencari teks di dalam keluaran sebuah perintah, TANPA memakai pipa.
+# Cari teks di keluaran sebuah perintah, tanpa pipa.
 #
-# JANGAN diganti kembali menjadi "perintah | grep -q teks". Skrip ini memakai
-# pipefail, dan grep -q berhenti begitu menemukan yang dicari lalu menutup
-# pipa. Perintah di depannya, yang biasanya masih punya banyak baris untuk
-# ditulis, langsung mati kena SIGPIPE dengan kode 141 - dan pipefail membaca
-# angka itu sebagai "seluruh pipa gagal".
+# JANGAN diubah jadi "perintah | grep -q teks". Skrip ini pakai pipefail, dan
+# grep -q berhenti begitu ketemu lalu menutup pipa; perintah di depannya mati
+# kena SIGPIPE (141) dan pipefail membacanya sebagai gagal. Jadi pencarian
+# yang BERHASIL malah terbaca gagal. Ini yang bikin prasyarat K02 tidak
+# pernah lolos sejak hari pertama - lihat catalog/K02.yaml.
 #
-# Akibatnya terbalik dan sangat menipu: pencarian yang BERHASIL justru
-# terbaca sebagai gagal. Kalau yang dicari tidak ada, grep membaca sampai
-# habis lalu mengembalikan 1 - juga gagal. Dua-duanya gagal, jadi fungsi
-# semacam itu tidak pernah bisa berhasil sekali pun.
-#
-# Ini bukan kekhawatiran teoretis. Persis inilah yang membuat prasyarat K02
-# selalu menolak, sehingga K02 terapkan tidak pernah bisa dijalankan sejak
-# hari pertama ditulis. Ditemukan 5 Sep 2026, dan hanya ketahuan karena
-# jalur terapkan akhirnya diuji, bukan cuma periksa.
-#
-# Pencocokannya HARFIAH, bukan regex - sama seperti grep -F. Itu disengaja:
-# pola yang dipakai di sini mengandung tanda kurung dan titik, misalnya
-# "deny (incoming)" dan "0.0.0.0:3306", yang artinya berubah kalau dibaca
-# sebagai regex.
+# Cocoknya harfiah seperti grep -F, bukan regex. Pola di sini ada yang pakai
+# kurung dan titik ("deny (incoming)", "0.0.0.0:3306") yang artinya berubah
+# kalau dibaca sebagai regex.
 ada_teks() {  # ada_teks <teks-harfiah> <perintah...>
   local teks="$1"; shift
   local keluaran
@@ -114,22 +103,18 @@ ada_teks() {  # ada_teks <teks-harfiah> <perintah...>
   [[ "$keluaran" == *"$teks"* ]]
 }
 
-# Memasang paket tanpa menyerah pada hal yang wajar, dan tanpa mengarang
-# alasan kalau gagal. Tiga hal yang diperbaiki dibanding versi lama:
+# Pasang paket tanpa menyerah pada hal yang wajar, dan tanpa mengarang alasan
+# kalau gagal:
+#   - paket yang sudah terpasang tidak memanggil apt sama sekali
+#   - DPkg::Lock::Timeout bikin apt MENUNGGU kunci, bukan langsung gagal.
+#     Di VPS yang baru nyala, apt-daily jalan di menit-menit pertama - tepat
+#     saat Yoru mulai kerja.
+#   - keluhan apt ditangkap, bukan dibuang
 #
-# (1) Kalau paketnya sudah terpasang, apt tidak dipanggil sama sekali.
-# (2) DPkg::Lock::Timeout membuat apt MENUNGGU kunci, bukan langsung gagal.
-#     Kunci apt wajar terpegang beberapa detik, dan di VPS yang baru menyala
-#     apt-daily serta unattended-upgrades justru berjalan di menit-menit
-#     pertama - tepat saat Yoru menjalankan siklus perbaikannya.
-# (3) Keluhan apt DITANGKAP, bukan dibuang. Kalau gagal, yang dilaporkan
-#     adalah kata-kata apt sendiri.
-#
-# Versi lama membuang keluaran apt ke /dev/null lalu melapor "periksa
-# koneksi internet server" tanpa pernah memeriksa koneksi apa pun. Kejadian
-# 5 Sep 2026: pesan itu muncul padahal internetnya hidup dan paketnya sudah
-# versi terbaru. Menebak penyebab lalu menuliskannya seolah hasil pemeriksaan
-# adalah hal yang kita larang untuk agent - jangan sampai ada di kode sendiri.
+# Versi lama membuang keluaran apt lalu melapor "periksa koneksi internet"
+# tanpa pernah memeriksa koneksi apa pun. Menebak penyebab lalu menulisnya
+# seolah hasil pemeriksaan itu yang kita larang untuk agent - jangan sampai
+# ada di kode sendiri.
 apt_kesalahan=""
 pasang_paket() {  # pasang_paket <nama-paket>
   local paket="$1" status keluaran

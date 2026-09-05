@@ -1,0 +1,87 @@
+#!/bin/bash
+# yoru-watch - dipanggil timer systemd tiap hari.
+#
+# Bukan dia yang mengerjakan Siklus Penjagaan - itu tugas agent. Dia cuma
+# memastikan agent dipanggil dalam keadaan benar, dan kalau tidak bisa,
+# bilang alasannya. Semua keluaran masuk journal, dan journal permanen
+# berkat K09.
+
+set -uo pipefail
+umask 027
+export LC_ALL=C
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+KONF=/etc/yoru/yoru.conf
+AGEN_BIN=/opt/yoru/bin/yoru-agent     # dipasang Lane 3
+DIR_DATA=/var/lib/yoru
+KUNCI="$DIR_DATA/.watch.lock"
+BATAS_DETIK=900
+
+kabar() { printf '%s\n' "$*"; }
+gagal() { printf '%s\n' "$*" >&2; exit "${2:-1}"; }
+
+# Harus jalan sebagai yoru-agent. Kalau jalan sebagai root, seluruh
+# pembatasan sudoers jadi hiasan.
+[ "$(id -un)" = "yoru-agent" ] || \
+  gagal "berhenti: harus berjalan sebagai yoru-agent, bukan $(id -un)"
+
+[ -r "$KONF" ] || gagal "berhenti: $KONF tidak ada. Jalankan 'sudo bash install.sh'."
+
+# Dibaca sebagai teks, bukan di-source. Isinya kunci API - kalau di-source,
+# nilai yang mengandung $(...) bakal dijalankan.
+#
+# Jangan pakai -F= lalu menyunting $1. Menyentuh $1 bikin awk menyusun ulang
+# $0 pakai spasi, dan semua "=" di baris itu hilang. Lolos di berkas rapi,
+# rusak di berkas yang ada spasi di sekitar nama kunci.
+ambil() {  # ambil <KUNCI>
+  awk -v k="$1" '
+    {
+      b = $0; sub(/^[[:space:]]+/, "", b)
+      if (b ~ /^#/ || b == "") next
+      p = index(b, "="); if (p == 0) next
+      nama = substr(b, 1, p - 1); nilai = substr(b, p + 1)
+      sub(/[[:space:]]+$/, "", nama)
+      sub(/^[[:space:]]+/, "", nilai); sub(/[[:space:]]+$/, "", nilai)
+      gsub(/^"|"$/, "", nilai)
+      if (nama == k) { print nilai; exit }
+    }' "$KONF"
+}
+
+AI_API_KEY="$(ambil AI_API_KEY)"
+AI_MODEL="$(ambil AI_MODEL)"
+NAMA_SERVER="$(ambil NAMA_SERVER)"
+LEWATI="$(ambil LEWATI_KONTROL)"
+[ -n "$NAMA_SERVER" ] || NAMA_SERVER="$(hostname)"
+
+# Tanpa kunci API agent tidak bisa menimbang. Penjagaan yang jalan tanpa
+# penimbangan cuma menghasilkan laporan kosong yang kelihatan sehat.
+[ -n "$AI_API_KEY" ] || gagal "berhenti: AI_API_KEY di $KONF masih kosong"
+
+# Agent belum ada: berhenti GAGAL, bukan sukses. Unit yang tiap hari selesai
+# dengan tenang padahal tidak mengerjakan apa-apa itu kerusakan yang paling
+# lama tidak ketahuan. Biar merah di systemctl.
+[ -x "$AGEN_BIN" ] || gagal "berhenti: agent belum terpasang di $AGEN_BIN" 69
+
+# Dua siklus tidak boleh jalan bersamaan. Siklus Perbaikan dari dashboard
+# bisa saja pas barengan timer harian.
+exec 9>"$KUNCI" || gagal "berhenti: tidak bisa membuat $KUNCI"
+flock -n 9 || { kabar "dilewati: siklus lain sedang berjalan"; exit 0; }
+
+kabar "Siklus Penjagaan mulai - server=$NAMA_SERVER model=${AI_MODEL:-belum-disetel}"
+[ -n "$LEWATI" ] && kabar "dilewati atas permintaan pemilik: $LEWATI"
+
+mulai=$(date +%s)
+
+# timeout supaya agent yang menggantung tidak menahan kunci sampai besok.
+timeout --signal=TERM --kill-after=30s "$BATAS_DETIK" \
+  "$AGEN_BIN" --siklus penjagaan --konfigurasi "$KONF"
+kode=$?
+lama=$(( $(date +%s) - mulai ))
+
+case "$kode" in
+  0)   kabar "selesai dalam ${lama}s" ;;
+  124) kabar "GAGAL: agent lewat batas ${BATAS_DETIK}s, dihentikan paksa" >&2 ;;
+  *)   kabar "GAGAL: agent berhenti dengan kode $kode setelah ${lama}s" >&2 ;;
+esac
+
+exit "$kode"

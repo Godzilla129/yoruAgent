@@ -1,0 +1,37 @@
+[Unit]
+Description=Yoru - Siklus Penjagaan harian
+Documentation=https://github.com/Godzilla129/yoruAgent
+
+# Butuh jaringan sungguhan: agent memanggil model AI dan mengirim laporan.
+Wants=network-online.target
+After=network-online.target
+
+# auditd sumber jawaban "siapa yang mengubah" di laporan drift.
+After=auditd.service
+
+[Service]
+Type=oneshot
+User=yoru-agent
+Group=yoru-agent
+ExecStart=/opt/yoru/bin/yoru-watch
+
+# yoru-agent sengaja tanpa folder rumah, tapi sebagian SDK tetap mencari
+# $HOME dan gagal dengan pesan yang membingungkan kalau tidak ketemu.
+Environment=HOME=/var/lib/yoru
+
+# JANGAN tambah tiga arahan ini. Kelihatannya mengeraskan, padahal mematikan:
+#   NoNewPrivileges=yes   sudo mati -> tidak ada kontrol yang bisa dikerjakan
+#   ProtectHome=yes       /home hilang -> K02 selalu menolak, dan menolaknya
+#                         terdengar wajar (lihat catalog/K02.yaml)
+#   ProtectSystem=strict  /etc dan /usr jadi baca-saja -> tempat semua
+#                         kontrol menulis
+PrivateTmp=yes
+# Kalau K07 bermasalah lewat timer tapi normal kalau manual, curigai baris
+# di atas duluan. Belum sempat diuji sampai situ.
+
+# Gagal ya gagal. Unit yang mencoba ulang sendiri menyembunyikan kerusakan.
+Restart=no
+TimeoutStartSec=1200
+
+[Install]
+WantedBy=multi-user.target
