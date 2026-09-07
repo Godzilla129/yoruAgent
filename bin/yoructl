@@ -13,9 +13,14 @@ umask 022
 export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-VERSI="0.1.2"
+VERSI="0.1.3"
 LOG_DIR=/var/log/yoru
 LOG="$LOG_DIR/tindakan.log"
+
+# Rekaman keadaan asal server, sebelum Yoru menyentuh apa pun.
+# Ditaruh di /var/backups - tempat yang memang dipakai Ubuntu untuk cadangan
+# konfigurasi, dan milik root, di luar apa pun yang bisa ditulis agent.
+DIR_ASAL=/var/backups/yoru
 
 # ---------------------------------------------------------------- keluaran
 # Semua keluaran berbentuk JSON satu baris supaya gampang dibaca agent.
@@ -33,15 +38,40 @@ selesai() {  # selesai <status> <berhasil> [nilai] [pesan]
 kutip() {  # bikin string aman untuk JSON, atau null kalau kosong
   local s="${1-}"
   [ -z "$s" ] && { printf 'null'; return; }
-  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"; s="${s//$'\n'/ }"; s="${s//$'\t'/ }"
+  s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
+  s="${s//$'\n'/ }"; s="${s//$'\r'/ }"; s="${s//$'\t'/ }"
+  # Sisa karakter kendali dibuang. apt dan journalctl kadang menyelipkan
+  # karakter kendali di keluarannya - dan satu saja bikin seluruh baris JSON
+  # tidak bisa diparse, termasuk baris log yang dibaca dashboard.
+  s=$(printf '%s' "$s" | LC_ALL=C tr -d '\000-\037')
   printf '"%s"' "$s"
 }
 
-catat() {
+# Satu baris JSON per tindakan, bukan teks bebas. Dashboard tinggal parse,
+# tidak perlu menebak formatnya - dan format teks bebas selalu berubah tanpa
+# ada yang sadar sampai ada yang parsernya patah.
+#
+# Ditulis dua kali: ke berkas gabungan, dan ke berkas per kontrol. Yang kedua
+# supaya "riwayat K05" tidak perlu menyaring satu berkas besar.
+catat() {  # catat <status> <berhasil> <nilai> <pesan>
   [ -d "$LOG_DIR" ] || mkdir -p "$LOG_DIR" 2>/dev/null || return 0
-  printf '%s  %s  %s  status=%s berhasil=%s nilai=%s %s\n' \
-    "$(date -Is)" "${SUDO_USER:-?}" "${KID:-?}/${AKSI:-?}" \
-    "$1" "$2" "${3:--}" "${4:-}" >> "$LOG" 2>/dev/null || true
+  local baris
+  baris=$(printf '{"waktu":%s,"versi":%s,"pemanggil":%s,"id":%s,"tindakan":%s,"status":%s,"berhasil":%s,"nilai":%s,"pesan":%s}' \
+    "$(kutip "$(date -Is)")" "$(kutip "$VERSI")" "$(kutip "${SUDO_USER:-?}")" \
+    "$(kutip "${KID:-?}")" "$(kutip "${AKSI:-?}")" \
+    "$(kutip "$1")" "${2:-false}" "$(kutip "${3-}")" "$(kutip "${4-}")")
+
+  tulis_log "$LOG" "$baris"
+  case "${KID:-}" in
+    K[0-9][0-9]) tulis_log "$LOG_DIR/${KID}.log" "$baris" ;;
+  esac
+}
+
+tulis_log() {  # tulis_log <berkas> <baris>
+  # Dibuat dengan izin 640 sejak awal. Catatan tindakan alat keamanan tidak
+  # perlu bisa dibaca semua pengguna di server itu.
+  [ -e "$1" ] || { : > "$1" 2>/dev/null && chmod 640 "$1" 2>/dev/null; }
+  printf '%s\n' "$2" >> "$1" 2>/dev/null || true
 }
 
 tolak() { KID="${KID:-?}"; AKSI="${AKSI:-?}"; selesai "DITOLAK" "false" "" "$1"; }
@@ -172,6 +202,74 @@ kunci_ssh_terbukti() {
   [ -s "$rumah/.ssh/authorized_keys" ] || return 1
   ada_teks "Accepted publickey for $u" journalctl -t sshd --since "-30 days" \
     || return 1
+  return 0
+}
+
+# -------------------------------------------------- rekam keadaan asal
+# Sebelum sebuah kontrol diterapkan PERTAMA KALI di server ini, salin dulu
+# berkas yang bakal disentuh dan bacaan keadaan yang sedang berlaku.
+#
+# Kenapa perlu: "kembalikan" di katalog memulihkan ke nilai BAWAAN yang kami
+# tulis, bukan ke nilai asli server itu. Di server yang bawaannya beda, itu
+# dua hal yang berbeda. Rekaman ini yang nanti menutup jarak tersebut.
+#
+# Disimpan sebagai berkas, bukan database. Rollback justru paling dibutuhkan
+# saat servernya lagi bermasalah - dan database itu satu lagi hal yang bisa
+# ikut mati. Berkas di disk tetap kebaca walau cuma punya shell darurat.
+
+berkas_kontrol() {  # berkas yang disentuh tiap kontrol
+  case "$1" in
+    K01|K02|K03|K04) printf '%s\n' /etc/ssh/sshd_config /etc/ssh/sshd_config.d ;;
+    K05)             printf '%s\n' /etc/default/ufw /etc/ufw ;;
+    K06)             printf '%s\n' /etc/mysql/mariadb.conf.d ;;
+    K07)             printf '%s\n' /etc/apt/apt.conf.d ;;
+    K08)             printf '%s\n' /etc/audit/rules.d /etc/audit/auditd.conf ;;
+    K09)             printf '%s\n' /etc/systemd/journald.conf /etc/systemd/journald.conf.d ;;
+    K10)             printf '%s\n' /etc/sysctl.conf /etc/sysctl.d /etc/default/ufw ;;
+  esac
+}
+
+# Bacaan keadaan yang SEDANG berlaku - bukan isi berkas, tapi apa yang
+# benar-benar aktif. Untuk K10 ini yang paling penting: berkasnya bisa
+# dihapus tanpa mengubah nilai yang dipegang kernel.
+baca_efektif() {
+  case "$KID" in
+    K01) sshd_nilai permitrootlogin ;;
+    K02) sshd_nilai passwordauthentication ;;
+    K03) printf '%s/%s' "$(sshd_nilai maxauthtries)" "$(sshd_nilai logingracetime)" ;;
+    K04) printf 'mac_sha1=%s' "$(sshd -T 2>/dev/null | grep -E '^macs ' | grep -c 'sha1')" ;;
+    K05) ufw status 2>/dev/null | awk '/^Status:/ {print $2}' ;;
+    K06) ss -tulpn 2>/dev/null | grep -o '[0-9.]*:3306' | head -1 ;;
+    K07) systemctl is-enabled unattended-upgrades 2>/dev/null ;;
+    K08) printf 'aturan=%s' "$(auditctl -l 2>/dev/null | grep -c '^-w')" ;;
+    K09) k09_max ;;
+    K10) k10_baca ;;
+  esac
+}
+
+# Sekali seumur server, tidak pernah ditimpa. Rekaman PERTAMA itu yang
+# benar-benar "sebelum Yoru" - rekaman kedua cuma memotret hasil kerja kita
+# sendiri.
+rekam_asal() {
+  local dir="$DIR_ASAL/$KID"
+  [ -e "$dir/tercatat" ] && return 0
+
+  mkdir -p "$dir/berkas" 2>/dev/null || return 1
+  chmod 700 "$DIR_ASAL" "$dir" 2>/dev/null
+
+  local f
+  while read -r f; do
+    [ -e "$f" ] || continue
+    cp -a --parents "$f" "$dir/berkas/" 2>/dev/null
+  done < <(berkas_kontrol "$KID")
+
+  printf '{"id":%s,"waktu":%s,"nilai_sebelum":%s,"versi_yoru":%s}\n' \
+    "$(kutip "$KID")" "$(kutip "$(date -Is)")" \
+    "$(kutip "$(baca_efektif)")" "$(kutip "$VERSI")" \
+    > "$dir/keadaan.json" 2>/dev/null || return 1
+  chmod 600 "$dir/keadaan.json" 2>/dev/null
+
+  date -Is > "$dir/tercatat" 2>/dev/null || return 1
   return 0
 }
 
@@ -415,5 +513,21 @@ KID="$1"; AKSI="$2"
 [[ "$AKSI" =~ ^(periksa|terapkan|kembalikan|verifikasi)$ ]] || tolak "tindakan tidak dikenal"
 
 periksa_diri
+
+# Rekam keadaan asal sebelum menyentuh apa pun. Cuma untuk terapkan - periksa
+# dan verifikasi tidak mengubah apa-apa, dan kembalikan justru butuh rekaman
+# yang sudah ada, bukan bikin baru.
+#
+# Kalau perekaman gagal, terapkan TETAP jalan tapi dicatat. Alasannya:
+# kembalikan tetap berfungsi lewat resep di katalog, jadi ini bukan
+# kehilangan rollback - cuma kehilangan kemampuan pulih ke nilai asli server
+# ini. Yang tidak boleh adalah gagal diam-diam, lalu ada yang mengira
+# cadangannya ada padahal tidak.
+if [ "$AKSI" = "terapkan" ]; then
+  if ! rekam_asal; then
+    catat "PERINGATAN" "true" "" "keadaan asal gagal direkam ke $DIR_ASAL/$KID - terapkan tetap dilanjutkan"
+  fi
+fi
+
 "$(printf 'k%02d' "$((10#${KID#K}))")" "$AKSI"
 tolak "tindakan tidak tertangani"

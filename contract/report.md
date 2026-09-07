@@ -202,3 +202,86 @@ boleh dipercaya menyentuh server orang.
 
 Naikkan `versi_kontrak`, kabari dua lane lain, dan simpan contoh JSON versi
 lama di `examples/`. Jangan mengganti arti sebuah field tanpa menaikkan versi.
+
+---
+
+## Catatan tindakan dan pemetaan endpoint
+
+### Satu perintah, dua argumen
+
+Tidak ada 40 skrip terpisah. Ada satu dispatcher, dan pemetaannya sudah 1:1:
+
+```
+POST /kontrol/K01/periksa      →   yoructl K01 periksa
+POST /kontrol/K01/terapkan     →   yoructl K01 terapkan
+POST /kontrol/K01/kembalikan   →   yoructl K01 kembalikan
+POST /kontrol/K01/verifikasi   →   yoructl K01 verifikasi
+```
+
+Kontrolnya `K01` sampai `K10`, tindakannya empat itu saja. Keluarannya satu
+baris JSON, langsung bisa diteruskan sebagai isi respons.
+
+Sengaja satu berkas, bukan empat puluh. Alasannya ada tiga: logika bersamanya
+tidak perlu diduplikasi empat puluh kali, izin sudoers tetap satu baris yang
+bisa dibaca siapa pun, dan pemeriksaan-diri dispatcher cukup dijalankan
+sekali. Satu bug yang kami temukan minggu ini butuh satu perbaikan — kalau
+sudah terpecah, butuh empat puluh, dan kemungkinan besar hanya ketemu di satu.
+
+### Catatan tindakan
+
+```
+/var/log/yoru/tindakan.log   semua tindakan, urut waktu
+/var/log/yoru/K01.log        salinan khusus K01, dan seterusnya sampai K10
+```
+
+Satu baris JSON per tindakan (JSON Lines), jadi dashboard tinggal parse per
+baris tanpa perlu menebak format. Berkas per kontrol ada supaya "riwayat K05"
+tidak perlu menyaring berkas gabungan.
+
+```json
+{"waktu":"2026-09-07T13:22:11+07:00","versi":"0.1.3","pemanggil":"yoru-agent",
+ "id":"K05","tindakan":"terapkan","status":"LULUS","berhasil":true,
+ "nilai":"active","pesan":null}
+```
+
+| Field | Isi |
+|---|---|
+| `waktu` | ISO 8601 berikut zona |
+| `versi` | versi yoructl yang menjalankan |
+| `pemanggil` | pengguna yang memanggil lewat sudo |
+| `id` | `K01`–`K10` |
+| `tindakan` | `periksa`, `terapkan`, `kembalikan`, `verifikasi` |
+| `status` | `LULUS`, `GAGAL`, `DIKEMBALIKAN`, `DILEWATI`, `DITOLAK`, `ERROR`, `PERINGATAN` |
+| `berhasil` | bool. `false` berarti perintahnya sendiri bermasalah |
+| `nilai` | keadaan yang terbaca, atau `null` |
+| `pesan` | keterangan, atau `null` |
+
+Folder ini milik root dan agent tidak bisa menulis ke sini — alat keamanan
+tidak boleh bisa menyunting jejaknya sendiri. Berkasnya `640`, jadi bacanya
+lewat root.
+
+### Rekaman keadaan asal
+
+Sebelum sebuah kontrol diterapkan **pertama kali** di sebuah server, keadaan
+sebelumnya direkam dulu:
+
+```
+/var/backups/yoru/K05/tercatat        stempel waktu perekaman
+/var/backups/yoru/K05/keadaan.json    bacaan yang sedang berlaku saat itu
+/var/backups/yoru/K05/berkas/...      salinan berkas yang akan disentuh
+```
+
+Direkam sekali, tidak pernah ditimpa — rekaman pertama itu yang benar-benar
+"sebelum Yoru"; rekaman kedua cuma memotret hasil kerja Yoru sendiri.
+
+Berkas, bukan database. Rollback justru paling dibutuhkan saat servernya
+sedang bermasalah, dan database adalah satu lagi hal yang bisa ikut mati.
+Salinannya boleh dikirim ke dashboard untuk disimpan, tapi yang dipakai
+memulihkan tetap yang ada di server.
+
+Milik root dengan izin `700`. Agent boleh mengubah server, tapi tidak boleh
+mengubah catatan tentang bagaimana server itu sebelum dia datang.
+
+**Yang belum:** `kembalikan` masih memulihkan ke nilai bawaan yang ditulis di
+katalog, belum membaca rekaman ini. Perekamannya sudah jalan, pemulihannya
+menyusul.

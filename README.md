@@ -130,12 +130,17 @@ cd yoruAgent
 sudo bash install.sh
 ```
 
-Pemasangnya akan menanyakan empat hal: kunci API model AI, nama modelnya,
-token bot Telegram, dan alamat dashboard. Cuma yang pertama yang benar-benar
-dibutuhkan — tiga sisanya boleh dikosongkan dan diisi belakangan di
+Pemasangnya cuma menanyakan dua hal: token bot Telegram dan alamat
+dashboard. Dua-duanya boleh dikosongkan dan diisi belakangan di
 `/etc/yoru/yoru.conf`. Yang rahasia diketik tanpa ditampilkan di layar, dan
 tidak pernah lewat argumen perintah, karena argumen kelihatan oleh siapa pun
 yang sedang login dan tersimpan di riwayat shell.
+
+Kunci API model AI **tidak** ditanyakan, dan itu disengaja. Yang memanggil
+model itu Hermes, bukan Yoru — Yoru tidak pernah bicara ke model sama sekali.
+Jadi kuncinya tinggal di konfigurasi Hermes, satu tempat saja. Menyimpannya
+di dua tempat berarti dua tempat yang bisa bocor, dan dua tempat yang bisa
+beda isinya tanpa ada yang sadar.
 
 Kalau kamu memasangnya lewat skrip otomatis, pakai `--tanpa-tanya`. Yoru
 akan membuat berkas konfigurasi kosong dan memberitahu bahwa isinya harus

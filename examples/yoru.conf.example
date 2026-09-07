@@ -1,7 +1,7 @@
 # Konfigurasi Yoru
 #
 # Yang asli ada di /etc/yoru/yoru.conf, dibuat install.sh dengan pemilik
-# root:yoru-agent dan izin 0640. Di dalamnya ada kunci API dan token bot -
+# root:yoru-agent dan izin 0640. Di dalamnya ada token bot dan token dashboard -
 # agent perlu baca, pengguna lain di server itu tidak.
 #
 # Installer tidak akan menimpa berkas yang sudah ada.
@@ -12,7 +12,7 @@
 # Bentuknya KUNCI="nilai" satu per baris, # untuk komentar.
 #
 # Jangan pakai source atau eval. Nilai yang mengandung $(...) bakal
-# dijalankan oleh proses yang lagi megang kunci API. Baca sebagai teks:
+# dijalankan oleh proses yang lagi megang token. Baca sebagai teks:
 #
 #     def baca_konfigurasi(jalur="/etc/yoru/yoru.conf"):
 #         konf = {}
@@ -39,12 +39,18 @@
 NAMA_SERVER=""
 
 
-# ========================= MODEL AI (wajib) ============================
-# Tanpa ini agent tidak bisa menimbang apa pun.
-
-AI_PENYEDIA=""
-AI_MODEL=""
-AI_API_KEY=""
+# ============================ MODEL AI =================================
+#
+# TIDAK ADA di sini, dan itu disengaja.
+#
+# Yang memanggil model AI itu Hermes, bukan Yoru. Yoru cuma menyediakan
+# katalog, dispatcher, dan laporan - dia tidak pernah bicara ke model sama
+# sekali. Jadi kunci API dan nama model tinggal di konfigurasi Hermes, satu
+# tempat saja.
+#
+# Kalau ditaruh di sini juga, ada dua tempat yang menyimpan rahasia yang
+# sama: dua tempat yang bisa bocor, dan dua tempat yang bisa beda isinya
+# tanpa ada yang sadar.
 
 
 # ======================= TELEGRAM (opsional) ===========================

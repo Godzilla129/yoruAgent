@@ -27,8 +27,8 @@ gagal() { printf '%s\n' "$*" >&2; exit "${2:-1}"; }
 
 [ -r "$KONF" ] || gagal "berhenti: $KONF tidak ada. Jalankan 'sudo bash install.sh'."
 
-# Dibaca sebagai teks, bukan di-source. Isinya kunci API - kalau di-source,
-# nilai yang mengandung $(...) bakal dijalankan.
+# Dibaca sebagai teks, bukan di-source. Nilai yang mengandung $(...) bakal
+# dijalankan kalau di-source.
 #
 # Jangan pakai -F= lalu menyunting $1. Menyentuh $1 bikin awk menyusun ulang
 # $0 pakai spasi, dan semua "=" di baris itu hilang. Lolos di berkas rapi,
@@ -47,15 +47,9 @@ ambil() {  # ambil <KUNCI>
     }' "$KONF"
 }
 
-AI_API_KEY="$(ambil AI_API_KEY)"
-AI_MODEL="$(ambil AI_MODEL)"
 NAMA_SERVER="$(ambil NAMA_SERVER)"
 LEWATI="$(ambil LEWATI_KONTROL)"
 [ -n "$NAMA_SERVER" ] || NAMA_SERVER="$(hostname)"
-
-# Tanpa kunci API agent tidak bisa menimbang. Penjagaan yang jalan tanpa
-# penimbangan cuma menghasilkan laporan kosong yang kelihatan sehat.
-[ -n "$AI_API_KEY" ] || gagal "berhenti: AI_API_KEY di $KONF masih kosong"
 
 # Agent belum ada: berhenti GAGAL, bukan sukses. Unit yang tiap hari selesai
 # dengan tenang padahal tidak mengerjakan apa-apa itu kerusakan yang paling
@@ -67,7 +61,7 @@ LEWATI="$(ambil LEWATI_KONTROL)"
 exec 9>"$KUNCI" || gagal "berhenti: tidak bisa membuat $KUNCI"
 flock -n 9 || { kabar "dilewati: siklus lain sedang berjalan"; exit 0; }
 
-kabar "Siklus Penjagaan mulai - server=$NAMA_SERVER model=${AI_MODEL:-belum-disetel}"
+kabar "Siklus Penjagaan mulai - server=$NAMA_SERVER"
 [ -n "$LEWATI" ] && kabar "dilewati atas permintaan pemilik: $LEWATI"
 
 mulai=$(date +%s)

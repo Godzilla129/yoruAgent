@@ -34,6 +34,7 @@ DIR_ETC=/etc/yoru
 DIR_LOG=/var/log/yoru
 DIR_DATA=/var/lib/yoru
 DIR_SYSTEMD=/etc/systemd/system
+DIR_ASAL=/var/backups/yoru
 KONF="$DIR_ETC/yoru.conf"
 SUDOERS=/etc/sudoers.d/yoru
 
@@ -45,7 +46,7 @@ mati()    { printf '\n    %sberhenti%s  %s\n\n' "$MERAH" "$H" "$1"; exit 1; }
 
 # --------------------------------------------------- baca/tulis konfigurasi
 # Sama dengan ambil() di bin/yoru-watch, dan sama-sama tidak pakai "source" -
-# isinya kunci API, dan nilai yang mengandung $(...) bakal dijalankan.
+# nilai yang mengandung $(...) bakal dijalankan kalau di-source.
 #
 # Jangan pakai -F= lalu menyunting $1. Menyentuh $1 bikin awk menyusun ulang
 # $0 pakai spasi, dan semua "=" di baris itu hilang.
@@ -188,6 +189,12 @@ buat_folder() {
   install -d -o "$AGEN" -g "$AGEN" -m 750 "$DIR_DATA" "$DIR_DATA/riwayat" \
     || mati "gagal membuat $DIR_DATA"
   ok "$DIR_DATA dan $DIR_DATA/riwayat ($AGEN:$AGEN 750)"
+
+  # Rekaman keadaan asal server, sebelum Yoru menyentuh apa pun. Milik root
+  # dan 700: agent boleh mengubah server, tapi tidak boleh mengubah catatan
+  # tentang bagaimana server itu SEBELUM dia datang.
+  install -d -o root -g root -m 700 "$DIR_ASAL" || mati "gagal membuat $DIR_ASAL"
+  ok "$DIR_ASAL (root:root 700 - agent tidak bisa menyentuh)"
 }
 
 pasang_dispatcher() {
@@ -253,25 +260,22 @@ tulis_konfigurasi() {
     return 0
   fi
 
-  printf '\n    Empat pertanyaan. Semuanya boleh dikosongkan sekarang dan diisi\n'
-  printf '    belakangan dengan menyunting %s\n\n' "$KONF"
+  # Kunci API model TIDAK ditanyakan di sini. Yang memanggil model itu Hermes,
+  # dan kuncinya sudah ada di konfigurasi Hermes. Menanyakannya lagi berarti
+  # menyimpan rahasia yang sama di dua tempat.
+  printf '\n    Dua pertanyaan, dua-duanya boleh dikosongkan dan diisi belakangan\n'
+  printf '    dengan menyunting %s\n\n' "$KONF"
 
-  local api model token url
-  tanya "Kunci API model AI (ketikannya tidak ditampilkan)" api rahasia
-  tanya "Nama model                                       " model
+  local token url
   tanya "Token bot Telegram (kosongkan kalau tidak pakai) " token rahasia
   tanya "Alamat dashboard   (kosongkan kalau belum ada)   " url
 
-  [ -n "$api"   ] && set_konf "$KONF" AI_API_KEY     "$api"
-  [ -n "$model" ] && set_konf "$KONF" AI_MODEL       "$model"
   [ -n "$token" ] && set_konf "$KONF" TELEGRAM_TOKEN "$token"
   [ -n "$url"   ] && set_konf "$KONF" DASHBOARD_URL  "$url"
 
   chown root:"$AGEN" "$KONF"; chmod 640 "$KONF"
   printf '\n'
 
-  if [ -n "$api" ]; then ok "kunci API tersimpan"
-  else lewat "kunci API kosong - agent belum bisa menimbang apa pun"; fi
   if [ -n "$token" ]; then ok "bot Telegram disetel"
   else lewat "Telegram tidak dipakai"; fi
   if [ -n "$url" ]; then ok "dashboard: $url"
@@ -385,7 +389,7 @@ copot() {
   rm -rf /opt/yoru          && ok "/opt/yoru dihapus"
   rm -rf /usr/share/yoru    && ok "/usr/share/yoru dihapus"
   if id "$AGEN" >/dev/null 2>&1; then userdel "$AGEN" 2>/dev/null && ok "pengguna $AGEN dihapus"; fi
-  lewat "$DIR_LOG, $DIR_ETC dan $DIR_DATA sengaja DIBIARKAN - itu catatan tindakan dan laporan, jejak tidak dihapus otomatis"
+  lewat "$DIR_LOG, $DIR_ETC, $DIR_DATA dan $DIR_ASAL sengaja DIBIARKAN - itu catatan, laporan, dan rekaman keadaan asal"
 
   # Menghapus berkas orang tanpa diminta bukan hak kami. Tapi diam soal kunci
   # API yang tergeletak di server yang mau dilepas juga tidak benar.
@@ -429,7 +433,6 @@ uji_sendiri
 
 JAM_TERPASANG="$(ambil_konf "$KONF" JAM_PENJAGAAN)"; [ -n "$JAM_TERPASANG" ] || JAM_TERPASANG="03:17"
 ZONA_TERPASANG="$(ambil_konf "$KONF" ZONA_WAKTU)";   [ -n "$ZONA_TERPASANG" ] || ZONA_TERPASANG="UTC"
-PUNYA_KUNCI="$(ambil_konf "$KONF" AI_API_KEY)"
 
 cat <<SELESAI
 
@@ -442,6 +445,7 @@ ${TEBAL}Selesai.${H}
   Penjagaan    setiap hari $JAM_TERPASANG $ZONA_TERPASANG
   Catatan      $DIR_LOG/tindakan.log   (root, agent tidak bisa menulis)
   Laporan      $DIR_DATA/laporan-terakhir.json   (ditulis agent)
+  Keadaan asal $DIR_ASAL/<kontrol>/   (direkam sebelum terapkan pertama)
 
   Coba sendiri:
     sudo -u $AGEN sudo -n $DIR_BIN/yoructl K05 periksa
@@ -454,8 +458,8 @@ ${TEBAL}Selesai.${H}
 
 SELESAI
 
-if [ -z "$PUNYA_KUNCI" ]; then
-  printf '  %sBelum selesai betul.%s AI_API_KEY di %s masih kosong.\n' "$KUNING" "$H" "$KONF"
-  printf '  Dispatcher dan katalog sudah siap, tapi belum ada yang memakainya:\n'
-  printf '  siklus penjagaan akan berhenti tiap hari sampai kuncinya diisi.\n\n'
+if [ ! -x "$DIR_BIN/yoru-agent" ]; then
+  printf '  %sBelum selesai betul.%s Agent Hermes belum terpasang di %s/yoru-agent.\n' "$KUNING" "$H" "$DIR_BIN"
+  printf '  Dispatcher, katalog, dan timer sudah siap, tapi belum ada yang memakainya:\n'
+  printf '  siklus penjagaan akan berhenti tiap hari sampai agentnya ada.\n\n'
 fi
