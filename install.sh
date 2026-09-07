@@ -202,16 +202,32 @@ buat_folder() {
 # patah di baris lama pertama - dan patahnya di layar orang lain, bukan di
 # layar yang meng-upgrade. Jadi yang lama dipindah, bukan dihapus.
 pindah_log_lama() {
-  local f="$DIR_LOG/tindakan.log" baris1 tujuan
+  local f="$DIR_LOG/tindakan.log" tujuan tmp n_teks n_json
   [ -s "$f" ] || return 0
-  baris1=$(head -1 "$f" 2>/dev/null)
-  case "$baris1" in
-    \{*) return 0 ;;
-  esac
+
+  # Dipilah per baris, bukan dipindah seluruh berkas. Versi pertama fungsi ini
+  # memindahkan semuanya - dan ikut membawa baris JSON yang sudah sempat
+  # ditulis, sehingga log gabungan jadi lebih pendek daripada log per kontrol.
+  # Datanya tidak hilang, tapi dua berkas yang seharusnya sejalan jadi tidak
+  # cocok, dan itu ketahuannya belakangan di layar orang lain.
+  n_teks=$(grep -cv '^{' "$f" 2>/dev/null) || n_teks=0
+  [ "${n_teks:-0}" -gt 0 ] || return 0
+
   tujuan="$f.teks-lama.$(date +%Y%m%d%H%M%S)"
-  mv "$f" "$tujuan" 2>/dev/null || return 0
-  lewat "catatan lama berbentuk teks dipindah ke $(basename "$tujuan")"
-  lewat "sejak 0.1.3 catatan ditulis JSON per baris, dua bentuk tidak boleh tercampur"
+  tmp=$(mktemp) || return 0
+
+  grep -v '^{' "$f" > "$tujuan" 2>/dev/null
+  grep    '^{' "$f" > "$tmp"    2>/dev/null
+  n_json=$(wc -l < "$tmp" 2>/dev/null) || n_json=0
+
+  # Isinya disalin, bukan berkasnya dipindah - supaya pemilik dan izin
+  # berkas aslinya tidak ikut berganti.
+  cat "$tmp" > "$f"
+  rm -f "$tmp"
+  chmod 640 "$f" "$tujuan" 2>/dev/null
+
+  lewat "$n_teks baris format teks lama dipindah ke $(basename "$tujuan")"
+  lewat "$n_json baris JSON tetap di tindakan.log"
 }
 
 pasang_dispatcher() {
