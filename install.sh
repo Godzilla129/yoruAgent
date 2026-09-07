@@ -197,8 +197,26 @@ buat_folder() {
   ok "$DIR_ASAL (root:root 700 - agent tidak bisa menyentuh)"
 }
 
+# Versi sebelum 0.1.3 menulis catatan tindakan sebagai teks bebas; sekarang
+# JSON per baris. Kalau dua bentuk tercampur di satu berkas, parser dashboard
+# patah di baris lama pertama - dan patahnya di layar orang lain, bukan di
+# layar yang meng-upgrade. Jadi yang lama dipindah, bukan dihapus.
+pindah_log_lama() {
+  local f="$DIR_LOG/tindakan.log" baris1 tujuan
+  [ -s "$f" ] || return 0
+  baris1=$(head -1 "$f" 2>/dev/null)
+  case "$baris1" in
+    \{*) return 0 ;;
+  esac
+  tujuan="$f.teks-lama.$(date +%Y%m%d%H%M%S)"
+  mv "$f" "$tujuan" 2>/dev/null || return 0
+  lewat "catatan lama berbentuk teks dipindah ke $(basename "$tujuan")"
+  lewat "sejak 0.1.3 catatan ditulis JSON per baris, dua bentuk tidak boleh tercampur"
+}
+
 pasang_dispatcher() {
   langkah "Memasang dispatcher"
+  pindah_log_lama
   install -o root -g root -m 755 "$ASAL/bin/yoructl" "$DIR_BIN/yoructl" \
     || mati "gagal menyalin dispatcher"
   ok "$DIR_BIN/yoructl (root:root 755)"
