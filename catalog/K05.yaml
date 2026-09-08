@@ -30,7 +30,7 @@ kenapa: >
 
 prasyarat:
   - id: ssh_diizinkan_dulu
-    cek: "ufw show added | grep -q '22/tcp'"
+    cek: "port dari 'sshd -T' harus sudah masuk 'ufw show added' sebelum enable"
     wajib: true
     kalau_gagal: BATALKAN
     alasan: >
@@ -55,7 +55,7 @@ status_awal_server_ini: GAGAL
 terapkan:
   urutan_wajib: true
   langkah:
-    - "ufw allow 22/tcp comment 'SSH - yoru K05'"
+    - "ufw allow <port-dari-sshd-T>/tcp comment 'SSH - yoru K05'   (lihat port_ssh_tidak_dipatok)"
     - "ufw default deny incoming"
     - "ufw default allow outgoing"
     - "ufw --force enable"
@@ -85,12 +85,88 @@ yang_rusak_kalau_diterapkan: >
   semuanya harus didaftarkan dulu.
 
 catatan_panel:
-  aapanel: "WAJIB izinkan port 8888 dulu, atau pemilik terkunci dari panelnya"
-  cyberpanel: "WAJIB izinkan port 8090"
+  status: "SUDAH DITANGANI KODE sejak yoructl 0.1.5 - lihat port_layanan_dinamis"
+  aapanel: "port panel (bawaannya 8888) ikut terbaca sebagai port terbuka, dan K05 menolak menyala sampai pemilik menjawabnya"
+  cyberpanel: "sama, bawaannya 8090"
   cpanel: >
-    JANGAN aktifkan ufw. cPanel umumnya memakai CSF yang mengelola
-    iptables sendiri. Dua firewall akan saling menimpa aturan.
-    Yoru harus melewati kontrol ini dan hanya memberi saran.
+    Tetap TIDAK dinyalakan, tapi sekarang otomatis: cPanel memakai CSF, dan
+    terapkan berhenti sendiri begitu CSF terdeteksi. Dua firewall akan saling
+    menimpa aturan.
+
+port_layanan_dinamis:
+  sejak: "yoructl 0.1.5"
+  diminta_oleh: "julmukcur, 8 Sep 2026 - 'gw mau si yoru itu dinamis, gw ga mau bentrok'"
+  godaan_yang_dihindari: >
+    Cara termudah adalah menghafalkan nomornya: 8888 aaPanel, 8090
+    CyberPanel, 2083 cPanel. Itu kesalahan yang sama persis dengan mematok
+    port SSH di 22, cuma dibungkus lebih rapi. Orang bisa mengganti port
+    panelnya, web bisa di 8080 atau 3000, dan panel yang belum kami tahu ada
+    ratusan. Daftar hafalan selalu ketinggalan, dan begitu ketinggalan
+    akibatnya pemilik terkunci dari panelnya sendiri.
+  caranya: >
+    Sama seperti SSH: baca kenyataan. "ss -tlnp" memberi tahu port TCP mana
+    yang benar-benar terbuka ke luar berikut nama prosesnya. Alamat loopback
+    dibuang karena tidak bisa dihubungi dari internet.
+  lalu_diapakan: >
+    Yoru TIDAK tahu 8888 itu panel atau lubang - yang tahu cuma pemiliknya.
+    Jadi terapkan berhenti dan menyebutkan portnya, bukan menebak.
+    Mengizinkan otomatis membuat firewallnya tidak ada gunanya, karena port
+    yang terbuka TIDAK SENGAJA - justru yang mau ditutup - ikut diizinkan.
+    Membiarkannya tertutup mengunci pemilik dari panelnya. Satu-satunya
+    jawaban benar adalah bertanya.
+  alur_lengkap: >
+    periksa melaporkan port yang belum dijawab di field "pesan" ->
+    Hermes bertanya ke pemilik ("port 8888 terbuka dipakai python3, itu panel
+    kamu?") -> jawaban dicatat -> terapkan baru mau jalan.
+    Inilah bagian yang tidak bisa dikerjakan skrip biasa.
+  dari_mana_daftar_izinnya:
+    - "/etc/yoru/yoru.conf  PORT_DIIZINKAN=\"80 443 8888\"  - milik root, agent tidak bisa menulis"
+    - "/var/lib/yoru/port-disetujui  - ditulis agent dari jawaban pemilik, satu port per baris"
+  kenapa_agent_boleh_menulis_yang_kedua: >
+    Kalau pemilik harus SSH masuk lalu menyunting berkas sendiri, janji
+    "buat yang tidak punya tim IT" bubar. Ini juga bukan pelebaran kekuasaan:
+    agent sudah bisa memanggil "K05 kembalikan" yang mematikan firewall
+    sepenuhnya, jadi menambah satu port izin lebih kecil dari yang sudah bisa
+    dia lakukan. Setiap port yang diizinkan tetap tercatat di jejak audit
+    milik root, yang tidak bisa disunting agent. Yang mau lebih ketat tinggal
+    memakai yoru.conf saja.
+  isi_berkas_divalidasi: >
+    Cuma angka 1-65535 yang diterima. Baris seperti "abc", "99999", "-1",
+    "0", atau "443; rm -rf /" dibuang tanpa dijalankan.
+  bentrok_firewall_lain:
+    diperiksa: "CSF (lewat perintah csf atau /etc/csf/csf.conf) dan firewalld (systemctl is-active)"
+    kalau_ketemu: "terapkan DITOLAK, ufw tidak disentuh sama sekali"
+    kenapa: >
+      Dua firewall di satu server bukan konfigurasi - itu lomba lari, dan
+      pemenangnya berubah tergantung urutan start layanan. Pelajaran yang
+      sama dengan K10 dan ufw soal log_martians, cuma skalanya seluruh tabel
+      aturan. Ini sebagian dari CIS 4.1.1.
+    yang_belum: >
+      nftables belum diperiksa, karena ufw sendiri memakainya sebagai mesin
+      di belakang layar dan kami belum menguji cara membedakan "nftables
+      punya ufw" dengan "nftables punya pemilik". Ditulis supaya tidak
+      dikira sudah lengkap.
+  yang_belum_ditangani: >
+    UDP tidak ikut didata. Yang membuat orang terkunci di luar itu TCP - ssh,
+    web, panel. Memasukkan UDP hanya menambah keramaian seperti port klien
+    DHCP. Ini lubang yang kami tahu.
+  diuji: >
+    8 Sep 2026, sembilan keadaan dengan ss, ufw, sshd dan systemctl tiruan.
+    Server contoh: sshd 4422, nginx 80 dan 443, panel 8888, mariadb hanya di
+    127.0.0.1, memcached hanya di [::1].
+    (1) periksa menyebut "80(nginx) 443(nginx) 8888(python3)" - mariadb dan
+    memcached tidak ikut, port SSH tidak ikut;
+    (2) terapkan DITOLAK dan ufw tetap inactive;
+    (3) setelah tiga port dijawab, pesan periksa jadi null;
+    (4) terapkan LULUS, aturan terpasang 4422 bertanda "SSH - yoru K05" dan
+    80/443/8888 bertanda "disetujui pemilik - yoru K05";
+    (5) verifikasi LULUS;
+    (6) port baru 3000 muncul belakangan - langsung terbaca sebagai belum
+    dijawab, padahal status K05 masih LULUS;
+    (7) firewalld aktif -> DITOLAK;
+    (8) CSF terpasang -> DITOLAK;
+    (9) berkas port berisi sampah dan percobaan suntikan perintah -> semuanya
+    dibuang, tidak ada yang dijalankan.
 
 konflik_dengan_k10:
   ringkasan: >
@@ -169,6 +245,64 @@ bukti_uji_dispatcher: >
   verifikasi   -> LULUS "active";
   ufw status verbose -> "deny (incoming), allow (outgoing)" dengan dua
   aturan 22/tcp. Sesi SSH yang sedang berjalan tidak terputus sama sekali.
+port_ssh_tidak_dipatok:
+  sejak: "yoructl 0.1.4"
+  masalah_versi_lama: >
+    terapkan memeriksa ":22 " lalu menjalankan "ufw allow 22/tcp". Itu benar
+    di VM uji kami, dan salah di banyak VPS - penyedia sering memindahkan
+    SSH ke port lain. CloudBaik, tempat proyek ini akan dipasang, memakai
+    4422.
+  akibatnya: >
+    Di server seperti itu K05 berhenti dengan "sshd tidak terdeteksi di port
+    22" dan tidak pernah bisa diterapkan. Penjaganya bekerja benar - dia
+    memang mencegah firewall menyala tanpa jalan masuk - tapi hasilnya
+    kontrol yang tidak pernah jalan, dan penolakannya terdengar wajar
+    sehingga tidak ada yang curiga.
+  sekarang: >
+    Port dibaca dari "sshd -T | awk '/^port /{print $2}'" - dari sshd
+    sendiri, bukan dari tebakan. Kalau sshd mendengar di lebih dari satu
+    port, semuanya diizinkan.
+  yang_tidak_berubah: >
+    Port tetap harus BENAR-BENAR DIDENGAR, diperiksa lewat ss, bukan sekadar
+    tertulis di konfigurasi. Menyalakan firewall berdasarkan niat dan bukan
+    kenyataan adalah cara paling rapi mengunci diri sendiri di luar server.
+    Dan port tetap diizinkan SEBELUM firewall dinyalakan.
+  diuji: >
+    Lima keadaan diuji 7 Sep 2026: sshd di 4422 saja; sshd di 22 saja; sshd
+    di dua port sekaligus; konfigurasi menyebut port tapi tidak ada yang
+    mendengar (harus DITOLAK); dan sshd -T tidak terbaca (harus DITOLAK).
+    Diperiksa juga bahwa pola ":22 " tidak salah mengenali ":2222 " atau
+    ":4422 ".
+  diuji_ujung_ke_ujung: >
+    7 Sep 2026, dengan sshd dan ufw tiruan yang menaruh sshd di 4422:
+    periksa -> GAGAL "inactive"; terapkan -> LULUS "active" dan aturan yang
+    terpasang berbunyi "ALLOW 4422/tcp" (bukan 22); verifikasi -> LULUS;
+    kembalikan -> DIKEMBALIKAN "inactive".
+
+penjaga_ufw_tidak_terpasang:
+  sejak: "yoructl 0.1.4"
+  masalah: >
+    periksa sudah memeriksa keberadaan ufw sejak awal, tapi terapkan dan
+    kembalikan belum. Keluaran semua perintah ufw dibuang ke /dev/null, jadi
+    di server tanpa ufw semuanya gagal diam-diam, lalu status yang kosong
+    dibaca sebagai "ufw gagal aktif".
+  kenapa_itu_serius: >
+    Sebabnya salah. Orang yang membacanya akan mencari alasan kenapa ufw
+    menolak menyala, padahal ufw memang tidak ada. Ini jenis kesalahan yang
+    sama dengan K07 dulu, yang melapor "periksa koneksi internet" padahal
+    yang terjadi adalah apt sedang terkunci.
+  sekarang: >
+    terapkan berhenti lebih dulu dengan DITOLAK "ufw tidak terpasang - pasang
+    dulu: apt-get install ufw", sebelum menyentuh apa pun. kembalikan menjawab
+    DILEWATI "ufw tidak terpasang" - tidak ada yang perlu dikembalikan, dan
+    melapor DIKEMBALIKAN dengan nilai kosong itu kabar bohong yang terdengar
+    seperti keberhasilan.
+  diuji: >
+    7 Sep 2026, dibandingkan langsung. Versi tanpa penjaga menjawab
+    "ufw gagal aktif"; versi 0.1.4 menjawab "ufw tidak terpasang".
+    Diuji juga bahwa dengan ufw terpasang, keempat tindakan tetap berjalan
+    seperti biasa.
+
 catatan_urutan_terapkan: >
   Di dalam terapkan, port 22 diizinkan SEBELUM firewall dinyalakan, dan
   keberadaan sshd di port 22 diperiksa lebih dulu. Urutan ini tidak boleh

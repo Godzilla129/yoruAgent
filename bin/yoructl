@@ -13,7 +13,7 @@ umask 022
 export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-VERSI="0.1.3"
+VERSI="0.1.5"
 LOG_DIR=/var/log/yoru
 LOG="$LOG_DIR/tindakan.log"
 
@@ -21,6 +21,38 @@ LOG="$LOG_DIR/tindakan.log"
 # Ditaruh di /var/backups - tempat yang memang dipakai Ubuntu untuk cadangan
 # konfigurasi, dan milik root, di luar apa pun yang bisa ditulis agent.
 DIR_ASAL=/var/backups/yoru
+
+# ------------------------------------------------------------------ kunci
+# Satu kontrol tidak boleh dikerjakan dua proses sekaligus. Contoh yang
+# paling gampang kejadian: orang klik dua kali di dashboard, atau timer
+# harian jalan pas ada yang mencet tombol.
+#
+# Yang berbahaya bukan dua "periksa" barengan - itu cuma baca. Yang
+# berbahaya "terapkan" dan "kembalikan" barengan. Di K06 misalnya: satu
+# proses menulis berkas lalu restart mariadb, satu lagi menghapus berkas
+# lalu restart mariadb. Hasil akhirnya tidak bisa ditebak, dan DUA-DUANYA
+# melapor sukses.
+#
+# Kuncinya SATU untuk semua kontrol, bukan satu per kontrol. Alasannya
+# kontrol-kontrol ini berbagi berkas: K01 sampai K04 sama-sama menulis ke
+# /etc/ssh/sshd_config.d, dan K05 dengan K10 sama-sama menyunting
+# /etc/default/ufw. Kunci per kontrol akan terasa aman padahal dua sed -i
+# masih bisa jalan bersamaan di berkas yang sama.
+#
+# /run/lock dipilih karena tmpfs - isinya hilang saat reboot, jadi kunci
+# yatim tidak pernah tertinggal setelah server mati mendadak.
+KUNCI=/run/lock/yoru.lock
+TUNGGU_KUNCI=120
+
+ambil_kunci() {
+  command -v flock >/dev/null 2>&1 || return 2   # 2 = flock tidak ada
+  [ -d /run/lock ] || KUNCI="$DIR_ASAL/.kunci"
+  [ -d "${KUNCI%/*}" ] || return 2
+  exec 9>"$KUNCI" 2>/dev/null || return 2
+  chmod 600 "$KUNCI" 2>/dev/null
+  flock -w "$TUNGGU_KUNCI" 9 || return 1        # 1 = keburu habis waktunya
+  return 0
+}
 
 # ---------------------------------------------------------------- keluaran
 # Semua keluaran berbentuk JSON satu baris supaya gampang dibaca agent.
@@ -205,6 +237,77 @@ kunci_ssh_terbukti() {
   return 0
 }
 
+# ---------------------------------------------------- semua penghuni server
+# Pemilik bukan satu-satunya orang di server. Kalau ada lima akun dan cuma
+# pemilik yang punya kunci SSH, mematikan login password bikin empat orang
+# terkunci di luar - dan Yoru akan melapor LULUS. Kontrol yang bikin orang
+# kehilangan akses tidak boleh dihitung berhasil.
+
+# Ambil SELURUH nilai sebuah setelan sshd, bukan cuma kata pertama.
+# allowusers/denyusers isinya bisa banyak nama, sedangkan sshd_nilai berhenti
+# di kata pertama. Dikerjakan pada salinan $0 - mengubah $1 langsung bikin
+# awk menyusun ulang barisnya, dan itu pernah merusak pembacaan kami.
+sshd_nilai_semua() {
+  sshd -T 2>/dev/null | awk -v k="^$1\$" '$1 ~ k { s=$0; sub(/^[^ ]+[ ]+/, "", s); print s; exit }'
+}
+
+# Apakah <nama> ada di <daftar> yang dipisah spasi? Dicocokkan per kata,
+# bukan substring - "budi" tidak boleh dianggap cocok dengan "budianto".
+daftar_memuat() {
+  local daftar=" $1 " nama="$2"
+  case "$daftar" in *" $nama "*) return 0 ;; esac
+  return 1
+}
+
+# Isinya nama biasa semua, tanpa pola? AllowUsers boleh diisi "bu*" atau
+# "budi@1.2.3.4". Mencocokkan pola secara harfiah bisa MELEWATKAN orang yang
+# sebenarnya bisa masuk - dan yang terlewat itulah yang terkunci. Jadi kalau
+# ada pola, setelannya diabaikan dan semua akun ikut diperiksa: K02 jadi
+# lebih cerewet, bukan lebih longgar.
+daftar_polos() {
+  local x
+  for x in $1; do
+    case "$x" in *[!a-zA-Z0-9_.-]*) return 1 ;; esac
+  done
+  return 0
+}
+
+# Siapa saja yang masih bisa masuk lewat SSH tapi BELUM punya kunci.
+user_tanpa_kunci() {
+  local izin tolak_ada root_boleh pakai_izin=0 pakai_tolak=0
+  izin=$(sshd_nilai_semua allowusers)
+  tolak_ada=$(sshd_nilai_semua denyusers)
+  root_boleh=$(sshd_nilai permitrootlogin)
+
+  if [ -n "$izin" ] && daftar_polos "$izin"; then pakai_izin=1; fi
+  if [ -n "$tolak_ada" ] && daftar_polos "$tolak_ada"; then pakai_tolak=1; fi
+
+  # AllowGroups/DenyGroups sengaja tidak dibaca. Keduanya hanya MEMPERSEMPIT
+  # siapa yang boleh masuk, jadi mengabaikannya membuat daftar ini kepanjangan
+  # - tidak pernah kependekan. Salah ke arah yang aman.
+
+  local nama uid rumah shell
+  while IFS=: read -r nama _ uid _ _ rumah shell; do
+    # Akun layanan tidak bisa login sama sekali.
+    case "$shell" in *nologin|*false|"") continue ;; esac
+
+    if [ "$uid" = "0" ]; then
+      # root cuma dihitung kalau dia memang masih masuk pakai password.
+      # Kalau permitrootlogin sudah "no" atau "prohibit-password", K02 tidak
+      # mengubah apa pun untuk root - menyebutnya cuma bikin gaduh.
+      [ "$root_boleh" = "yes" ] || continue
+    else
+      [ "$uid" -ge 1000 ]  2>/dev/null || continue
+      [ "$uid" -lt 65534 ] 2>/dev/null || continue
+    fi
+
+    if [ "$pakai_izin" = 1 ]  && ! daftar_memuat "$izin" "$nama";     then continue; fi
+    if [ "$pakai_tolak" = 1 ] &&   daftar_memuat "$tolak_ada" "$nama"; then continue; fi
+
+    [ -s "$rumah/.ssh/authorized_keys" ] || printf '%s\n' "$nama"
+  done < <(getent passwd)
+}
+
 # -------------------------------------------------- rekam keadaan asal
 # Sebelum sebuah kontrol diterapkan PERTAMA KALI di server ini, salin dulu
 # berkas yang bakal disentuh dan bacaan keadaan yang sedang berlaku.
@@ -286,12 +389,24 @@ k01() { case "$1" in
   kembalikan) hapus_ssh 01-yoru-k01.conf; selesai DIKEMBALIKAN true "$(sshd_nilai permitrootlogin)" ;;
 esac }
 
-k02() { case "$1" in
+k02() { local kurang; case "$1" in
   periksa|verifikasi) nilai=$(sshd_nilai passwordauthentication)
     pastikan_terbaca "$nilai" "sshd -T tidak bisa dibaca - openssh-server terpasang?"
     [ "$nilai" = "no" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
     kunci_ssh_terbukti || tolak "belum ada bukti login SSH key berhasil - menerapkan ini menutup satu-satunya jalan masuk"
+
+    # Pemilik aman belum berarti semua orang aman. Tanpa langkah ini, K02
+    # bisa mengunci penghuni lain di luar dan tetap melapor LULUS.
+    kurang=$(user_tanpa_kunci)
+    kurang="${kurang//$'\n'/ }"; kurang="${kurang% }"
+    if [ -n "$kurang" ]; then
+      if [ "$PAKSA" = "1" ]
+        then catat "PERINGATAN" "true" "" "--paksa dipakai, akun tanpa kunci SSH ikut terkunci: $kurang"
+        else tolak "akun ini belum punya kunci SSH dan akan terkunci di luar: $kurang - pasangi kunci dulu, atau ulangi dengan --paksa kalau akun itu memang sudah tidak dipakai"
+      fi
+    fi
+
     tulis_ssh 01-yoru-k02.conf "PasswordAuthentication no" || tolak "sshd menolak konfigurasi"
     nilai=$(sshd_nilai passwordauthentication)
     [ "$nilai" = "no" ] && selesai LULUS true "$nilai" || { hapus_ssh 01-yoru-k02.conf; tolak "verifikasi gagal, sudah dikembalikan"; } ;;
@@ -327,21 +442,209 @@ k04() { local lemah; case "$1" in
     selesai DIKEMBALIKAN true "mac_sha1=$(sshd -T 2>/dev/null | grep -E '^macs ' | grep -c 'sha1')" ;;
 esac }
 
-k05() { case "$1" in
+# Port SSH dibaca dari sshd sendiri, tidak dipatok 22.
+#
+# Penyedia VPS sering memindahkannya - CloudBaik memakai 4422. Kalau dipatok,
+# K05 menolak jalan di server itu, dan kontrol yang tidak pernah bisa jalan
+# sama saja dengan tidak ada. Penolakannya pun terdengar wajar ("sshd tidak
+# terdeteksi di port 22"), jadi tidak ada yang curiga.
+#
+# sshd -T mencetak satu baris "port <n>" per port yang dipakai, jadi server
+# yang mendengar di dua port ikut tertangani.
+port_ssh() { sshd -T 2>/dev/null | awk '/^port /{print $2}'; }
+
+# ------------------------------------------------- port layanan lain
+# SSH bukan satu-satunya pintu. Server orang biasanya juga punya web, panel
+# (aaPanel, CyberPanel), atau layanan lain. Menyalakan firewall tolak-semua
+# tanpa mengurus port itu = mengunci pemilik di luar panelnya sendiri.
+#
+# Godaannya adalah menghafalkan nomornya: 8888 buat aaPanel, 8090 buat
+# CyberPanel, 2083 buat cPanel. Itu kesalahan yang sama persis dengan
+# mematok port SSH di 22, cuma dibungkus lebih rapi - orang bisa mengganti
+# port panelnya, dan panel yang belum kami tahu ada ratusan.
+#
+# Jadi caranya sama seperti SSH: BACA KENYATAAN, jangan menebak.
+
+# Semua port TCP yang benar-benar terbuka ke luar, berikut nama prosesnya.
+#
+# Alamat loopback dibuang - 127.x dan ::1 tidak bisa dihubungi dari internet,
+# jadi bukan lubang. Kalau ikut didaftar, pemilik dihujani pertanyaan soal
+# port yang memang aman, dan pertanyaan yang terasa mengada-ada adalah cara
+# tercepat membuat orang berhenti membaca.
+#
+# UDP sengaja tidak diikutkan: yang bikin orang terkunci di luar itu TCP
+# (ssh, web, panel). Memasukkan UDP cuma menambah keramaian seperti port
+# klien DHCP. Ini lubang yang kami tahu, ditulis supaya tidak dikira lengkap.
+port_publik() {
+  local keluaran
+  keluaran=$(ss -tlnp 2>/dev/null) || return 0
+  printf '%s\n' "$keluaran" | awk '
+    $1 != "LISTEN" { next }
+    {
+      alamat = $4
+      port  = alamat; sub(/.*:/, "", port)
+      induk = alamat; sub(/:[^:]*$/, "", induk)
+      sub(/%.*$/, "", induk)            # "127.0.0.53%lo" -> "127.0.0.53"
+      if (induk ~ /^127\./)  next
+      if (induk == "[::1]")  next
+      if (induk == "::1")    next
+      proses = "?"
+      if (match($0, /"[^"]+"/)) proses = substr($0, RSTART + 1, RLENGTH - 2)
+      print port " " proses
+    }' | sort -k1,1n -u
+}
+
+# Port yang sudah dijawab pemilik "iya, itu memang punya saya".
+#
+# Dua sumber, sengaja:
+#   /etc/yoru/yoru.conf  PORT_DIIZINKAN="80 443"   <- root, agent tidak bisa menulis
+#   /var/lib/yoru/port-disetujui                   <- ditulis agent dari jawaban pemilik
+#
+# Yang kedua memang bisa ditulis agent, dan itu disengaja: kalau pemilik harus
+# SSH masuk lalu menyunting berkas sendiri, seluruh janji "buat yang tidak
+# punya tim IT" bubar. Ini juga bukan pelebaran kekuasaan - agent sudah bisa
+# memanggil "K05 kembalikan" yang mematikan firewall sepenuhnya, jadi
+# menambah satu port izin itu justru lebih kecil dari yang sudah bisa dia
+# lakukan. Yang tidak berubah: setiap port yang diizinkan ikut tercatat di
+# jejak audit milik root, yang tidak bisa disunting agent.
+#
+# Yang mau lebih ketat tinggal memakai yoru.conf saja dan membiarkan berkas
+# kedua kosong.
+DIR_DATA=/var/lib/yoru
+BERKAS_PORT="$DIR_DATA/port-disetujui"
+KONF=/etc/yoru/yoru.conf
+
+ambil_konf() {  # ambil_konf <kunci> - dibaca sebagai teks, TIDAK di-source
+  [ -r "$KONF" ] || return 0
+  awk -v k="$1" '
+    {
+      baris = $0
+      sub(/^[[:space:]]+/, "", baris)
+      if (baris ~ /^#/ || baris == "") next
+      p = index(baris, "=")
+      if (p == 0) next
+      nama  = substr(baris, 1, p - 1)
+      nilai = substr(baris, p + 1)
+      sub(/[[:space:]]+$/, "", nama)
+      sub(/^[[:space:]]+/, "", nilai); sub(/[[:space:]]+$/, "", nilai)
+      gsub(/^"|"$/, "", nilai)
+      if (nama == k) { print nilai; exit }
+    }' "$KONF" 2>/dev/null
+}
+
+port_sah() {  # angka saja, 1-65535
+  case "$1" in ""|*[!0-9]*) return 1 ;; esac
+  [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 65535 ] 2>/dev/null
+}
+
+port_disetujui() {
+  local hasil="" p baris
+  for p in $(ambil_konf PORT_DIIZINKAN); do
+    port_sah "$p" && hasil="$hasil $p"
+  done
+  if [ -r "$BERKAS_PORT" ]; then
+    while read -r baris || [ -n "$baris" ]; do
+      baris="${baris%%#*}"                 # buang keterangan
+      baris="${baris//[[:space:]]/}"
+      port_sah "$baris" && hasil="$hasil $baris"
+    done < "$BERKAS_PORT"
+  fi
+  printf '%s' "${hasil# }"
+}
+
+# Firewall lain yang aktif di server yang sama.
+#
+# Dua firewall bukan konfigurasi - itu lomba lari, dan pemenangnya berubah
+# tergantung urutan start layanan. Persis pelajaran dari K10 dan ufw soal
+# log_martians, cuma skalanya seluruh tabel aturan.
+#
+# Yang diperiksa cuma CSF dan firewalld: dua-duanya tidak ada di Ubuntu
+# bawaan, jadi kalau ketemu artinya memang sengaja dipasang. nftables belum
+# diperiksa karena ufw sendiri memakainya sebagai mesin di belakang layar,
+# dan kami belum menguji cara membedakan "nftables punya ufw" dengan
+# "nftables punya pemilik". Ditulis supaya tidak dikira sudah lengkap.
+firewall_lain() {
+  if command -v csf >/dev/null 2>&1 || [ -f /etc/csf/csf.conf ]; then
+    printf 'CSF (biasanya bawaan cPanel)'; return 0
+  fi
+  if [ "$(systemctl is-active firewalld 2>/dev/null)" = "active" ]; then
+    printf 'firewalld'; return 0
+  fi
+  return 1
+}
+
+# Port terbuka yang belum dijawab pemilik dan bukan port SSH.
+port_belum_dijawab() {  # port_belum_dijawab "<port-ssh>" "<port-disetujui>"
+  local ssh_port="$1" oke="$2" belum="" p proses
+  while read -r p proses; do
+    [ -n "$p" ] || continue
+    daftar_memuat "$ssh_port" "$p" && continue
+    daftar_memuat "$oke" "$p"      && continue
+    belum="$belum $p($proses)"
+  done < <(port_publik)
+  printf '%s' "${belum# }"
+}
+
+k05() { local p daftar ada oke belum lain; case "$1" in
   periksa|verifikasi)
     command -v ufw >/dev/null 2>&1 || selesai ERROR false "" "ufw tidak terpasang - tidak bisa diperiksa"
+
+    # Daftar port yang belum dijawab pemilik ikut dikirim di "pesan". Ini
+    # bahan mentah buat Hermes menyusun pertanyaan ke pemilik: "port 8888
+    # terbuka dipakai python3, itu panel kamu?" - dan jawabannya nanti yang
+    # bikin terapkan bisa jalan.
+    belum="$(port_belum_dijawab "$(port_ssh)" "$(port_disetujui)")"
+    [ -z "$belum" ] || belum="port terbuka belum dijawab pemilik: $belum"
+
     nilai=$(ufw status verbose 2>/dev/null | awk '/^Status:/ {print $2}')
     if [ "$nilai" = "active" ] && ada_teks 'deny (incoming)' ufw status verbose
-      then selesai LULUS true "$nilai"; else selesai GAGAL true "${nilai:-tidak-aktif}"; fi ;;
+      then selesai LULUS true "$nilai" "$belum"
+      else selesai GAGAL true "${nilai:-tidak-aktif}" "$belum"; fi ;;
   terapkan)
-    ada_teks ':22 ' ss -tulpn || tolak "sshd tidak terdeteksi di port 22"
-    ufw allow 22/tcp comment 'SSH - yoru K05' >/dev/null 2>&1
+    # Tanpa penjaga ini, semua perintah ufw gagal diam-diam (keluarannya
+    # dibuang), lalu status kosong terbaca sebagai "ufw gagal aktif" - sebab
+    # yang salah, persis kesalahan yang pernah kita kena di K07.
+    command -v ufw >/dev/null 2>&1 || tolak "ufw tidak terpasang - pasang dulu: apt-get install ufw"
+
+    lain="$(firewall_lain)" && tolak "server ini sudah memakai $lain - dua firewall akan saling menimpa aturan. Yoru tidak menyalakan ufw di sini"
+
+    daftar="$(port_ssh)"
+    [ -n "$daftar" ] || tolak "tidak bisa membaca port SSH dari sshd -T - openssh-server terpasang?"
+
+    # Port harus benar-benar didengar, bukan sekadar tertulis di konfigurasi.
+    # Menyalakan firewall berdasarkan niat, bukan kenyataan, itu cara mengunci
+    # diri sendiri di luar server.
+    ada=0
+    for p in $daftar; do ada_teks ":$p " ss -tulpn && ada=1; done
+    [ "$ada" = "1" ] || tolak "sshd tidak terdengar di port mana pun dari daftar: $(printf '%s ' $daftar)"
+
+    # Layanan lain yang terbuka tapi belum dijawab pemilik. Yoru tidak tahu
+    # 8888 itu panel atau lubang - yang tahu cuma pemiliknya. Jadi berhenti
+    # di sini dan tanya, JANGAN tebak. Mengizinkan otomatis = firewallnya
+    # tidak ada gunanya; membiarkan tertutup = pemilik terkunci dari panelnya.
+    oke="$(port_disetujui)"
+    belum="$(port_belum_dijawab "$daftar" "$oke")"
+    [ -z "$belum" ] || tolak "port ini terbuka tapi belum dijawab pemilik: $belum - tanyakan dulu, lalu catat portnya di $BERKAS_PORT atau PORT_DIIZINKAN di $KONF"
+
+    # Diizinkan SEBELUM firewall dinyalakan. Urutan terbalik = terkunci.
+    for p in $daftar; do
+      ufw allow "$p"/tcp comment 'SSH - yoru K05' >/dev/null 2>&1
+    done
+    for p in $oke; do
+      ufw allow "$p"/tcp comment 'disetujui pemilik - yoru K05' >/dev/null 2>&1
+    done
+    [ -z "$oke" ] || catat "PERINGATAN" "true" "" "port disetujui pemilik ikut diizinkan: $oke"
+
     ufw default deny incoming  >/dev/null 2>&1
     ufw default allow outgoing >/dev/null 2>&1
     ufw --force enable         >/dev/null 2>&1
     nilai=$(ufw status 2>/dev/null | awk '/^Status:/ {print $2}')
     [ "$nilai" = "active" ] && selesai LULUS true "$nilai" || tolak "ufw gagal aktif" ;;
-  kembalikan) ufw --force reset >/dev/null 2>&1
+  kembalikan)
+    # Kalau ufw memang tidak ada, tidak ada yang perlu dikembalikan. Melapor
+    # DIKEMBALIKAN dengan nilai kosong itu kabar bohong yang terdengar sukses.
+    command -v ufw >/dev/null 2>&1 || selesai DILEWATI true "ufw tidak terpasang"
+    ufw --force reset >/dev/null 2>&1
     selesai DIKEMBALIKAN true "$(ufw status 2>/dev/null | awk '/^Status:/ {print $2}')" ;;
 esac }
 
@@ -505,14 +808,44 @@ k10() { case "$1" in
 esac }
 
 # ----------------------------------------------------------------- jalan
-KID=""; AKSI=""
-[ $# -eq 2 ] || { KID="?"; AKSI="?"; tolak "pakai: yoructl <K01..K10> <periksa|terapkan|kembalikan|verifikasi>"; }
+KID=""; AKSI=""; PAKSA=0
+case $# in
+  2) : ;;
+  3) KID="?"; AKSI="?"
+     [ "$3" = "--paksa" ] || tolak "pilihan tidak dikenal: $3"
+     PAKSA=1 ;;
+  *) KID="?"; AKSI="?"
+     tolak "pakai: yoructl <K01..K10> <periksa|terapkan|kembalikan|verifikasi> [--paksa]" ;;
+esac
 
 KID="$1"; AKSI="$2"
 [[ "$KID"  =~ ^K(0[1-9]|10)$ ]] || tolak "nomor kontrol tidak dikenal"
 [[ "$AKSI" =~ ^(periksa|terapkan|kembalikan|verifikasi)$ ]] || tolak "tindakan tidak dikenal"
 
+# --paksa itu keputusan MANUSIA, bukan keputusan agent.
+#
+# Baris sudoers tidak membatasi argumen, jadi secara teknis agent bisa saja
+# mengetik --paksa sendiri. Yang mencegahnya harus di sini. Kalau tidak, satu
+# baris log yang dirancang jahat bisa berujung agent memaksa K02 dan mengunci
+# penghuni server di luar - persis skenario yang seluruh desain ini hindari.
+AGEN=yoru-agent
+if [ "$PAKSA" = "1" ] && [ "${SUDO_USER:-}" = "$AGEN" ]; then
+  tolak "--paksa tidak boleh dipakai agent - ini keputusan manusia, jalankan sendiri lewat sudo"
+fi
+
 periksa_diri
+
+# Kunci hanya untuk tindakan yang MENULIS. periksa dan verifikasi cuma baca,
+# jadi sengaja dibiarkan bebas: siklus penjagaan harian isinya periksa semua,
+# dan tidak ada gunanya bikin dia antre di belakang penerapan yang panjang.
+case "$AKSI" in
+  terapkan|kembalikan)
+    ambil_kunci
+    case "$?" in
+      1) tolak "kontrol lain sedang diterapkan atau dikembalikan - sudah menunggu ${TUNGGU_KUNCI} detik, coba lagi nanti" ;;
+      2) catat "PERINGATAN" "true" "" "flock tidak tersedia - jalan tanpa kunci, jangan panggil dua tindakan sekaligus" ;;
+    esac ;;
+esac
 
 # Rekam keadaan asal sebelum menyentuh apa pun. Cuma untuk terapkan - periksa
 # dan verifikasi tidak mengubah apa-apa, dan kembalikan justru butuh rekaman

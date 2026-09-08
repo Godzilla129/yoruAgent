@@ -120,7 +120,10 @@ periksa_lingkungan() {
   esac
 
   local kurang=()
-  for p in sshd systemctl sudo visudo install stat; do
+  # flock dipakai yoructl buat mencegah terapkan dan kembalikan jalan
+  # bersamaan. Tanpa dia yoructl tetap jalan tapi tanpa kunci, dan itu
+  # lebih baik ketahuan sekarang daripada pas dua tindakan tabrakan.
+  for p in sshd systemctl sudo visudo install stat flock; do
     command -v "$p" >/dev/null 2>&1 || kurang+=("$p")
   done
   [ ${#kurang[@]} -eq 0 ] || mati "perintah yang dibutuhkan tidak ada: ${kurang[*]}"

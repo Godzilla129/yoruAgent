@@ -98,8 +98,34 @@ ZONA_WAKTU="Asia/Jakarta"
 # Kontrol yang tidak boleh disentuh di server ini, dipisah koma. Kosong =
 # semua boleh dipertimbangkan.
 #
-# Gunanya untuk keadaan yang cuma diketahui pemiliknya. Contoh paling nyata:
-# server ber-aaPanel atau CyberPanel harus isi LEWATI_KONTROL="K05", karena
-# K05 menyalakan firewall dan cuma buka port 22 - panelnya di 8888 langsung
-# tidak bisa diakses.
+# Gunanya untuk keadaan yang cuma diketahui pemiliknya, misalnya kontrol yang
+# bentrok dengan cara kerja panel tertentu.
+#
+# CATATAN: sampai yoructl 0.1.4, di sini tertulis bahwa server ber-aaPanel
+# atau CyberPanel harus mengisi LEWATI_KONTROL="K05" karena K05 cuma membuka
+# port 22. Itu sudah tidak berlaku. Sejak 0.1.5, K05 membaca port SSH dari
+# sshd sendiri dan menolak menyala selama masih ada port terbuka yang belum
+# dijawab pemilik - lihat PORT_DIIZINKAN di bawah. Melewati K05 berarti
+# server itu tidak punya firewall sama sekali, jadi jangan dipakai kecuali
+# memang terpaksa.
 LEWATI_KONTROL=""
+
+# Port yang boleh tetap terbuka dari internet selain port SSH, dipisah spasi.
+#
+# K05 menyalakan firewall tolak-semua. Port SSH dicari sendiri dari sshd,
+# jadi tidak perlu ditulis di sini. Yang perlu ditulis: layanan lain yang
+# memang harus bisa diakses orang - web, panel, dan sejenisnya.
+#
+# Yoru TIDAK menebak. Kalau ada port terbuka yang tidak ada di sini, K05
+# menolak menyala dan menyebutkan portnya berikut nama prosesnya, supaya
+# pemilik yang memutuskan. Mengizinkan otomatis berarti port yang terbuka
+# TIDAK SENGAJA - justru yang mau ditutup - ikut diizinkan.
+#
+# Contoh isi:  PORT_DIIZINKAN="80 443 8888"
+#              80/443 web, 8888 aaPanel
+#
+# Boleh juga dikosongkan di sini dan dijawab pemilik lewat dashboard atau
+# Telegram; jawaban itu dicatat agent ke /var/lib/yoru/port-disetujui, satu
+# port per baris. Dua-duanya dibaca. Yang ditulis di berkas ini lebih kuat
+# karena agent tidak bisa menyuntingnya.
+PORT_DIIZINKAN=""

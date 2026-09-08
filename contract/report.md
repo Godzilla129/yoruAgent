@@ -227,6 +227,70 @@ bisa dibaca siapa pun, dan pemeriksaan-diri dispatcher cukup dijalankan
 sekali. Satu bug yang kami temukan minggu ini butuh satu perbaikan — kalau
 sudah terpecah, butuh empat puluh, dan kemungkinan besar hanya ketemu di satu.
 
+### Satu tindakan menulis pada satu waktu
+
+Sejak yoructl 0.1.5, `terapkan` dan `kembalikan` **antre** — hanya satu yang
+boleh jalan di seluruh server pada satu waktu. `periksa` dan `verifikasi`
+tidak ikut antre, karena keduanya cuma membaca.
+
+Kuncinya satu untuk semua kontrol, bukan satu per kontrol, karena kontrolnya
+berbagi berkas: K01–K04 sama-sama menulis ke `/etc/ssh/sshd_config.d`, dan
+K05 dengan K10 sama-sama menyunting `/etc/default/ufw`. Kunci per kontrol
+akan terasa aman padahal dua `sed -i` masih bisa jalan bersamaan di berkas
+yang sama.
+
+**Yang perlu ditangani dashboard:** kalau ada tindakan menulis lain yang
+sedang berjalan, panggilan baru akan menunggu sampai 120 detik. Kalau lewat
+dari itu, jawabannya:
+
+```json
+{"id":"K06","tindakan":"terapkan","status":"DITOLAK","berhasil":false,
+ "nilai":null,"pesan":"kontrol lain sedang diterapkan atau dikembalikan - sudah menunggu 120 detik, coba lagi nanti"}
+```
+
+Ini **bukan kegagalan kontrol** — servernya tidak disentuh sama sekali.
+Tampilkan sebagai "sedang sibuk, coba lagi", bukan sebagai kontrol gagal, dan
+jangan ubah skor karenanya. Tombolnya boleh dinyalakan lagi.
+
+Kenapa ini ada: tanpa kunci, dua proses bisa mengerjakan hal yang
+berlawanan sekaligus. Diuji 8 Sep 2026 di K06 dengan restart yang sengaja
+dibuat lambat — tanpa kunci, dua `systemctl restart mariadb` berjalan
+bertumpuk dan **dua-duanya melapor sukses**; dengan kunci, yang kedua
+menunggu yang pertama selesai.
+
+### Port terbuka: jawaban pemilik dipakai K05
+
+`K05 periksa` mengisi field `pesan` dengan port TCP yang terbuka ke luar tapi
+belum pernah dijawab pemilik, berikut nama prosesnya:
+
+```json
+{"id":"K05","tindakan":"periksa","status":"GAGAL","berhasil":true,
+ "nilai":"inactive",
+ "pesan":"port terbuka belum dijawab pemilik: 80(nginx) 443(nginx) 8888(python3)"}
+```
+
+Port SSH tidak pernah muncul di sini (dicari sendiri dari `sshd -T`), begitu
+juga port yang cuma mendengar di `127.0.0.1` atau `[::1]`.
+
+**Yang harus dikerjakan agent:** tanyakan tiap port ke pemilik — "port 8888
+terbuka dipakai python3, itu panel kamu?" — lalu tulis yang dijawab "iya" ke:
+
+```
+/var/lib/yoru/port-disetujui      satu port per baris, boleh diberi "# keterangan"
+```
+
+Berkas ini milik agent, jadi agent boleh menulisnya. Isinya divalidasi
+yoructl: hanya angka 1–65535 yang dipakai, sisanya dibuang.
+
+Selama masih ada port yang belum dijawab, **`K05 terapkan` akan `DITOLAK`**
+dan firewall tidak disentuh sama sekali. Itu bukan kegagalan — itu Yoru
+menunggu jawaban. Dashboard sebaiknya menampilkannya sebagai pertanyaan yang
+menunggu, bukan sebagai kontrol gagal.
+
+Pemilik yang lebih suka menetapkannya sendiri bisa mengisi `PORT_DIIZINKAN`
+di `/etc/yoru/yoru.conf`. Keduanya dibaca; yang di `yoru.conf` lebih kuat
+karena agent tidak bisa menyuntingnya.
+
 ### Catatan tindakan
 
 ```

@@ -177,16 +177,59 @@ bukti_uji_dispatcher: >
   verifikasi -> GAGAL "yes";
   terapkan   -> LULUS "no";
   verifikasi -> LULUS "no".
-peringatan_untuk_server_bersama:
-  masalah: >
+server_bersama_banyak_user:
+  status: SUDAH_DIKERJAKAN
+  sejak: "yoructl 0.1.5"
+  dilaporkan_oleh: "Rahardian, 8 Sep 2026"
+  masalah_versi_lama: >
     Prasyarat kunci_ssh_terbukti hanya memeriksa PEMILIK yang tercatat di
-    /etc/yoru/pemilik. Kalau ada orang lain yang juga login ke server itu
-    memakai password, K02 tidak akan tahu - dan begitu diterapkan, mereka
-    terkunci di luar. Yang selamat hanya yang kuncinya terdaftar.
-  kapan_ini_gawat: >
-    Server yang dipakai bersama satu tim. Sebelum K02 diterapkan di server
-    seperti itu, pastikan SEMUA orang yang perlu masuk sudah memasang kunci
-    SSH dan sudah pernah memakainya untuk login minimal sekali.
-  rencana_perbaikan: >
-    Daftar pemilik dijadikan banyak baris, dan prasyaratnya memeriksa setiap
-    baris. Belum dikerjakan.
+    /etc/yoru/pemilik. Kalau ada orang lain yang juga login memakai password,
+    K02 tidak tahu - dan begitu diterapkan, mereka terkunci di luar sementara
+    Yoru melapor LULUS. Kontrol yang membuat orang kehilangan akses tidak
+    boleh dihitung berhasil.
+  sekarang: >
+    terapkan mendata semua akun yang masih bisa masuk lewat SSH tapi belum
+    punya authorized_keys, lalu MENOLAK sambil menyebut namanya. Pemilik
+    memasangkan kunci dulu, atau mengulang dengan --paksa kalau akun itu
+    memang sudah tidak dipakai.
+  siapa_yang_didata:
+    ikut: "akun dengan shell sungguhan dan UID >= 1000"
+    ikut_juga: "root, TAPI hanya kalau permitrootlogin masih bernilai yes"
+    tidak_ikut:
+      - "akun layanan (shell nologin atau false) - memang tidak bisa login"
+      - "akun yang sudah punya authorized_keys terisi"
+      - "akun di luar AllowUsers, atau yang masuk DenyUsers"
+      - "root kalau permitrootlogin sudah no atau prohibit-password - K02 tidak mengubah apa pun untuknya"
+  kenapa_root_diperlakukan_khusus: >
+    Kalau root sudah tidak boleh masuk lewat SSH, mematikan login password
+    tidak mengubah apa pun untuknya. Mendatanya cuma bikin K02 menolak dengan
+    alasan yang salah, dan penolakan yang terasa salah adalah cara tercepat
+    membuat orang memakai --paksa tanpa membaca.
+  pola_di_allowusers: >
+    AllowUsers boleh berisi pola seperti "bu*" atau "budi@1.2.3.4".
+    Mencocokkannya secara harfiah bisa MELEWATKAN orang yang sebenarnya masih
+    bisa masuk - dan yang terlewat itulah yang terkunci. Jadi kalau isinya
+    bukan nama polos, setelan itu diabaikan dan semua akun ikut diperiksa.
+    AllowGroups dan DenyGroups juga tidak dibaca, dengan alasan yang sama:
+    keduanya hanya mempersempit, jadi mengabaikannya membuat daftar
+    kepanjangan - tidak pernah kependekan. Salah ke arah yang aman.
+  paksa_bukan_untuk_agent:
+    aturan: "--paksa DITOLAK kalau pemanggilnya yoru-agent"
+    kenapa: >
+      Baris sudoers tidak membatasi argumen, jadi secara teknis agent bisa
+      mengetik --paksa sendiri. Kalau tidak dicegah di dalam yoructl, satu
+      baris log yang dirancang jahat bisa berujung agent memaksa K02 dan
+      mengunci penghuni server di luar. Memaksa adalah keputusan manusia.
+    kalau_dipakai: >
+      Tetap dicatat sebagai PERINGATAN di jejak audit, lengkap dengan nama
+      akun yang ikut terkunci. Memaksa boleh, diam-diam tidak.
+  diuji: >
+    8 Sep 2026, dengan akun sungguhan di container: budi dan andi tanpa
+    kunci, siti dengan kunci, dua akun layanan (nologin dan false). Enam
+    keadaan sshd diuji - permitrootlogin no/yes/prohibit-password, AllowUsers,
+    DenyUsers, dan AllowUsers berpola. Akun layanan tidak pernah muncul, siti
+    tidak pernah muncul, root hanya muncul saat permitrootlogin yes, dan
+    AllowUsers berpola benar-benar diabaikan. Diuji juga: terapkan menolak
+    sambil menyebut nama; --paksa melewatinya dan tercatat sebagai PERINGATAN
+    berisi nama-nama itu; --paksa oleh yoru-agent ditolak; argumen tak dikenal
+    ditolak.

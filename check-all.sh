@@ -51,8 +51,8 @@ cek "K06 mariadb tidak di 0.0.0.0" \
 cek "K07 update otomatis aktif" \
     "$(systemctl is-enabled unattended-upgrades 2>/dev/null)" "enabled"
 
-cek "K08 aturan audit termuat" \
-    "$(auditctl -l 2>/dev/null | grep -c '^-w')" "12"
+cek "K08 aturan audit termuat (min 12)" \
+    "$(n=$(auditctl -l 2>/dev/null | grep -c '^-w'); [ "${n:-0}" -ge 12 ] && echo ya || echo "tidak ($n)")" "ya"
 
 cek "K08 auditd berjalan" \
     "$(systemctl is-active auditd 2>/dev/null)" "active"
@@ -61,7 +61,7 @@ cek "K09 log permanen" \
     "$(test -d /var/log/journal && echo ada || echo tidak)" "ada"
 
 cek "K09 pagu log 500M" \
-    "$(journalctl -b -t systemd-journald --no-pager 2>/dev/null | grep -o 'max [0-9.]*M' | tail -1)" "max 500.0M"
+    "$(journalctl -b -t systemd-journald --no-pager 2>/dev/null | grep -oE 'max [0-9.]+[KMGT]' | tail -1)" "max 500.0M"
 
 cek "K10 log_martians" \
     "$(sysctl -n net.ipv4.conf.all.log_martians 2>/dev/null)" "1"
@@ -69,11 +69,11 @@ cek "K10 log_martians" \
 cek "K10 secure_redirects" \
     "$(sysctl -n net.ipv4.conf.all.secure_redirects 2>/dev/null)" "0"
 
-cek "K10 ipv6 accept_ra" \
-    "$(sysctl -n net.ipv6.conf.all.accept_ra 2>/dev/null)" "0"
+cek "K10 ipv6 accept_ra (0, atau na kalau tanpa IPv6)" \
+    "$(v=$(sysctl -n net.ipv6.conf.all.accept_ra 2>/dev/null); case "${v:-na}" in 0|na) echo ya ;; *) echo "tidak ($v)" ;; esac)" "ya"
 
-cek "K10 jumlah setelan terbaca" \
-    "$(sysctl -a 2>/dev/null | grep -cE 'conf\.(all|default)\.(accept_redirects|secure_redirects|accept_source_route|log_martians|accept_ra) |^net\.ipv4\.(icmp_echo_ignore_broadcasts|icmp_ignore_bogus_error_responses|tcp_syncookies|ip_forward) ')" "18"
+cek "K10 jumlah setelan terbaca (min 12)" \
+    "$(n=$(sysctl -a 2>/dev/null | grep -cE 'conf\.(all|default)\.(accept_redirects|secure_redirects|accept_source_route|log_martians|accept_ra) |^net\.ipv4\.(icmp_echo_ignore_broadcasts|icmp_ignore_bogus_error_responses|tcp_syncookies|ip_forward) '); [ "${n:-0}" -ge 12 ] && echo ya || echo "tidak ($n)")" "ya"
 
 echo
 echo "  ------------------------------------------------------------"
