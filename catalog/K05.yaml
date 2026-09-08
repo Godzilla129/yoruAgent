@@ -167,6 +167,31 @@ port_layanan_dinamis:
     (8) CSF terpasang -> DITOLAK;
     (9) berkas port berisi sampah dan percobaan suntikan perintah -> semuanya
     dibuang, tidak ada yang dijalankan.
+  diuji_di_mesin_sungguhan: >
+    8 Sep 2026, VM yoru-a, Ubuntu 24.04, yoructl 0.1.5. Bukan tiruan.
+    "ss -tlnp" mengeluarkan 11 baris; Yoru menyebut TEPAT SATU: "80(nginx)".
+    Yang benar dibuang: mariadbd 127.0.0.1:3306; systemd-resolve di
+    127.0.0.54:53 DAN di 127.0.0.53%lo:53; dua port X11 forwarding sshd di
+    127.0.0.1:6010 dan :6011 berikut kembarannya di [::1]; port SSH di
+    0.0.0.0:22 dan [::]:22. nginx yang mendengar di 0.0.0.0:80 dan [::]:80
+    dilaporkan sekali, tidak dobel. Baris dengan dua proses sekaligus
+    - ("sshd",pid=1063),("systemd",pid=1) - terbaca sebagai "sshd".
+    Tiga bentuk ini tidak ada di uji tiruan dan baru muncul di mesin asli:
+    akhiran "%lo", loopback IPv6 "[::1]", dan dua proses dalam satu baris.
+  bukti_ujung_ke_ujung_dari_luar: >
+    Rangkaian yang sama, diperiksa dari laptop di luar VM dengan perintah
+    yang sama persis dua kali:
+    sebelum -> "curl: (28) Connection timed out after 5007 milliseconds";
+    terapkan -> DITOLAK "80(nginx)", ufw tidak disentuh;
+    pemilik menjawab, port dicatat di /var/lib/yoru/port-disetujui;
+    terapkan -> LULUS;
+    sesudah -> "HTTP/1.1 200 OK, Server: nginx/1.24.0 (Ubuntu)".
+    Di antara dua curl itu tidak ada satu pun perintah ufw yang diketik
+    manusia - yang dilakukan pemilik hanya menjawab satu pertanyaan.
+    ufw status verbose menunjukkan empat aturan dengan tanda yang dibedakan:
+    22/tcp dan 22/tcp (v6) bertanda "SSH - yoru K05", 80/tcp dan 80/tcp (v6)
+    bertanda "disetujui pemilik - yoru K05".
+    periksa sesudahnya mengembalikan pesan null.
 
 konflik_dengan_k10:
   ringkasan: >

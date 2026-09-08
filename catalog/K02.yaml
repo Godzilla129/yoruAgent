@@ -233,3 +233,20 @@ server_bersama_banyak_user:
     sambil menyebut nama; --paksa melewatinya dan tercatat sebagai PERINGATAN
     berisi nama-nama itu; --paksa oleh yoru-agent ditolak; argumen tak dikenal
     ditolak.
+  diuji_di_mesin_sungguhan: >
+    8 Sep 2026, VM yoru-a, Ubuntu 24.04, yoructl 0.1.5.
+    Keadaan awal server hanya punya satu akun manusia (yoru) yang sudah
+    memegang kunci, jadi terapkan LULUS - benar, tapi jalur penolakannya
+    tidak terlewati sama sekali. Karena itu satu akun tanpa kunci sengaja
+    dibuat:
+    "useradd -m -s /bin/bash uji" -> terapkan DITOLAK "akun ini belum punya
+    kunci SSH dan akan terkunci di luar: uji". Akun uji lalu dihapus.
+    Diuji juga di mesin yang sama: agent memanggil --paksa -> DITOLAK
+    "--paksa tidak boleh dipakai agent"; dan periksa sesudahnya tetap LULUS
+    dengan nilai "no", membuktikan penolakan berhenti SEBELUM menyentuh
+    konfigurasi sshd.
+  catatan_cara_menguji: >
+    Server yang cuma punya satu akun berkunci akan selalu LULUS, dan itu
+    membuat pengujian terasa berhasil padahal tidak menguji apa-apa. Untuk
+    benar-benar menguji kontrol ini, akun tanpa kunci harus dibuat lebih
+    dulu.
