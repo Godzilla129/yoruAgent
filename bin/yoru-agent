@@ -490,6 +490,66 @@ def catat_port(daftar):
         kabar(f"port-disetujui tidak bisa ditulis: {e}")
 
 
+# ----------------------------------------------------------------- telegram
+def kabari_telegram(laporan, konf):
+    """Kabari pemilik lewat Telegram - kalau memang ada yang perlu dikabarkan.
+
+    Yang tidak dikirim: laporan harian yang isinya "semuanya masih aman".
+    Notifikasi yang datang tiap hari tanpa membawa apa-apa akan dimatikan
+    orang dalam seminggu, dan yang ikut mati adalah notifikasi yang benar-benar
+    penting. Jadi Yoru cuma buka mulut kalau ada yang berubah atau ada yang
+    perlu dijawab.
+    """
+    token = konf.get("TELEGRAM_TOKEN", "").strip()
+    chat = konf.get("TELEGRAM_CHAT_ID", "").strip()
+    if not token or not chat:
+        return False
+
+    r = laporan["ringkasan"]
+    drift = laporan.get("drift") or []
+    tanya = laporan.get("butuh_keputusan") or []
+    if not drift and not tanya:
+        kabar("tidak ada yang perlu dikabarkan - Telegram dilewati")
+        return False
+
+    nama = (laporan.get("server") or {}).get("nama") or "server kamu"
+    baris = [f"*{nama}* - skor {r['skor']}/100 ({r['lulus']} dari {r['total']} aman)"]
+
+    if drift:
+        baris.append("")
+        baris.append("*Ada yang berubah:*")
+        for d in drift[:5]:
+            siapa = f" oleh {d['siapa']}" if d.get("siapa") else ""
+            baris.append(f"- {d['nama']}: {d['berubah_dari']} jadi {d['berubah_jadi']}{siapa}")
+
+    if tanya:
+        baris.append("")
+        baris.append(f"*{len(tanya)} hal nunggu jawaban kamu:*")
+        peta = {k["id"]: k for k in laporan["kontrol"]}
+        for kid in tanya[:5]:
+            k = peta.get(kid)
+            if k:
+                baris.append(f"- {k['nama']}")
+
+    dasar = konf.get("DASHBOARD_URL", "").rstrip("/")
+    if dasar:
+        baris.append("")
+        baris.append(f"Buka {dasar} buat jawab.")
+
+    # Teksnya TIDAK dirakit dari keluaran perintah mentah - semuanya dari
+    # katalog dan dari nilai yang sudah divalidasi yoructl. Nama berkas atau
+    # nama pengguna yang mengandung karakter Markdown paling buruk cuma bikin
+    # tampilannya jelek, bukan bikin pesan lain ikut terkirim.
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    data = {"chat_id": chat, "text": "\n".join(baris), "parse_mode": "Markdown"}
+    hasil = http("POST", url, None, data)
+    if hasil is None:
+        kabar("Telegram tidak bisa dihubungi - laporan tetap tersimpan")
+        return False
+    kabar("kabar terkirim ke Telegram")
+    return True
+
+
 # ---------------------------------------------------------------- penerapan
 def terapkan_satu(kid):
     """terapkan lalu verifikasi. berhasil=true HANYA kalau diverifikasi.
@@ -642,8 +702,10 @@ def main():
         kabar(f"skor sesudah dikerjakan: {laporan['ringkasan']['skor']}")
 
     simpan(laporan)
-    if not a.tanpa_kirim and dikerjakan:
-        kirim_laporan(laporan, konf)
+    if not a.tanpa_kirim:
+        if dikerjakan:
+            kirim_laporan(laporan, konf)
+        kabari_telegram(laporan, konf)
     if a.keluar:
         Path(a.keluar).write_text(
             json.dumps(laporan, ensure_ascii=False, indent=2), encoding="utf-8")

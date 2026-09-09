@@ -105,6 +105,42 @@ di `catalog/K02.yaml`.
 
 ---
 
+## Dashboard
+
+Yang dilihat pemilik server bukan keluaran perintah, tapi halaman ini:
+
+![Laporan Yoru](docs/images/dashboard-report.png)
+
+Skor besar di atas, lalu sepuluh kontrol dengan penjelasan bahasa sehari-hari.
+Untuk kontrol yang berisiko, **akibatnya ditulis tepat di sebelah tombol
+setuju** — bukan di tooltip, bukan di halaman lain. Yang menekan tombol harus
+sudah membaca apa yang bakal ikut berubah. Itu aturan yang tidak bisa ditawar,
+dan alasannya ada di `contract/report.md`.
+
+Di siklus penjagaan, yang muncul lebih dulu adalah perubahan mendadak:
+
+![Perubahan terdeteksi](docs/images/dashboard-drift.png)
+
+Jawaban pemilik di situ jadi patokan baru. Kalau dia bilang "itu memang saya",
+besok tidak ditanyakan lagi. Tanpa itu, Yoru cuma jadi alarm yang bunyi tiap
+hari, dan alarm yang bunyi terus pasti diabaikan.
+
+### Mencoba tanpa server
+
+Dashboard-nya bisa dijalankan sendiri dengan data contoh, tanpa menyentuh
+mesin siapa pun:
+
+```bash
+cd web
+python3 -m pip install fastapi uvicorn
+python3 demo.py
+```
+
+Lalu buka `http://127.0.0.1:8000`. Di Linux dan macOS, `bash demo.sh` juga
+sama saja.
+
+---
+
 ## Cara pasang
 
 ### Yang perlu disiapkan
@@ -225,13 +261,18 @@ untuk tiap kontrol dulu, baru copot.
 ## Isi repo
 
 ```
-bin/            dispatcher yoructl, pembungkus penjagaan, aturan sudoers
+bin/yoructl     satu-satunya pintu ke hak root - 10 kontrol x 4 tindakan
+bin/yoru-agent  otaknya: memeriksa, merakit laporan, menerapkan yang disetujui
+bin/yoru-watch  pembungkus yang dipanggil timer harian
 catalog/        10 kontrol keamanan, satu berkas YAML per kontrol
-contract/       bentuk data laporan JSON
+contract/       bentuk data laporan JSON - dipakai bersama tiga lane
+web/            API dashboard dan halamannya
 systemd/        unit dan timer untuk siklus penjagaan harian
-examples/       contoh laporan dan contoh berkas konfigurasi
+examples/       contoh laporan, contoh konfigurasi, jembatan FastAPI
+docs/           penjelasan alur dan panduan pasang di VPS
 install.sh      pemasang, sekalian menguji hasilnya sendiri
-check-all.sh    periksa 10 kontrol sekaligus
+check-all.sh    periksa 10 kontrol sekaligus, tanpa memasang apa pun
+demo.sh         nyalakan dashboard dengan data contoh
 ```
 
 Setelah terpasang, berkas-berkasnya duduk di sini:
@@ -270,8 +311,14 @@ Ini masih versi awal. Yang belum ada, ditulis apa adanya:
   berpengaruh karena kernel memakai nilai maksimum antara `all` dan
   per-kartu, dan mode ketat bisa memutus lalu lintas yang jalurnya tidak
   simetris.
-- **Dispatcher belum memaksa memeriksa keberadaan panel** sebelum menerapkan
-  K05. Peringatannya sudah ada di katalog, tapi belum jadi penghalang.
+- **Model AI belum dicolok.** Laporannya dirakit tanpa model — kalimat
+  penjelasannya diambil dari katalog, yang memang ditulis manusia untuk orang
+  awam. Itu disengaja: laporan tidak boleh gagal keluar cuma karena satu
+  panggilan API. Tempat memasang modelnya sudah ada di `Penimbang` di dalam
+  `bin/yoru-agent`.
+- **Notifikasi Telegram belum diuji dengan bot sungguhan.** Kodenya jalan dan
+  sudah diuji dengan server tiruan, tapi belum pernah dikirim ke Telegram
+  beneran.
 - **`kembalikan` pada K05 mengosongkan firewall, bukan memulihkannya.**
   Perintahnya `ufw reset`, jadi aturan yang dipasang sendiri oleh pemilik
   server ikut terhapus. ufw mengarsipkan berkasnya lebih dulu ke

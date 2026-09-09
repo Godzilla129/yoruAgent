@@ -353,44 +353,55 @@ inti produknya.
 
 ## 9. Jadi yang perlu dibangun apa
 
-**Lane 1 — dispatcher dan katalog.** Sudah jadi. Sepuluh kontrol, empat puluh
-tindakan, semuanya sudah pernah dijalanin sungguhan.
+Bagian ini dulu isinya daftar tugas. Sekarang isinya daftar yang **sudah
+jadi**, biar nggak ada yang ngerjain dua kali.
 
-**Lane 2 — API dan dashboard.**
+**Dispatcher dan katalog** — `bin/yoructl`, `catalog/`. Sepuluh kontrol, empat
+puluh tindakan, semuanya udah pernah dijalanin sungguhan di VM. Ada kunci
+antar-proses biar `terapkan` sama `kembalikan` nggak bisa tabrakan, dan
+`terapkan` nggak ngulang kerjaan kalau semuanya udah bener.
 
-Endpointnya udah 1:1 sama perintahnya, nggak perlu bikin 40 script terpisah:
+**Agent** — `bin/yoru-agent`. Dia yang mikir dan yang ngomong ke luar:
 
+- baca `/etc/yoru/yoru.conf` (sebagai teks, nggak pernah di-`source`)
+- panggil `yoructl` sepuluh kali, kumpulin baris JSON-nya
+- rakit laporan sesuai `contract/report.md`
+- tulis ke `/var/lib/yoru/laporan-terakhir.json`, kirim ke dashboard
+- ambil jawaban pemilik, terapkan yang boleh diterapkan
+- bandingin sama laporan kemarin buat nemu perubahan mendadak, terus nanya
+  ke jejak audit siapa yang ngubah
+
+Satu hal yang perlu diinget soal agent ini: **dia jalan tanpa model AI juga.**
+Kalimat penjelasan buat pemilik diambil dari katalog — emang udah ditulis
+manusia buat orang awam. Model AI nambah lapisan di atasnya: nimbang port yang
+mencurigakan, nyusun urutan, nerjemahin drift. Kalau kuncinya habis atau
+jaringannya mati, **laporannya tetep keluar lengkap.**
+
+**API dan dashboard** — `web/api.py`, `web/dashboard.html`. Nyimpen laporan di
+SQLite, nampilin skor sama sepuluh kontrol, nampung jawaban pemilik.
+
+Arah datanya satu jalur, dan itu sengaja: agent yang nyamperin dashboard,
+nggak pernah sebaliknya. Server yang dijaga jadi nggak perlu buka satu port
+pun buat dashboard.
+
+Satu aturan yang nggak bisa ditawar dan udah dipasang: kontrol yang
+`butuh_izin: true` **wajib nampilin `yang_rusak_kalau_diterapkan` tepat di
+sebelah tombol setuju.** Bukan di tooltip, bukan di halaman lain. Orang yang
+mencet harus udah baca akibatnya — itu alasan Yoru boleh dipercaya nyentuh
+server orang.
+
+**Buat nyoba tanpa server:**
+
+```bash
+cd web && python3 demo.py
 ```
-POST /kontrol/K01/periksa      →   yoructl K01 periksa
-POST /kontrol/K01/terapkan     →   yoructl K01 terapkan
-POST /kontrol/K01/kembalikan   →   yoructl K01 kembalikan
-POST /kontrol/K01/verifikasi   →   yoructl K01 verifikasi
-```
 
-Yang perlu dibikin:
+Dua contoh laporan di `examples/` langsung kemuat: `report-fix.json` (server
+sakit, skor 10) dan `report-watch.json` (server sehat, ada satu perubahan
+mencurigakan). Bentuknya sama persis kayak yang keluar dari server beneran.
 
-- terima laporan yang dikirim agent, simpen
-- tampilkan skor, sepuluh kontrol, dan riwayat
-- **satu aturan yang nggak bisa ditawar:** kontrol yang `butuh_izin: true`
-  wajib nampilin `yang_rusak_kalau_diterapkan` **tepat di sebelah tombol
-  setuju.** Bukan di tooltip, bukan di halaman lain. Orang yang mencet harus
-  udah baca akibatnya. Ini alasan Yoru boleh dipercaya nyentuh server orang.
-- tampung jawaban pemilik, biar diambil agent di siklus berikutnya
-
-Nggak usah nunggu server siap. Ada dua contoh laporan lengkap di repo:
-`examples/report-fix.json` (server sakit, skor 10) dan
-`examples/report-watch.json` (server sehat, ada satu perubahan mencurigakan).
-Bentuknya sama persis kayak yang nanti keluar.
-
-**Lane 3 — Hermes.**
-
-- baca konfigurasi dari `/etc/yoru/yoru.conf` (formatnya di
-  `examples/yoru.conf.example`, ada contoh parsernya di komentar)
-- panggil `yoructl` per kontrol, kumpulin baris JSON-nya
-- rakit jadi laporan sesuai `contract/report.md`
-- tulis ke `/var/lib/yoru/laporan-terakhir.json` dan kirim ke dashboard
-- entry pointnya dipasang di `/opt/yoru/bin/yoru-agent` — timer harian
-  manggil ke situ
+**Yang belum:** notifikasi Telegram, sama nyolokin model AI-nya. Colokannya
+udah ada di `Penimbang` di dalam `yoru-agent`.
 
 ---
 
