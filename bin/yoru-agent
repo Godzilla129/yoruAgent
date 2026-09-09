@@ -40,6 +40,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -185,7 +186,13 @@ def deteksi_panel():
     return None
 
 
-def info_server():
+def info_server(konf=None):
+    """Nama server: yang ditulis pemilik lebih dulu, hostname kalau kosong.
+
+    Hostname sering tidak berarti apa-apa buat pemiliknya - VPS baru biasanya
+    bernama seperti "vm" atau "ubuntu-2gb-sgp1". Kalau dia punya tiga server,
+    dashboard jadi tidak bisa dibedakan.
+    """
     os_nama = ""
     try:
         for baris in Path("/etc/os-release").read_text().splitlines():
@@ -205,8 +212,9 @@ def info_server():
     except OSError:
         ip = None
 
+    pilihan = (konf or {}).get("NAMA_SERVER", "").strip()
     return {
-        "nama": socket.gethostname(),
+        "nama": pilihan or socket.gethostname(),
         "os": os_nama or platform.system(),
         "kernel": platform.release(),
         "ip_utama": ip,
@@ -346,7 +354,7 @@ def susun_laporan(siklus, konf, katalog, penimbang, hasil_periksa,
     laporan = {
         "versi_kontrak": VERSI_KONTRAK,
         "versi_yoru": (hasil_periksa.get("K01") or {}).get("versi") or "?",
-        "server": info_server(),
+        "server": info_server(konf),
         "waktu": sekarang(),
         "siklus": siklus,
         "ringkasan": {
@@ -447,7 +455,7 @@ def kirim_laporan(laporan, konf):
     http("POST", f"{dasar}/api/laporan", konf.get("DASHBOARD_TOKEN"), laporan)
 
 
-def ambil_keputusan(konf):
+def ambil_keputusan(konf, nama_server):
     """Jawaban pemilik dari dashboard.
 
     Arahnya SATU JALUR: agent yang menghubungi dashboard, tidak pernah
@@ -459,7 +467,13 @@ def ambil_keputusan(konf):
     dasar = konf.get("DASHBOARD_URL", "").rstrip("/")
     if not dasar:
         return {}
-    j = http("GET", f"{dasar}/api/keputusan", konf.get("DASHBOARD_TOKEN"))
+    # Nama server WAJIB ikut. Satu dashboard bisa memegang banyak server, dan
+    # tanpa penyaring ini agent di server A akan mengerjakan jawaban yang
+    # ditujukan untuk server B - termasuk "matikan login password" di mesin
+    # yang pemiliknya belum pernah ditanya.
+    j = http("GET",
+             f"{dasar}/api/keputusan?server={urllib.parse.quote(nama_server)}",
+             konf.get("DASHBOARD_TOKEN"))
     if not isinstance(j, dict):
         return {}
     keluar = {}
@@ -692,7 +706,7 @@ def main():
     keputusan = {}
     if not a.tanpa_kirim:
         kirim_laporan(laporan, konf)
-        j = ambil_keputusan(konf)
+        j = ambil_keputusan(konf, laporan["server"]["nama"])
         keputusan = j.get("kontrol", {}) if isinstance(j, dict) else {}
         catat_port(j.get("port", []) if isinstance(j, dict) else [])
 
