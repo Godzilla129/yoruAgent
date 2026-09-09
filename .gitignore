@@ -6,3 +6,4 @@ var/
 web/yoru.db
 web/yoru.db-*
 __pycache__/
+Claude outputs/
