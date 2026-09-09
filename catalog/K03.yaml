@@ -11,6 +11,7 @@ kode_cis_koreksi: >
   Satu kontrol Yoru menutup dua rekomendasi CIS sekaligus karena keduanya
   ditulis ke berkas drop-in yang sama.
 risiko: AMAN
+nilai_target: "3/30"   # yang dibaca yoructl kalau kontrol ini LULUS
 kategori: ssh
 
 kenapa: >

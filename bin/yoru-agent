@@ -1,0 +1,659 @@
+#!/usr/bin/env python3
+"""
+yoru-agent - otaknya Yoru.
+
+Dipanggil yoru-watch tiap hari:
+    yoru-agent --siklus penjagaan --konfigurasi /etc/yoru/yoru.conf
+
+Tugasnya empat:
+  1. minta yoructl memeriksa sepuluh kontrol
+  2. merakit laporan sesuai contract/report.md
+  3. mengirimnya ke dashboard, dan mengambil jawaban pemilik
+  4. menerapkan yang boleh diterapkan
+
+SATU HAL YANG MENENTUKAN SELURUH BENTUK BERKAS INI:
+
+Agent TIDAK PERNAH menyusun perintah shell sendiri. Satu-satunya cara dia
+menyentuh server adalah memanggil program yoructl dengan dua argumen yang
+sudah tetap - nomor kontrol dan nama tindakan. Tidak ada string perintah yang
+dirakit dari konfigurasi, dari jawaban pemilik, apalagi dari keluaran model
+AI. Kalau suatu saat ada yang tergoda menambahkan subprocess dengan shell=True
+di sini, seluruh alasan Yoru boleh dipercaya menyentuh server orang bubar.
+
+DAN SATU LAGI:
+
+Laporan harus bisa dirakit TANPA model AI sama sekali. Kalimat penjelasan
+untuk pemilik sudah ditulis manusia di katalog. Model AI menambah lapisan
+pertimbangan di atasnya - urutan pengerjaan, menilai port yang mencurigakan,
+menerjemahkan drift. Kalau kuncinya habis atau jaringannya mati, laporannya
+tetap keluar lengkap. Demo dan server orang tidak boleh bergantung pada satu
+panggilan API yang bisa gagal.
+"""
+
+import argparse
+import json
+import os
+import platform
+import re
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+
+VERSI_KONTRAK = "1"
+
+YORUCTL = "/opt/yoru/bin/yoructl"
+DIR_KATALOG = Path("/usr/share/yoru/catalog")
+DIR_DATA = Path("/var/lib/yoru")
+DIR_RIWAYAT = DIR_DATA / "riwayat"
+LAPORAN = DIR_DATA / "laporan-terakhir.json"
+BERKAS_PORT = DIR_DATA / "port-disetujui"
+
+SEMUA_KONTROL = [f"K{n:02d}" for n in range(1, 11)]
+
+# Harus sama dengan katalog. Kalau berbeda, kontrol berisiko bisa jalan tanpa
+# persetujuan - jadi kalau katalog berubah, ubah juga di sini.
+AMAN = {"K03", "K07", "K08", "K09", "K10"}
+
+# yoructl -> kontrak. DITOLAK saat periksa berarti perintahnya sendiri
+# bermasalah, bukan kontrolnya gagal, jadi dipetakan ke ERROR.
+PETA_STATUS = {
+    "LULUS": "LULUS",
+    "GAGAL": "GAGAL",
+    "DILEWATI": "DILEWATI",
+    "DIKEMBALIKAN": "DILEWATI",
+    "DITOLAK": "ERROR",
+    "ERROR": "ERROR",
+    "PERINGATAN": "ERROR",
+}
+
+
+def sekarang():
+    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def kabar(*a):
+    print("[yoru-agent]", *a, file=sys.stderr, flush=True)
+
+
+# --------------------------------------------------------------- konfigurasi
+def baca_konfigurasi(jalur):
+    """Dibaca sebagai TEKS, tidak pernah dieksekusi.
+
+    Godaannya adalah memakai shell source atau exec supaya singkat. Berkas
+    konfigurasi lalu jadi tempat menaruh perintah - satu baris di situ langsung
+    jalan sebagai root, dan tidak ada yang memeriksanya.
+    """
+    konf = {}
+    try:
+        teks = Path(jalur).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return konf
+    for baris in teks.splitlines():
+        baris = baris.strip()
+        if not baris or baris.startswith("#") or "=" not in baris:
+            continue
+        nama, _, nilai = baris.partition("=")
+        nilai = nilai.strip()
+        if len(nilai) >= 2 and nilai[0] == nilai[-1] and nilai[0] in "\"'":
+            nilai = nilai[1:-1]
+        konf[nama.strip()] = nilai
+    return konf
+
+
+def baca_katalog():
+    """Fakta tiap kontrol. Agent tidak boleh mengarang di luar isinya."""
+    try:
+        import yaml
+    except ImportError:
+        kabar("PyYAML tidak ada - pasang dengan: apt-get install -y python3-yaml")
+        return {}
+
+    katalog = {}
+    for kid in SEMUA_KONTROL:
+        berkas = DIR_KATALOG / f"{kid}.yaml"
+        try:
+            katalog[kid] = yaml.safe_load(berkas.read_text(encoding="utf-8")) or {}
+        except Exception as e:  # noqa: BLE001
+            kabar(f"katalog {kid} tidak terbaca: {e}")
+            katalog[kid] = {}
+    return katalog
+
+
+def rapikan(teks):
+    """YAML blok lipat menyisakan baris baru dan spasi ganda."""
+    if not teks:
+        return ""
+    return re.sub(r"\s+", " ", str(teks)).strip()
+
+
+# ------------------------------------------------------------------ eksekusi
+def panggil_yoructl(kid, aksi, batas=180):
+    """Satu program, dua argumen. Tidak ada shell, tidak ada string dirakit."""
+    if kid not in SEMUA_KONTROL or aksi not in {
+        "periksa", "terapkan", "kembalikan", "verifikasi"
+    }:
+        return {"status": "ERROR", "berhasil": False,
+                "pesan": "kontrol atau tindakan tidak dikenal", "nilai": None}
+
+    perintah = ["sudo", "-n", YORUCTL, kid, aksi]
+    if os.geteuid() == 0:
+        perintah = [YORUCTL, kid, aksi]
+
+    try:
+        p = subprocess.run(perintah, capture_output=True, text=True, timeout=batas)
+    except subprocess.TimeoutExpired:
+        return {"status": "ERROR", "berhasil": False, "nilai": None,
+                "pesan": f"yoructl {kid} {aksi} lewat batas {batas} detik"}
+    except OSError as e:
+        return {"status": "ERROR", "berhasil": False, "nilai": None,
+                "pesan": f"tidak bisa memanggil yoructl: {e}"}
+
+    # yoructl selalu mencetak satu baris JSON di baris terakhir stdout.
+    for baris in reversed([b for b in p.stdout.splitlines() if b.strip()]):
+        try:
+            return json.loads(baris)
+        except json.JSONDecodeError:
+            continue
+
+    return {"status": "ERROR", "berhasil": False, "nilai": None,
+            "pesan": (p.stderr or "yoructl tidak mengeluarkan JSON").strip()[:300]}
+
+
+def keluaran(perintah, batas=10):
+    """Baca keluaran satu perintah. Daftar argumen, bukan string shell."""
+    try:
+        p = subprocess.run(perintah, capture_output=True, text=True, timeout=batas)
+        return p.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+# -------------------------------------------------------------- info server
+def deteksi_panel():
+    for jalur, nama in (
+        ("/www/server/panel", "aapanel"),
+        ("/usr/local/CyberCP", "cyberpanel"),
+        ("/usr/local/cpanel", "cpanel"),
+    ):
+        if Path(jalur).exists():
+            return nama
+    return None
+
+
+def info_server():
+    os_nama = ""
+    try:
+        for baris in Path("/etc/os-release").read_text().splitlines():
+            if baris.startswith("PRETTY_NAME="):
+                os_nama = baris.partition("=")[2].strip().strip('"')
+                break
+    except OSError:
+        pass
+
+    ip = None
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(1)
+        s.connect(("8.8.8.8", 80))  # tidak mengirim apa pun, cuma memilih rute
+        ip = s.getsockname()[0]
+        s.close()
+    except OSError:
+        ip = None
+
+    return {
+        "nama": socket.gethostname(),
+        "os": os_nama or platform.system(),
+        "kernel": platform.release(),
+        "ip_utama": ip,
+        "panel_terdeteksi": deteksi_panel(),
+    }
+
+
+# ------------------------------------------------------------------ penimbang
+class Penimbang:
+    """Lapisan pertimbangan. Tanpa model AI pun tetap menjawab.
+
+    Yang deterministik: kalimat penjelasan diambil apa adanya dari katalog -
+    memang sudah ditulis untuk orang awam. Urutan pengerjaan mengikuti aturan
+    tetap: yang AMAN dulu, lalu yang berisiko dari yang paling kecil dampaknya.
+
+    Yang butuh model AI: menilai apakah port terbuka itu wajar, menerjemahkan
+    perubahan mendadak jadi pertanyaan yang bisa dijawab orang awam, dan
+    menyusun kalimat yang menyesuaikan keadaan server ini. Kalau modelnya tidak
+    ada, ketiganya jatuh ke jawaban baku yang tetap benar - cuma lebih kaku.
+    """
+
+    URUTAN = ["K03", "K09", "K10", "K08", "K07", "K04", "K06", "K05", "K01", "K02"]
+
+    def __init__(self, konf):
+        self.konf = konf
+        self.model = konf.get("AI_MODEL", "").strip()
+        self.aktif = bool(self.model)
+
+    def urutan(self, daftar_id):
+        urut = {k: i for i, k in enumerate(self.URUTAN)}
+        return sorted(daftar_id, key=lambda k: urut.get(k, 99))
+
+    def jelaskan(self, kid, katalog, hasil):
+        """Kalimat untuk pemilik. Sumbernya katalog, bukan karangan."""
+        teks = rapikan(katalog.get(kid, {}).get("kenapa"))
+        return teks or f"Kontrol {kid} belum punya penjelasan di katalog."
+
+    def akibat(self, kid, katalog):
+        teks = rapikan(katalog.get(kid, {}).get("yang_rusak_kalau_diterapkan"))
+        return teks or "Belum ada catatan konsekuensi di katalog untuk kontrol ini."
+
+    def tanya_drift(self, d):
+        return (
+            f"{d['nama']} berubah pada {d.get('kapan_diubah') or 'waktu yang tidak tercatat'}. "
+            f"Sebelumnya {d['berubah_dari']}, sekarang {d['berubah_jadi']}."
+            + (f" Yang mengubah: {d['siapa']}." if d.get("siapa") else "")
+        )
+
+
+# ---------------------------------------------------------------- jejak audit
+def jejak_audit(kid, katalog):
+    """Siapa yang mengubah, kapan, pakai perintah apa - dari auditd (K08).
+
+    Boleh kosong. Kontrak memang mengizinkan null: server yang auditd-nya belum
+    menyala memang tidak punya jejaknya, dan mengarang nama pelaku jauh lebih
+    berbahaya daripada mengaku tidak tahu.
+    """
+    kunci = {"K01": "ssh_config", "K02": "ssh_config", "K03": "ssh_config",
+             "K04": "ssh_config", "K05": "firewall", "K06": "yoru_kontrol",
+             "K09": "yoru_kontrol", "K10": "yoru_kontrol"}.get(kid)
+    if not kunci:
+        return {}
+
+    teks = keluaran(["ausearch", "-k", kunci, "-ts", "recent", "-i"], batas=20)
+    if not teks:
+        return {}
+
+    blok = teks.strip().split("----")[-1]
+    siapa = kapan = perintah = None
+    m = re.search(r"\bauid=(\S+)", blok)
+    if m and m.group(1) not in {"unset", "-1", "4294967295"}:
+        siapa = m.group(1)
+    m = re.search(r"\bAUID=\"([^\"]+)\"", blok)
+    if m:
+        siapa = m.group(1)
+    m = re.search(r"^type=\S+\s+msg=audit\(([^)]*)\)", blok, re.M)
+    if m:
+        kapan = m.group(1).split(":")[0].strip()
+    m = re.search(r"\bcomm=\"?([^\"\s]+)\"?", blok)
+    if m:
+        perintah = m.group(1)
+
+    return {"siapa": siapa, "kapan_diubah": kapan, "perintah": perintah,
+            "sumber_bukti": "auditd"}
+
+
+# ------------------------------------------------------------------- laporan
+def susun_laporan(siklus, konf, katalog, penimbang, hasil_periksa,
+                  laporan_lama=None):
+    kontrol = []
+    butuh_keputusan = []
+    hitung = {"LULUS": 0, "GAGAL": 0, "SEBAGIAN": 0, "DILEWATI": 0, "ERROR": 0}
+
+    lewati = {x.strip().upper() for x in konf.get("LEWATI_KONTROL", "").replace(",", " ").split() if x.strip()}
+
+    for kid in SEMUA_KONTROL:
+        kat = katalog.get(kid, {})
+        mentah = hasil_periksa.get(kid, {})
+        status = PETA_STATUS.get(mentah.get("status", "ERROR"), "ERROR")
+
+        if kid in lewati:
+            status = "DILEWATI"
+
+        hitung[status] = hitung.get(status, 0) + 1
+        berisiko = kid not in AMAN
+
+        # Prasyarat yang gagal ikut dikirim supaya dashboard tidak menawarkan
+        # tombol setuju untuk kontrol yang memang belum boleh dijalankan.
+        prasyarat_gagal = []
+        if mentah.get("pesan") and mentah.get("status") in {"DITOLAK", "ERROR"}:
+            prasyarat_gagal.append(rapikan(mentah["pesan"]))
+        if kid == "K05" and mentah.get("pesan"):
+            prasyarat_gagal = [rapikan(mentah["pesan"])]
+
+        entri = {
+            "id": kid,
+            "nama": kat.get("nama") or kid,
+            "kategori": kat.get("kategori") or "lain",
+            "risiko": kat.get("risiko") or ("BERISIKO" if berisiko else "AMAN"),
+            "status": status,
+            "nilai_terbaca": mentah.get("nilai") or "tidak-terbaca",
+            "nilai_target": str(kat.get("nilai_target") or ""),
+            "kenapa": penimbang.jelaskan(kid, katalog, mentah),
+            "yang_rusak_kalau_diterapkan": penimbang.akibat(kid, katalog),
+            "butuh_izin": berisiko,
+            "prasyarat_gagal": prasyarat_gagal,
+            "hasil": None,
+        }
+        kontrol.append(entri)
+
+        if status == "GAGAL" and berisiko and kid not in lewati and not prasyarat_gagal:
+            butuh_keputusan.append(kid)
+
+    total = len(kontrol)
+    skor = round(hitung["LULUS"] / total * 100) if total else 0
+
+    laporan = {
+        "versi_kontrak": VERSI_KONTRAK,
+        "versi_yoru": (hasil_periksa.get("K01") or {}).get("versi") or "?",
+        "server": info_server(),
+        "waktu": sekarang(),
+        "siklus": siklus,
+        "ringkasan": {
+            "total": total,
+            "lulus": hitung["LULUS"],
+            "gagal": hitung["GAGAL"],
+            "sebagian": hitung["SEBAGIAN"],
+            "dilewati": hitung["DILEWATI"] + hitung["ERROR"],
+            "skor": skor,
+        },
+        "kontrol": kontrol,
+        "drift": [],
+        "butuh_keputusan": penimbang.urutan(butuh_keputusan),
+    }
+
+    if siklus == "penjagaan" and laporan_lama:
+        laporan["drift"] = cari_drift(laporan_lama, laporan, katalog)
+        for d in laporan["drift"]:
+            if d["id"] not in laporan["butuh_keputusan"]:
+                laporan["butuh_keputusan"].append(d["id"])
+
+    return laporan
+
+
+def cari_drift(lama, baru, katalog):
+    """Kontrol yang tadinya LULUS lalu berubah.
+
+    Ini inti Siklus Penjagaan. Yang dicari bukan "sekarang GAGAL" tapi
+    "BERUBAH" - server yang memang tidak pernah aman sejak awal itu urusan
+    Siklus Perbaikan, bukan drift.
+    """
+    peta_lama = {k["id"]: k for k in lama.get("kontrol", [])}
+    keluar = []
+    for k in baru.get("kontrol", []):
+        l = peta_lama.get(k["id"])
+        if not l or l.get("status") != "LULUS" or k.get("status") == "LULUS":
+            continue
+        d = {
+            "id": k["id"],
+            "nama": k["nama"],
+            "berubah_dari": l.get("nilai_terbaca"),
+            "berubah_jadi": k.get("nilai_terbaca"),
+            "terdeteksi": baru["waktu"],
+            "siapa": None,
+            "kapan_diubah": None,
+            "perintah": None,
+            "sumber_bukti": None,
+            "keputusan_pemilik": None,
+        }
+        d.update({kk: vv for kk, vv in jejak_audit(k["id"], katalog).items() if vv})
+        keluar.append(d)
+    return keluar
+
+
+def simpan(laporan):
+    try:
+        DIR_RIWAYAT.mkdir(parents=True, exist_ok=True)
+        cap = laporan["waktu"].replace(":", "").replace("+", "p")
+        (DIR_RIWAYAT / f"{cap}.json").write_text(
+            json.dumps(laporan, ensure_ascii=False, indent=2), encoding="utf-8")
+        LAPORAN.write_text(
+            json.dumps(laporan, ensure_ascii=False, indent=2), encoding="utf-8")
+        return True
+    except OSError as e:
+        kabar(f"laporan tidak bisa disimpan: {e}")
+        return False
+
+
+def baca_laporan_lama():
+    try:
+        return json.loads(LAPORAN.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+# ---------------------------------------------------------------- dashboard
+def http(metode, url, token, data=None, batas=15):
+    if not url:
+        return None
+    badan = json.dumps(data).encode() if data is not None else None
+    req = urllib.request.Request(url, data=badan, method=metode)
+    req.add_header("Content-Type", "application/json")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(req, timeout=batas) as r:
+            isi = r.read().decode("utf-8", "replace")
+            return json.loads(isi) if isi.strip() else {}
+    except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
+        kabar(f"dashboard tidak bisa dihubungi ({metode} {url}): {e}")
+        return None
+
+
+def kirim_laporan(laporan, konf):
+    dasar = konf.get("DASHBOARD_URL", "").rstrip("/")
+    if not dasar:
+        return
+    http("POST", f"{dasar}/api/laporan", konf.get("DASHBOARD_TOKEN"), laporan)
+
+
+def ambil_keputusan(konf):
+    """Jawaban pemilik dari dashboard.
+
+    Arahnya SATU JALUR: agent yang menghubungi dashboard, tidak pernah
+    sebaliknya. Server yang dijaga jadi tidak perlu membuka satu port pun untuk
+    dashboard, dan kalau dashboardnya jebol, yang paling jauh bisa dilakukan
+    penyerang cuma menyetujui kontrol yang SUDAH ADA di katalog - dia tidak
+    bisa menyuruh server melakukan hal baru.
+    """
+    dasar = konf.get("DASHBOARD_URL", "").rstrip("/")
+    if not dasar:
+        return {}
+    j = http("GET", f"{dasar}/api/keputusan", konf.get("DASHBOARD_TOKEN"))
+    if not isinstance(j, dict):
+        return {}
+    keluar = {}
+    for kid, nilai in (j.get("keputusan") or {}).items():
+        if kid in SEMUA_KONTROL and nilai in {"setuju", "tolak", "sah", "kembalikan"}:
+            keluar[kid] = nilai
+    return {"kontrol": keluar, "port": j.get("port_disetujui") or []}
+
+
+def catat_port(daftar):
+    """Port yang dijawab pemilik "iya, itu memang punya saya"."""
+    sah = [str(int(p)) for p in daftar if str(p).isdigit() and 1 <= int(p) <= 65535]
+    if not sah:
+        return
+    try:
+        DIR_DATA.mkdir(parents=True, exist_ok=True)
+        ada = set()
+        if BERKAS_PORT.exists():
+            for b in BERKAS_PORT.read_text().splitlines():
+                b = b.split("#")[0].strip()
+                if b.isdigit():
+                    ada.add(b)
+        baru = ada | set(sah)
+        BERKAS_PORT.write_text(
+            "# dijawab pemilik lewat dashboard\n" +
+            "\n".join(sorted(baru, key=int)) + "\n", encoding="utf-8")
+    except OSError as e:
+        kabar(f"port-disetujui tidak bisa ditulis: {e}")
+
+
+# ---------------------------------------------------------------- penerapan
+def terapkan_satu(kid):
+    """terapkan lalu verifikasi. berhasil=true HANYA kalau diverifikasi.
+
+    Ini aturan nomor satu di contract/report.md, dan bukan formalitas: kami
+    pernah punya kontrol yang berhasil menulis berkas, lolos sshd -t, dan
+    reload tanpa error - sementara setelan servernya sama sekali tidak berubah.
+    "Perintahnya jalan" bukan bukti; yang jadi bukti cuma pembacaan ulang.
+    """
+    mulai = time.time()
+    t = panggil_yoructl(kid, "terapkan")
+    lama = round(time.time() - mulai, 1)
+
+    if t.get("status") == "DILEWATI":
+        return {"tindakan": "lewati", "berhasil": True,
+                "nilai_sesudah": t.get("nilai"), "diverifikasi": True,
+                "snapshot_id": None, "dirollback": False,
+                "pesan_error": None, "durasi_detik": lama}
+
+    if not t.get("berhasil"):
+        return {"tindakan": "terapkan", "berhasil": False,
+                "nilai_sesudah": t.get("nilai"), "diverifikasi": False,
+                "snapshot_id": None, "dirollback": False,
+                "pesan_error": t.get("pesan") or t.get("status"),
+                "durasi_detik": lama}
+
+    v = panggil_yoructl(kid, "verifikasi")
+    diverifikasi = v.get("status") == "LULUS"
+    return {
+        "tindakan": "terapkan",
+        "berhasil": bool(diverifikasi),
+        "nilai_sesudah": v.get("nilai"),
+        "diverifikasi": diverifikasi,
+        "snapshot_id": f"yoru-{kid}-{datetime.now().strftime('%Y%m%dT%H%M%S')}",
+        "dirollback": False,
+        "pesan_error": None if diverifikasi else "verifikasi tidak LULUS",
+        "durasi_detik": round(time.time() - mulai, 1),
+    }
+
+
+def kerjakan(laporan, keputusan, kering=False):
+    """AMAN dikerjakan sendiri. BERISIKO hanya kalau pemilik sudah setuju."""
+    peta = {k["id"]: k for k in laporan["kontrol"]}
+    dikerjakan = []
+
+    for kid in SEMUA_KONTROL:
+        k = peta.get(kid)
+        if not k or k["status"] != "GAGAL" or k["prasyarat_gagal"]:
+            continue
+
+        if kid in AMAN:
+            alasan = "aman - tidak perlu bertanya"
+        elif keputusan.get(kid) == "setuju":
+            alasan = "disetujui pemilik"
+        else:
+            continue
+
+        if kering:
+            kabar(f"(kering) {kid} akan diterapkan - {alasan}")
+            continue
+
+        kabar(f"{kid} terapkan - {alasan}")
+        k["hasil"] = terapkan_satu(kid)
+        dikerjakan.append(kid)
+
+    for kid in list(keputusan):
+        if keputusan[kid] == "kembalikan" and not kering:
+            kabar(f"{kid} kembalikan - diminta pemilik")
+            r = panggil_yoructl(kid, "kembalikan")
+            if peta.get(kid):
+                peta[kid]["hasil"] = {
+                    "tindakan": "kembalikan", "berhasil": bool(r.get("berhasil")),
+                    "nilai_sesudah": r.get("nilai"), "diverifikasi": bool(r.get("berhasil")),
+                    "snapshot_id": None, "dirollback": True,
+                    "pesan_error": r.get("pesan"), "durasi_detik": None,
+                }
+            dikerjakan.append(kid)
+
+    return dikerjakan
+
+
+def segarkan(laporan, katalog, penimbang, dikerjakan):
+    """Baca ulang kontrol yang barusan disentuh, lalu hitung skor lagi."""
+    if not dikerjakan:
+        return laporan
+    peta = {k["id"]: k for k in laporan["kontrol"]}
+    for kid in dikerjakan:
+        m = panggil_yoructl(kid, "periksa")
+        if kid in peta:
+            peta[kid]["status"] = PETA_STATUS.get(m.get("status", "ERROR"), "ERROR")
+            peta[kid]["nilai_terbaca"] = m.get("nilai") or "tidak-terbaca"
+
+    h = {"LULUS": 0, "GAGAL": 0, "SEBAGIAN": 0, "DILEWATI": 0, "ERROR": 0}
+    for k in laporan["kontrol"]:
+        h[k["status"]] = h.get(k["status"], 0) + 1
+    total = len(laporan["kontrol"])
+    laporan["ringkasan"] = {
+        "total": total, "lulus": h["LULUS"], "gagal": h["GAGAL"],
+        "sebagian": h["SEBAGIAN"], "dilewati": h["DILEWATI"] + h["ERROR"],
+        "skor": round(h["LULUS"] / total * 100) if total else 0,
+    }
+    laporan["butuh_keputusan"] = penimbang.urutan(
+        [k["id"] for k in laporan["kontrol"]
+         if k["status"] == "GAGAL" and k["butuh_izin"] and not k["prasyarat_gagal"]]
+    )
+    laporan["waktu"] = sekarang()
+    return laporan
+
+
+# --------------------------------------------------------------------- utama
+def main():
+    ap = argparse.ArgumentParser(description="Agent Yoru")
+    ap.add_argument("--siklus", choices=["perbaikan", "penjagaan"], default="penjagaan")
+    ap.add_argument("--konfigurasi", default="/etc/yoru/yoru.conf")
+    ap.add_argument("--kering", action="store_true",
+                    help="cuma periksa dan susun laporan, jangan ubah apa pun")
+    ap.add_argument("--tanpa-kirim", action="store_true",
+                    help="jangan hubungi dashboard")
+    ap.add_argument("--keluar", default=None,
+                    help="tulis laporan ke berkas ini juga (untuk pengujian)")
+    a = ap.parse_args()
+
+    konf = baca_konfigurasi(a.konfigurasi)
+    katalog = baca_katalog()
+    if not katalog:
+        kabar("katalog kosong - tidak bisa menyusun laporan")
+        return 3
+    penimbang = Penimbang(konf)
+
+    kabar(f"siklus {a.siklus}, memeriksa {len(SEMUA_KONTROL)} kontrol")
+    hasil = {kid: panggil_yoructl(kid, "periksa") for kid in SEMUA_KONTROL}
+
+    laporan = susun_laporan(a.siklus, konf, katalog, penimbang, hasil,
+                            baca_laporan_lama() if a.siklus == "penjagaan" else None)
+    kabar(f"skor {laporan['ringkasan']['skor']} "
+          f"(lulus {laporan['ringkasan']['lulus']}/{laporan['ringkasan']['total']}), "
+          f"drift {len(laporan['drift'])}, "
+          f"menunggu keputusan {len(laporan['butuh_keputusan'])}")
+
+    keputusan = {}
+    if not a.tanpa_kirim:
+        kirim_laporan(laporan, konf)
+        j = ambil_keputusan(konf)
+        keputusan = j.get("kontrol", {}) if isinstance(j, dict) else {}
+        catat_port(j.get("port", []) if isinstance(j, dict) else [])
+
+    dikerjakan = kerjakan(laporan, keputusan, kering=a.kering)
+    if dikerjakan:
+        laporan = segarkan(laporan, katalog, penimbang, dikerjakan)
+        kabar(f"skor sesudah dikerjakan: {laporan['ringkasan']['skor']}")
+
+    simpan(laporan)
+    if not a.tanpa_kirim and dikerjakan:
+        kirim_laporan(laporan, konf)
+    if a.keluar:
+        Path(a.keluar).write_text(
+            json.dumps(laporan, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    print(json.dumps(laporan["ringkasan"], ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

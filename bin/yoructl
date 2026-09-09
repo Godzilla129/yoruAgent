@@ -13,7 +13,7 @@ umask 022
 export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-VERSI="0.1.5"
+VERSI="0.1.6"
 LOG_DIR=/var/log/yoru
 LOG="$LOG_DIR/tindakan.log"
 
@@ -382,6 +382,8 @@ k01() { case "$1" in
     pastikan_terbaca "$nilai" "sshd -T tidak bisa dibaca - openssh-server terpasang?"
     [ "$nilai" = "no" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
+    berkas_sama "/etc/ssh/sshd_config.d/01-yoru-k01.conf" "$K01_ISI" && [ "$(sshd_nilai permitrootlogin)" = "no" ] \
+      && selesai DILEWATI true "no" "sudah diterapkan - sshd tidak di-reload lagi"
     ada_user_sudo_lain || tolak "tidak ada user sudo lain yang aktif - menerapkan ini mengunci pemilik"
     tulis_ssh 01-yoru-k01.conf "PermitRootLogin no" || tolak "sshd menolak konfigurasi"
     nilai=$(sshd_nilai permitrootlogin)
@@ -394,6 +396,8 @@ k02() { local kurang; case "$1" in
     pastikan_terbaca "$nilai" "sshd -T tidak bisa dibaca - openssh-server terpasang?"
     [ "$nilai" = "no" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
+    berkas_sama "/etc/ssh/sshd_config.d/01-yoru-k02.conf" "$K02_ISI" && [ "$(sshd_nilai passwordauthentication)" = "no" ] \
+      && selesai DILEWATI true "no" "sudah diterapkan - sshd tidak di-reload lagi"
     kunci_ssh_terbukti || tolak "belum ada bukti login SSH key berhasil - menerapkan ini menutup satu-satunya jalan masuk"
 
     # Pemilik aman belum berarti semua orang aman. Tanpa langkah ini, K02
@@ -418,6 +422,8 @@ k03() { case "$1" in
     pastikan_terbaca "$nilai" "sshd -T tidak bisa dibaca - openssh-server terpasang?"
     [ "$nilai" = "3/30" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
+    berkas_sama "/etc/ssh/sshd_config.d/01-yoru-k03.conf" "$K03_ISI" && [ "$(sshd_nilai maxauthtries)/$(sshd_nilai logingracetime)" = "3/30" ] \
+      && selesai DILEWATI true "3/30" "sudah diterapkan - sshd tidak di-reload lagi"
     tulis_ssh 01-yoru-k03.conf "MaxAuthTries 3
 LoginGraceTime 30" || tolak "sshd menolak konfigurasi"
     nilai="$(sshd_nilai maxauthtries)/$(sshd_nilai logingracetime)"
@@ -435,6 +441,8 @@ k04() { local lemah; case "$1" in
     lemah=$(sshd -T 2>/dev/null | grep -E '^macs ' | grep -c 'sha1'); nilai="mac_sha1=$lemah"
     [ "$lemah" = "0" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
+    berkas_sama "/etc/ssh/sshd_config.d/01-yoru-k04.conf" "$K04_ISI" && [ "$(sshd -T 2>/dev/null | grep -E '^macs ' | grep -c 'sha1')" = "0" ] \
+      && selesai DILEWATI true "mac_sha1=0" "sudah diterapkan - sshd tidak di-reload lagi"
     tulis_ssh 01-yoru-k04.conf "$K04_ISI" || tolak "sshd menolak daftar algoritma"
     lemah=$(sshd -T 2>/dev/null | grep -E '^macs ' | grep -c 'sha1'); nilai="mac_sha1=$lemah"
     [ "$lemah" = "0" ] && selesai LULUS true "$nilai" || { hapus_ssh 01-yoru-k04.conf; tolak "verifikasi gagal, sudah dikembalikan"; } ;;
@@ -452,6 +460,43 @@ esac }
 # sshd -T mencetak satu baris "port <n>" per port yang dipakai, jadi server
 # yang mendengar di dua port ikut tertangani.
 port_ssh() { sshd -T 2>/dev/null | awk '/^port /{print $2}'; }
+
+# ------------------------------------------------------------ idempotensi
+# Memanggil terapkan berkali-kali tidak boleh mengulang perubahan.
+# Yang paling terasa di K06: tiap panggilan me-restart mariadb, jadi dua
+# panggilan = koneksi database putus dua kali. Hasil akhirnya sama, tapi
+# gangguannya nyata.
+#
+# Syaratnya DUA, bukan satu, dan ini penting:
+#
+#   1. berkas milik Yoru sudah ada DENGAN ISI YANG SAMA PERSIS, dan
+#   2. keadaan efektifnya memang sudah sesuai
+#
+# Kalau syaratnya cuma nomor 2 ("nilainya sudah benar, lewati"), muncul
+# lubang halus: nilai itu bisa datang dari berkas milik orang lain. Kalau
+# suatu hari berkas itu hilang, setelannya balik berbahaya tanpa ada yang
+# tahu, karena Yoru merasa sudah beres. Dengan syarat nomor 1, Yoru tetap
+# menuliskan berkasnya sendiri dulu - dia jadi PEMILIK setelan itu - dan
+# baru setelah itu boleh melewati.
+#
+# Satu setelan, satu pemilik. Pelajaran dari ufw dan sysctl di K10.
+berkas_sama() {  # berkas_sama <berkas> <isi-yang-diharapkan>
+  [ -f "$1" ] || return 1
+  [ "$(cat "$1" 2>/dev/null)" = "$2" ]
+}
+
+K01_ISI="PermitRootLogin no"
+K02_ISI="PasswordAuthentication no"
+K03_ISI="MaxAuthTries 3
+LoginGraceTime 30"
+K06_ISI="[mysqld]
+bind-address = 127.0.0.1"
+K09_ISI="[Journal]
+Storage=persistent
+Compress=yes
+SystemMaxUse=500M
+SystemKeepFree=1G
+MaxRetentionSec=1month"
 
 # ------------------------------------------------- port layanan lain
 # SSH bukan satu-satunya pintu. Server orang biasanya juga punya web, panel
@@ -656,6 +701,9 @@ k06() { case "$1" in
     else selesai DILEWATI true "tidak ada layanan di 3306"; fi ;;
   terapkan)
     [ -d /etc/mysql/mariadb.conf.d ] || tolak "MariaDB tidak terpasang"
+    # mariadb TIDAK di-restart kalau semuanya memang sudah benar
+    berkas_sama "$K06_BERKAS" "$K06_ISI" && ada_teks '127.0.0.1:3306' ss -tulpn \
+      && selesai DILEWATI true "127.0.0.1:3306" "sudah diterapkan - mariadb tidak direstart"
     printf '[mysqld]\nbind-address = 127.0.0.1\n' > "$K06_BERKAS"; chmod 644 "$K06_BERKAS"
     systemctl restart mariadb || { rm -f "$K06_BERKAS"; tolak "mariadb gagal start, sudah dikembalikan"; }
     sleep 2
@@ -700,6 +748,8 @@ k08() { local n; case "$1" in
   periksa|verifikasi) n=$(auditctl -l 2>/dev/null | grep -c '^-w'); nilai="aturan=$n"
     [ "$n" -ge 12 ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
+    berkas_sama "$K08_BERKAS" "$K08_ISI" && [ "$(auditctl -l 2>/dev/null | grep -c '^-w')" -ge 12 ] 2>/dev/null \
+      && selesai DILEWATI true "aturan=$(auditctl -l 2>/dev/null | grep -c '^-w')" "sudah diterapkan - aturan audit tidak dimuat ulang"
     if ! command -v auditctl >/dev/null 2>&1; then
       pasang_paket auditd \
         || tolak "gagal memasang auditd. apt bilang: ${apt_kesalahan:-tidak ada keterangan}"
@@ -728,6 +778,8 @@ k09() { case "$1" in
     if [ -d /var/log/journal ] && [ "$nilai" = "max 500.0M" ]
       then selesai LULUS true "$nilai"; else selesai GAGAL true "${nilai:-tidak-terbaca}"; fi ;;
   terapkan)
+    berkas_sama "$K09_BERKAS" "$K09_ISI" && [ -d /var/log/journal ] && [ "$(k09_max)" = "max 500.0M" ] \
+      && selesai DILEWATI true "max 500.0M" "sudah diterapkan - journald tidak direstart"
     mkdir -p /etc/systemd/journald.conf.d
     printf '[Journal]\nStorage=persistent\nCompress=yes\nSystemMaxUse=500M\nSystemKeepFree=1G\nMaxRetentionSec=1month\n' > "$K09_BERKAS"
     chmod 644 "$K09_BERKAS"; systemctl restart systemd-journald; sleep 1
@@ -775,6 +827,8 @@ k10() { case "$1" in
     case "$nilai" in *'?'*) selesai ERROR false "$nilai" "sysctl ipv4 tidak bisa dibaca" ;; esac
     k10_lulus "$nilai" && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
+    berkas_sama "$K10_BERKAS" "$K10_ISI" && k10_lulus "$(k10_baca)" && ada_teks '#yoru-k10#IPT_SYSCTL=' cat /etc/default/ufw \
+      && selesai DILEWATI true "$(k10_baca)" "sudah diterapkan - sysctl tidak dimuat ulang"
     printf '%s\n' "$K10_ISI" > "$K10_BERKAS"; chmod 644 "$K10_BERKAS"
     # ufw menerapkan sysctl-nya sendiri setiap start dan menimpa log_martians
     # jadi 0. Lepaskan ufw dari urusan sysctl supaya satu setelan punya satu

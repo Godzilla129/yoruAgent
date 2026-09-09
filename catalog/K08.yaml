@@ -21,6 +21,7 @@ kode_cis_catatan_cakupan: >
   bulat-bulat - lihat kenapa_aturan_sedikit. Dua belas aturan yang dipilih
   adalah keputusan kami, bukan salinan.
 risiko: AMAN
+nilai_target: "aturan>=12"   # yang dibaca yoructl kalau kontrol ini LULUS
 kategori: audit
 
 kenapa: >

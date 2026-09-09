@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yoru — keamanan server kamu</title>
+<style>
+/* Satu berkas, tanpa CDN. Server yang dijaga Yoru belum tentu punya jalan
+   keluar ke internet, dan dashboard yang butuh unduhan dari luar akan tampil
+   rusak justru di server yang paling perlu dijaga. */
+:root{
+  --bg:#f6f7f9; --kartu:#ffffff; --garis:#e3e6ea; --teks:#16191d;
+  --redup:#5c6470; --aman:#0f7a4d; --aman-bg:#e8f6ef;
+  --bahaya:#b3261e; --bahaya-bg:#fdecea; --hati:#8a5a00; --hati-bg:#fdf3e0;
+  --biru:#1a56c4; --sorot:#111418;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-tema="terang"]){
+    --bg:#101317; --kartu:#181c22; --garis:#2a3038; --teks:#e8eaed;
+    --redup:#9aa4b0; --aman:#4ade80; --aman-bg:#0f2a1e;
+    --bahaya:#f87171; --bahaya-bg:#2a1416; --hati:#fbbf24; --hati-bg:#2a2110;
+    --biru:#7aa2f7; --sorot:#e8eaed;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--teks);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.bungkus{max-width:940px;margin:0 auto;padding:24px 18px 72px}
+
+header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+header h1{font-size:20px;margin:0;letter-spacing:-.01em}
+header .sub{color:var(--redup);font-size:13px}
+
+/* ---- kartu skor ---- */
+.skor{background:var(--kartu);border:1px solid var(--garis);border-radius:14px;
+  padding:22px 24px;display:flex;align-items:center;gap:26px;flex-wrap:wrap;margin-bottom:18px}
+.angka{font-size:56px;font-weight:700;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.angka small{font-size:20px;font-weight:500;color:var(--redup)}
+.skor .kanan{flex:1;min-width:220px}
+.bar{height:8px;border-radius:99px;background:var(--garis);overflow:hidden;margin:10px 0 12px}
+.bar>i{display:block;height:100%;background:var(--aman);transition:width .5s ease}
+.pil{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  padding:3px 9px;border-radius:99px;margin-right:6px}
+.pil.l{background:var(--aman-bg);color:var(--aman)}
+.pil.g{background:var(--bahaya-bg);color:var(--bahaya)}
+.pil.d{background:var(--garis);color:var(--redup)}
+.mesin{color:var(--redup);font-size:13px;margin-top:2px}
+.mesin b{color:var(--teks);font-weight:600}
+
+/* ---- bagian ---- */
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--redup);
+  margin:26px 0 10px;font-weight:700}
+
+/* ---- kontrol ---- */
+.kontrol{background:var(--kartu);border:1px solid var(--garis);border-radius:12px;
+  padding:16px 18px;margin-bottom:10px}
+.kontrol.perlu{border-color:var(--hati)}
+.baris1{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.tanda{font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;
+  letter-spacing:.03em;white-space:nowrap;margin-top:2px}
+.LULUS{background:var(--aman-bg);color:var(--aman)}
+.GAGAL{background:var(--bahaya-bg);color:var(--bahaya)}
+.ERROR,.DILEWATI,.SEBAGIAN{background:var(--garis);color:var(--redup)}
+.judul{font-weight:600;flex:1;min-width:200px}
+.kode{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--redup);
+  white-space:nowrap}
+.kenapa{color:var(--redup);margin-top:8px;font-size:14px}
+
+/* Kotak konsekuensi. Aturan nomor 4 kontrak: ini WAJIB terlihat di sebelah
+   tombol setuju - bukan di tooltip, bukan di halaman lain. Orang yang menekan
+   tombol harus sudah membaca akibatnya. */
+.akibat{background:var(--hati-bg);border-left:3px solid var(--hati);
+  border-radius:0 8px 8px 0;padding:11px 14px;margin-top:12px;font-size:14px}
+.akibat b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--hati);margin-bottom:4px}
+.blokir{background:var(--bahaya-bg);border-left:3px solid var(--bahaya);
+  border-radius:0 8px 8px 0;padding:11px 14px;margin-top:12px;font-size:14px}
+.blokir b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--bahaya);margin-bottom:4px}
+
+.tombol{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+button{font:inherit;font-size:14px;font-weight:600;padding:8px 16px;border-radius:8px;
+  border:1px solid var(--garis);background:var(--kartu);color:var(--teks);cursor:pointer}
+button:hover{border-color:var(--redup)}
+button.ya{background:var(--sorot);color:var(--bg);border-color:var(--sorot)}
+button.ya:hover{opacity:.88}
+button:disabled{opacity:.5;cursor:default}
+.sudah{font-size:13px;color:var(--aman);font-weight:600;margin-top:10px}
+
+/* ---- drift ---- */
+.drift{background:var(--kartu);border:1px solid var(--hati);border-radius:12px;
+  padding:16px 18px;margin-bottom:10px}
+.drift .dari{font:13px/1.5 ui-monospace,Menlo,monospace;margin-top:8px;color:var(--redup)}
+.drift .dari s{color:var(--bahaya);text-decoration-thickness:1px}
+.drift .dari b{color:var(--teks)}
+
+.kosong{background:var(--kartu);border:1px dashed var(--garis);border-radius:12px;
+  padding:34px 20px;text-align:center;color:var(--redup)}
+.kosong code{background:var(--bg);padding:2px 6px;border-radius:5px;
+  font:13px ui-monospace,Menlo,monospace}
+footer{margin-top:34px;color:var(--redup);font-size:12px;text-align:center}
+.riwayat{display:none;gap:3px;align-items:flex-end;height:44px;margin-top:6px}
+.riwayat i{flex:1;background:var(--garis);border-radius:2px 2px 0 0;min-height:2px}
+.riwayat i.b{background:var(--aman)}
+</style>
+</head>
+<body>
+<div class="bungkus">
+
+  <header>
+    <h1>Yoru</h1>
+    <span class="sub">keamanan server kamu, diperiksa tiap hari</span>
+  </header>
+
+  <div id="isi"><div class="kosong">Memuat…</div></div>
+
+  <footer>
+    Yoru tidak pernah mengubah apa pun yang berisiko tanpa kamu setujui dulu.
+  </footer>
+</div>
+
+<script>
+const el = document.getElementById('isi');
+let SERVER = null;
+
+const aman = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function muat() {
+  let d;
+  try {
+    const r = await fetch('/api/laporan');
+    if (r.status === 404) return kosong();
+    d = await r.json();
+  } catch (e) { return kosong('Dashboard tidak bisa menghubungi API-nya sendiri.'); }
+  SERVER = d.server?.nama || null;
+  gambar(d);
+  riwayat();
+}
+
+function kosong(pesan) {
+  el.innerHTML = `<div class="kosong">
+    <p><b>${aman(pesan || 'Belum ada laporan yang masuk.')}</b></p>
+    <p>Jalankan agent di server yang mau dijaga:</p>
+    <p><code>sudo yoru-agent --siklus perbaikan</code></p></div>`;
+}
+
+function gambar(d) {
+  const r = d.ringkasan || {}, s = d.server || {};
+  const perlu = new Set(d.butuh_keputusan || []);
+
+  let h = `
+  <div class="skor">
+    <div class="angka">${r.skor ?? 0}<small>/100</small></div>
+    <div class="kanan">
+      <div class="bar"><i style="width:${r.skor ?? 0}%"></i></div>
+      <span class="pil l">${r.lulus ?? 0} aman</span>
+      <span class="pil g">${r.gagal ?? 0} bermasalah</span>
+      <span class="pil d">${r.dilewati ?? 0} dilewati</span>
+      <div class="mesin"><b>${aman(s.nama)}</b> · ${aman(s.os)} · ${aman(s.ip_utama || '-')}
+        ${s.panel_terdeteksi ? ' · panel ' + aman(s.panel_terdeteksi) : ''}
+        <br>Siklus ${aman(d.siklus)} · ${aman((d.waktu || '').replace('T', ' ').slice(0, 16))}</div>
+      <div class="riwayat" id="riwayat"></div>
+    </div>
+  </div>`;
+
+  // Drift lebih dulu: perubahan mendadak lebih mendesak daripada kelemahan
+  // yang memang sudah ada sejak awal.
+  if ((d.drift || []).length) {
+    h += `<h2>Ada yang berubah di server kamu</h2>`;
+    for (const x of d.drift) h += kartuDrift(x);
+  }
+
+  // Kontrol yang sudah tampil sebagai drift TIDAK diulang di bawah. Kartu
+  // drift sudah punya tombolnya sendiri, dan pertanyaannya beda: yang satu
+  // "boleh saya benerin?", yang satu "ini kamu bukan?". Menampilkan kontrol
+  // yang sama dua kali dengan dua pertanyaan berbeda cuma bikin ragu.
+  const sudahDiDrift = new Set((d.drift || []).map(x => x.id));
+  const butuh = (d.kontrol || []).filter(k => perlu.has(k.id) && !sudahDiDrift.has(k.id));
+  const sisa  = (d.kontrol || []).filter(k => !perlu.has(k.id) && !sudahDiDrift.has(k.id));
+
+  if (butuh.length) {
+    h += `<h2>Menunggu keputusan kamu (${butuh.length})</h2>`;
+    for (const k of butuh) h += kartuKontrol(k, true);
+  }
+  h += `<h2>Sepuluh hal yang diperiksa</h2>`;
+  for (const k of sisa) h += kartuKontrol(k, false);
+
+  el.innerHTML = h;
+  el.querySelectorAll('button[data-kontrol]').forEach(b =>
+    b.addEventListener('click', () => kirim(b)));
+}
+
+function kartuKontrol(k, perlu) {
+  const terhalang = (k.prasyarat_gagal || []).length > 0;
+  return `
+  <div class="kontrol ${perlu ? 'perlu' : ''}">
+    <div class="baris1">
+      <span class="tanda ${aman(k.status)}">${aman(k.status)}</span>
+      <span class="judul">${aman(k.nama)}</span>
+      <span class="kode">${aman(k.id)} · ${aman(k.nilai_terbaca)} → ${aman(k.nilai_target)}</span>
+    </div>
+    <div class="kenapa">${aman(k.kenapa)}</div>
+    ${terhalang ? `<div class="blokir"><b>Belum bisa dijalankan</b>${aman(k.prasyarat_gagal.join(' · '))}</div>` : ''}
+    ${perlu && !terhalang ? `
+      <div class="akibat"><b>Kalau disetujui, ini yang berubah</b>${aman(k.yang_rusak_kalau_diterapkan)}</div>
+      <div class="tombol">
+        <button class="ya" data-kontrol="${aman(k.id)}" data-nilai="setuju">Setuju, amankan</button>
+        <button data-kontrol="${aman(k.id)}" data-nilai="tolak">Nanti dulu</button>
+      </div>` : ''}
+    ${k.hasil ? `<div class="sudah">${k.hasil.berhasil
+        ? '✓ sudah diterapkan dan diverifikasi — nilainya sekarang ' + aman(k.hasil.nilai_sesudah)
+        : '✗ gagal: ' + aman(k.hasil.pesan_error || 'tidak diketahui')}</div>` : ''}
+  </div>`;
+}
+
+function kartuDrift(x) {
+  return `
+  <div class="drift">
+    <div class="baris1">
+      <span class="tanda GAGAL">BERUBAH</span>
+      <span class="judul">${aman(x.nama)}</span>
+      <span class="kode">${aman(x.id)}</span>
+    </div>
+    <div class="dari"><s>${aman(x.berubah_dari)}</s> → <b>${aman(x.berubah_jadi)}</b></div>
+    <div class="kenapa">
+      ${x.siapa ? `Diubah oleh <b>${aman(x.siapa)}</b>` : 'Tidak ada jejak siapa yang mengubah'}
+      ${x.kapan_diubah ? ' pada ' + aman(x.kapan_diubah) : ''}
+      ${x.perintah ? ' lewat <code>' + aman(x.perintah) + '</code>' : ''}.
+    </div>
+    <div class="akibat"><b>Jawaban kamu jadi patokan baru</b>
+      Kalau ini memang kamu, Yoru berhenti menanyakannya besok.</div>
+    <div class="tombol">
+      <button data-kontrol="${aman(x.id)}" data-nilai="sah">Itu memang saya</button>
+      <button class="ya" data-kontrol="${aman(x.id)}" data-nilai="kembalikan">Kembalikan seperti semula</button>
+    </div>
+  </div>`;
+}
+
+async function kirim(tombol) {
+  const kartu = tombol.closest('.kontrol, .drift');
+  kartu.querySelectorAll('button').forEach(b => b.disabled = true);
+  try {
+    const r = await fetch('/api/keputusan', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({server: SERVER, kontrol: tombol.dataset.kontrol,
+                            nilai: tombol.dataset.nilai})
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const catat = document.createElement('div');
+    catat.className = 'sudah';
+    catat.textContent = 'Jawaban kamu tersimpan. Yoru akan mengerjakannya di pemeriksaan berikutnya.';
+    kartu.appendChild(catat);
+  } catch (e) {
+    kartu.querySelectorAll('button').forEach(b => b.disabled = false);
+    const catat = document.createElement('div');
+    catat.className = 'blokir';
+    catat.textContent = 'Gagal menyimpan jawaban. Coba lagi.';
+    kartu.appendChild(catat);
+  }
+}
+
+async function riwayat() {
+  try {
+    const d = await (await fetch('/api/riwayat?batas=30')).json();
+    const w = document.getElementById('riwayat');
+    // Di bawah tiga titik, grafiknya belum bercerita apa-apa dan malah terbaca
+    // seperti garis nyasar di bawah kartu skor.
+    if (!w || (d.riwayat || []).length < 3) return;
+    w.style.display = 'flex';
+    w.innerHTML = d.riwayat.slice().reverse().map(x =>
+      `<i class="${x.skor >= 80 ? 'b' : ''}" style="height:${Math.max(2, x.skor)}%"
+          title="${aman(x.waktu)} — skor ${x.skor}"></i>`).join('');
+  } catch (e) { /* riwayat itu pelengkap; halaman tetap berguna tanpanya */ }
+}
+
+muat();
+setInterval(muat, 30000);
+</script>
+</body>
+</html>

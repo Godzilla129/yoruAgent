@@ -123,7 +123,7 @@ periksa_lingkungan() {
   # flock dipakai yoructl buat mencegah terapkan dan kembalikan jalan
   # bersamaan. Tanpa dia yoructl tetap jalan tapi tanpa kunci, dan itu
   # lebih baik ketahuan sekarang daripada pas dua tindakan tabrakan.
-  for p in sshd systemctl sudo visudo install stat flock; do
+  for p in sshd systemctl sudo visudo install stat flock python3; do
     command -v "$p" >/dev/null 2>&1 || kurang+=("$p")
   done
   [ ${#kurang[@]} -eq 0 ] || mati "perintah yang dibutuhkan tidak ada: ${kurang[*]}"
@@ -238,6 +238,19 @@ pasang_dispatcher() {
   pindah_log_lama
   install -o root -g root -m 755 "$ASAL/bin/yoructl" "$DIR_BIN/yoructl" \
     || mati "gagal menyalin dispatcher"
+
+  # Agent (Lane 3). Dipanggil timer harian lewat yoru-watch.
+  if [ -f "$ASAL/bin/yoru-agent" ]; then
+    python3 -c 'import yaml' 2>/dev/null || {
+      lewat "python3-yaml belum ada, memasang (dipakai agent buat baca katalog)"
+      DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 \
+        install python3-yaml >/dev/null 2>&1 \
+        || lewat "gagal memasang python3-yaml - agent tidak akan bisa baca katalog"
+    }
+    install -o root -g root -m 755 "$ASAL/bin/yoru-agent" "$DIR_BIN/yoru-agent" \
+      || mati "gagal menyalin agent"
+    ok "$DIR_BIN/yoru-agent (root:root 755)"
+  fi
   ok "$DIR_BIN/yoructl (root:root 755)"
 
   printf '%s\n' "$PEMILIK" > "$DIR_ETC/pemilik"

@@ -23,6 +23,7 @@ kode_cis_yang_belum_kami_kerjakan:
     tapi juga item CIS yang kami putuskan untuk tidak diambil, dan
     alasannya sudah tertulis. Dua yang lain belum dikerjakan.
 risiko: AMAN
+nilai_target: "max 500.0M"   # yang dibaca yoructl kalau kontrol ini LULUS
 kategori: log
 
 kenapa: >

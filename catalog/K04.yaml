@@ -11,6 +11,7 @@ kode_cis_koreksi: >
   tiga rekomendasi CIS sekaligus, dan ketiga judulnya persis seperti yang
   kami tebak. Yang belum diketahui cuma nomornya, dan sekarang sudah.
 risiko: BERISIKO
+nilai_target: "mac_sha1=0"   # yang dibaca yoructl kalau kontrol ini LULUS
 kategori: ssh
 
 kenapa: >

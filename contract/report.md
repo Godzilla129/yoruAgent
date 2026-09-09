@@ -258,6 +258,30 @@ dibuat lambat — tanpa kunci, dua `systemctl restart mariadb` berjalan
 bertumpuk dan **dua-duanya melapor sukses**; dengan kunci, yang kedua
 menunggu yang pertama selesai.
 
+### `terapkan` boleh menjawab `DILEWATI`
+
+Sejak yoructl 0.1.6, `terapkan` yang dipanggil saat semuanya memang sudah
+benar akan menjawab `DILEWATI` tanpa menyentuh apa pun:
+
+```json
+{"id":"K06","tindakan":"terapkan","status":"DILEWATI","berhasil":true,
+ "nilai":"127.0.0.1:3306","pesan":"sudah diterapkan - mariadb tidak direstart"}
+```
+
+**Ini keberhasilan, bukan kegagalan.** Perlakukan sama dengan `LULUS` untuk
+perhitungan skor. Yang berubah cuma satu: tidak ada yang dikerjakan, jadi
+jangan menampilkan "baru saja diterapkan".
+
+Kenapa ada: tanpa ini, memanggil `K06 terapkan` dua kali me-restart mariadb
+dua kali — koneksi database pengguna putus dua kali untuk perubahan yang
+tidak terjadi. Hal yang sama berlaku untuk journald di K09.
+
+Syaratnya dua, dan sengaja: berkas milik Yoru harus sudah ada **dengan isi
+yang sama persis**, **dan** keadaan efektifnya sudah sesuai. Kalau nilainya
+sudah benar tapi datang dari berkas milik pihak lain, Yoru tetap menuliskan
+berkasnya sendiri — supaya setelan itu punya satu pemilik yang jelas, dan
+tidak diam-diam berubah saat berkas pihak lain itu hilang.
+
 ### Port terbuka: jawaban pemilik dipakai K05
 
 `K05 periksa` mengisi field `pesan` dengan port TCP yang terbuka ke luar tapi

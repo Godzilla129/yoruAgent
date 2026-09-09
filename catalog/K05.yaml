@@ -20,6 +20,7 @@ kode_cis_yang_belum_kami_kerjakan:
     Ditulis di sini supaya tidak ada yang mengira K05 menutup seluruh bagian
     firewall CIS. Empat item di atas belum dikerjakan.
 risiko: BERISIKO
+nilai_target: "active"   # yang dibaca yoructl kalau kontrol ini LULUS
 kategori: firewall
 
 kenapa: >

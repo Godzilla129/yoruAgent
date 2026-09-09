@@ -44,6 +44,7 @@ kode_cis_lubang_yang_baru_ketahuan:
     siklus kembalikan-terapkan lewat dispatcher. Risikonya rendah: sakelar
     ini hanya berpengaruh kalau server bertindak sebagai router.
 risiko: AMAN
+nilai_target: "1/0/0"   # yang dibaca yoructl kalau kontrol ini LULUS
 kategori: jaringan
 
 kenapa: >

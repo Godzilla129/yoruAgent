@@ -15,6 +15,7 @@ kode_cis_catatan_cakupan: >
   Yoru, yaitu server yang tidak ada orang yang mengurus. Jangan mengklaim
   "menerapkan CIS 1.2.2.1" tanpa menyebut bedanya.
 risiko: AMAN
+nilai_target: "enabled"   # yang dibaca yoructl kalau kontrol ini LULUS
 kategori: pembaruan
 
 kenapa: >

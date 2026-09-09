@@ -20,6 +20,7 @@ kode_cis_kenapa_kami_tetap_pakai: >
   oleh bot tanpa henti. Jadi ini kontrol PILIHAN KAMI, bukan kutipan CIS.
   Kalau ditanya juri, jawabannya persis itu, jangan mengaku ini item CIS.
 risiko: BERISIKO
+nilai_target: "no"   # yang dibaca yoructl kalau kontrol ini LULUS
 kategori: ssh
 
 kenapa: >

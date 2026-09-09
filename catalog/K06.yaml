@@ -16,6 +16,7 @@ kode_cis_catatan_cakupan: >
   tertutup penuh. Item terkait yang juga belum tertutup:
   "4.2.6 Ensure ufw firewall rules exist for all open ports".
 risiko: BERISIKO
+nilai_target: "127.0.0.1:3306"   # yang dibaca yoructl kalau kontrol ini LULUS
 kategori: jaringan
 
 kenapa: >
