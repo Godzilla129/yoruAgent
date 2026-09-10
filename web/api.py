@@ -43,7 +43,7 @@ TOKEN = os.environ.get("YORU_TOKEN", "").strip()
 KONTROL_SAH = re.compile(r"^K(?:0[1-9]|10)$")
 KEPUTUSAN_SAH = {"setuju", "tolak", "sah", "kembalikan"}
 
-app = FastAPI(title="Yoru Dashboard", version="0.1.6")
+app = FastAPI(title="Yoru Dashboard", version="0.1.7")
 
 
 # ------------------------------------------------------------------ simpanan

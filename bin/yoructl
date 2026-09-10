@@ -13,7 +13,7 @@ umask 022
 export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-VERSI="0.1.6"
+VERSI="0.1.7"
 LOG_DIR=/var/log/yoru
 LOG="$LOG_DIR/tindakan.log"
 
@@ -132,6 +132,50 @@ periksa_diri() {
 }
 
 # ------------------------------------------------------------- alat bantu
+# /run/sshd itu folder pemisahan hak milik sshd. Tanpa dia, "sshd -T" dan
+# "sshd -t" MENOLAK JALAN - bukan karena openssh-server tidak ada, tapi karena
+# folder itu belum dibuat.
+#
+# Dan di Ubuntu 24.04 dia memang sering belum ada. SSH di sana dinyalakan lewat
+# ssh.socket, sedangkan yang membuat /run/sshd itu ssh.service lewat
+# RuntimeDirectory=sshd - dan ssh.service baru jalan setelah ada yang benar-
+# benar menyambung. Jadi di server yang baru boot dan belum ada yang login SSH,
+# folder ini tidak ada, dan K01 sampai K05 jadi ERROR semua padahal sshd-nya
+# terpasang dan sehat. systemd juga menghapusnya lagi saat ssh.service berhenti.
+#
+# Izinnya disamakan persis dengan yang dipasang systemd (RuntimeDirectoryMode
+# 0755, milik root).
+siapkan_run_sshd() {
+  [ -d /run/sshd ] && return 0
+  command -v sshd >/dev/null 2>&1 || return 1
+  mkdir -p /run/sshd 2>/dev/null || return 1
+  chown root:root /run/sshd 2>/dev/null
+  chmod 0755 /run/sshd 2>/dev/null
+}
+
+# Alasan sebenarnya kenapa sshd -T gagal, bukan tebakan kita. Cuma dipanggil di
+# jalur gagal, jadi tidak menambah kerja di jalur normal.
+#
+# Versi sebelumnya membuang stderr lalu menebak "openssh-server terpasang?" -
+# dan tebakan itu salah di kasus paling sering, sehingga orang mencopot-pasang
+# openssh-server berkali-kali untuk masalah yang sama sekali bukan itu.
+alasan_sshd() {
+  command -v sshd >/dev/null 2>&1 || {
+    printf 'sshd tidak ada - openssh-server belum terpasang'; return 0; }
+  local pesan
+  pesan=$(sshd -T 2>&1 >/dev/null | tr '\n' ' ')
+  pesan=$(printf '%s' "$pesan" | sed 's/  */ /g; s/^ //; s/ *$//' | cut -c1-180)
+  [ -n "$pesan" ] || pesan='sshd -T gagal tanpa pesan apa pun'
+  printf '%s' "$pesan"
+}
+
+# Sama dengan pastikan_terbaca, tapi khusus sshd: pesannya menyebut alasan
+# aslinya dari sshd sendiri.
+pastikan_sshd_terbaca() {  # pastikan_sshd_terbaca <nilai>
+  local v="${1//\//}"
+  [ -n "$v" ] || selesai ERROR false "$1" "sshd -T gagal: $(alasan_sshd)"
+}
+
 tulis_ssh() {  # tulis_ssh <namafile> <isi>
   printf '%s\n' "$2" > "/etc/ssh/sshd_config.d/$1" || return 1
   chmod 644 "/etc/ssh/sshd_config.d/$1"
@@ -379,7 +423,7 @@ rekam_asal() {
 # ------------------------------------------------------------- 10 kontrol
 k01() { case "$1" in
   periksa|verifikasi) nilai=$(sshd_nilai permitrootlogin)
-    pastikan_terbaca "$nilai" "sshd -T tidak bisa dibaca - openssh-server terpasang?"
+    pastikan_sshd_terbaca "$nilai"
     [ "$nilai" = "no" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
     berkas_sama "/etc/ssh/sshd_config.d/01-yoru-k01.conf" "$K01_ISI" && [ "$(sshd_nilai permitrootlogin)" = "no" ] \
@@ -393,7 +437,7 @@ esac }
 
 k02() { local kurang; case "$1" in
   periksa|verifikasi) nilai=$(sshd_nilai passwordauthentication)
-    pastikan_terbaca "$nilai" "sshd -T tidak bisa dibaca - openssh-server terpasang?"
+    pastikan_sshd_terbaca "$nilai"
     [ "$nilai" = "no" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
     berkas_sama "/etc/ssh/sshd_config.d/01-yoru-k02.conf" "$K02_ISI" && [ "$(sshd_nilai passwordauthentication)" = "no" ] \
@@ -419,7 +463,7 @@ esac }
 
 k03() { case "$1" in
   periksa|verifikasi) nilai="$(sshd_nilai maxauthtries)/$(sshd_nilai logingracetime)"
-    pastikan_terbaca "$nilai" "sshd -T tidak bisa dibaca - openssh-server terpasang?"
+    pastikan_sshd_terbaca "$nilai"
     [ "$nilai" = "3/30" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
     berkas_sama "/etc/ssh/sshd_config.d/01-yoru-k03.conf" "$K03_ISI" && [ "$(sshd_nilai maxauthtries)/$(sshd_nilai logingracetime)" = "3/30" ] \
@@ -437,7 +481,7 @@ KexAlgorithms sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sh
 
 k04() { local lemah; case "$1" in
   periksa|verifikasi)
-    sshd -T >/dev/null 2>&1 || selesai ERROR false "" "sshd -T tidak bisa dibaca - openssh-server terpasang?"
+    sshd -T >/dev/null 2>&1 || selesai ERROR false "" "sshd -T gagal: $(alasan_sshd)"
     lemah=$(sshd -T 2>/dev/null | grep -E '^macs ' | grep -c 'sha1'); nilai="mac_sha1=$lemah"
     [ "$lemah" = "0" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
@@ -654,7 +698,7 @@ k05() { local p daftar ada oke belum lain; case "$1" in
     lain="$(firewall_lain)" && tolak "server ini sudah memakai $lain - dua firewall akan saling menimpa aturan. Yoru tidak menyalakan ufw di sini"
 
     daftar="$(port_ssh)"
-    [ -n "$daftar" ] || tolak "tidak bisa membaca port SSH dari sshd -T - openssh-server terpasang?"
+    [ -n "$daftar" ] || tolak "tidak bisa membaca port SSH: $(alasan_sshd)"
 
     # Port harus benar-benar didengar, bukan sekadar tertulis di konfigurasi.
     # Menyalakan firewall berdasarkan niat, bukan kenyataan, itu cara mengunci
@@ -888,6 +932,7 @@ if [ "$PAKSA" = "1" ] && [ "${SUDO_USER:-}" = "$AGEN" ]; then
 fi
 
 periksa_diri
+siapkan_run_sshd
 
 # Kunci hanya untuk tindakan yang MENULIS. periksa dan verifikasi cuma baca,
 # jadi sengaja dibiarkan bebas: siklus penjagaan harian isinya periksa semua,

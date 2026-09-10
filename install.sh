@@ -138,6 +138,21 @@ periksa_lingkungan() {
   [ ${#kurang[@]} -eq 0 ] || mati "perintah yang dibutuhkan tidak ada: ${kurang[*]}"
   ok "semua perintah yang dibutuhkan tersedia"
 
+  # "sshd ada" belum berarti "sshd -T bisa dibaca", dan K01 sampai K05 semuanya
+  # bertumpu pada sshd -T. Diperiksa di sini supaya ketahuan sekarang, bukan
+  # nanti berupa empat baris ERROR di dashboard tanpa sebab yang kelihatan.
+  #
+  # /run/sshd sering belum ada di Ubuntu 24.04 yang baru boot: yang membuatnya
+  # itu ssh.service, dan ssh.service baru jalan setelah ada yang menyambung
+  # lewat ssh.socket. yoructl membuatnya sendiri kalau tidak ada.
+  [ -d /run/sshd ] || { mkdir -p /run/sshd 2>/dev/null && chmod 0755 /run/sshd 2>/dev/null; }
+  if sshd -T >/dev/null 2>&1; then
+    ok "sshd -T bisa dibaca - K01 sampai K05 punya sumber data"
+  else
+    lewat "sshd -T tidak bisa dibaca: $(sshd -T 2>&1 >/dev/null | head -1)"
+    lewat "K01 sampai K05 akan berstatus ERROR sampai ini beres"
+  fi
+
   for b in bin/yoructl bin/yoru.sudoers bin/yoru-watch \
            systemd/yoru-watch.service systemd/yoru-watch.timer \
            examples/yoru.conf.example; do
