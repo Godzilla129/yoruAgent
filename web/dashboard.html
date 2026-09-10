@@ -3,412 +3,381 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Yoru — laporan server</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='3' fill='%23191713'/%3E%3Ctext x='16' y='23' font-family='Georgia,serif' font-size='21' fill='%23faf8f4' text-anchor='middle'%3EY%3C/text%3E%3C/svg%3E">
+<title>Yoru — CIS Agent</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f172a'/%3E%3Ctext x='16' y='23' font-family='Georgia,serif' font-size='20' fill='%2334d399' text-anchor='middle'%3EY%3C/text%3E%3C/svg%3E">
 <style>
-/* Satu berkas, tanpa CDN dan tanpa unduhan huruf. Server yang dijaga Yoru
-   belum tentu punya jalan keluar ke internet, dan halaman yang butuh unduhan
-   dari luar akan tampil rusak justru di server yang paling perlu dijaga. */
 :root{
-  --kertas:#faf8f4; --panel:#f2eee6; --tempel:#fbf9f5f2;
-  --tinta:#191713; --samar:#6d665b; --pudar:#968d7f;
-  --garis:#dcd5c8; --rambut:#eae4d9;
-  --aman:#2d6a41; --rawan:#a3382a; --tanya:#8a6512; --tanya-bg:#f8f1de;
-  --fokus:#1a56c4;
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    --kertas:#15140f; --panel:#1f1d16; --tempel:#15140ff2;
-    --tinta:#ece6da; --samar:#9b9385; --pudar:#746d61;
-    --garis:#343029; --rambut:#26231d;
-    --aman:#84bb8d; --rawan:#e08c74; --tanya:#d9b264; --tanya-bg:#241f14;
-    --fokus:#8aabf5;
-  }
+  --sidebar:#0f172a; --sidebar-2:#1e293b; --sidebar-teks:#cbd5e1;
+  --bg:#f1f5f9; --kartu:#ffffff; --garis:#e2e8f0;
+  --teks:#0f172a; --samar:#64748b;
+  --hijau:#16a34a; --hijau-bg:#dcfce7;
+  --merah:#dc2626; --merah-bg:#fee2e2;
+  --kuning:#ca8a04; --kuning-bg:#fef9c3;
+  --biru:#0891b2;
 }
 *{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
-body{margin:0;background:var(--kertas);color:var(--tinta);
-  font:16px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,sans-serif}
-:focus-visible{outline:2px solid var(--fokus);outline-offset:2px;border-radius:2px}
-.sheet{max-width:720px;margin:0 auto;padding:44px 24px 96px}
+body{margin:0;background:var(--bg);color:var(--teks);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,sans-serif}
+:focus-visible{outline:2px solid var(--biru);outline-offset:2px}
 
-/* ---------- bar nempel ---------- */
-/* Muncul setelah kartu skor lewat. Di daftar sepanjang ini, pemilik kehilangan
-   dua hal begitu menggulir: dia lagi lihat server yang mana, dan berapa yang
-   masih menunggu jawabannya. */
-.bar{position:fixed;top:0;left:0;right:0;z-index:9;background:var(--tempel);
-  backdrop-filter:blur(8px);border-bottom:1px solid var(--garis);
-  transform:translateY(-101%);transition:transform .18s ease}
-.bar.on{transform:none}
-.bar .in{max-width:720px;margin:0 auto;padding:9px 24px;display:flex;
-  align-items:center;gap:12px;overflow:hidden;
-  font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--samar)}
-.bar .nm{font-weight:600;color:var(--tinta);flex:none}
-.bar .os{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bar .sc{margin-left:auto;flex:none;font-weight:600;color:var(--tinta)}
-.bar .wait{color:var(--tanya)}
+/* ---------- sidebar ---------- */
+.wrap{display:flex;min-height:100vh}
+.side{width:208px;flex:none;background:var(--sidebar);color:var(--sidebar-teks);
+  display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:9px;padding:18px 18px;
+  border-bottom:1px solid var(--sidebar-2);color:#fff;font-weight:700;font-size:15px}
+.brand svg{flex:none}
+.side nav{padding:10px 0;flex:1}
+.side nav a{display:flex;align-items:center;gap:10px;padding:10px 18px;
+  color:var(--sidebar-teks);text-decoration:none;font-size:13.5px;cursor:pointer}
+.side nav a:hover{background:var(--sidebar-2);color:#fff}
+.side nav a.on{background:var(--sidebar-2);color:#fff;font-weight:600;
+  box-shadow:inset 3px 0 0 #34d399}
+.side .kaki{padding:14px 18px;border-top:1px solid var(--sidebar-2);
+  font-size:11.5px;color:#64748b;line-height:1.5}
 
-/* ---------- kepala ---------- */
-.head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;
-  flex-wrap:wrap;border-bottom:2px solid var(--tinta);padding-bottom:9px}
-.wordmark{font:400 32px/1 Georgia,"Times New Roman",serif;letter-spacing:-.015em}
-.wordmark i{font-style:normal;color:var(--pudar)}
-.head .when{font:12.5px/1.4 ui-monospace,Menlo,monospace;color:var(--samar);padding-bottom:3px}
-.machine{display:flex;flex-wrap:wrap;margin-top:12px;
-  font:12.5px/1.6 ui-monospace,Menlo,monospace;color:var(--samar)}
-.machine span{padding-right:13px;margin-right:13px;border-right:1px solid var(--garis)}
-.machine span:last-child{border-right:0;margin-right:0;padding-right:0}
-.machine b{color:var(--tinta);font-weight:600}
+/* ---------- isi ---------- */
+.main{flex:1;min-width:0;padding:20px 24px 48px}
+.judul-hal{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.judul-hal h1{font-size:19px;margin:0}
+.judul-hal .meta{font-size:12.5px;color:var(--samar);
+  font-family:ui-monospace,Menlo,monospace}
 
-/* ---------- skor ---------- */
-.score{display:flex;align-items:flex-start;gap:22px;margin-top:30px}
-.score .fig{font:400 76px/.82 Georgia,"Times New Roman",serif;letter-spacing:-.035em;
-  font-variant-numeric:lining-nums tabular-nums}
-.score .say{padding-top:5px}
-.score .lead{font-size:17px;line-height:1.45}
-.tally{display:flex;flex-wrap:wrap;margin-top:9px;
-  font:12.5px/1.5 ui-monospace,Menlo,monospace;color:var(--samar)}
-.tally span{padding-right:12px;margin-right:12px;border-right:1px solid var(--garis)}
-.tally span:last-child{border-right:0}
-.tally .ok b{color:var(--aman)} .tally .no b{color:var(--rawan)}
+/* ---------- kartu statistik ---------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:16px}
+.stat{background:var(--kartu);border:1px solid var(--garis);border-radius:8px;
+  padding:15px 17px;border-left:4px solid var(--garis)}
+.stat.k{border-left-color:var(--kuning)} .stat.h{border-left-color:var(--hijau)}
+.stat.m{border-left-color:var(--merah)}  .stat.b{border-left-color:var(--biru)}
+.stat .atas{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.stat .lbl{font-size:12.5px;color:var(--samar)}
+.stat .val{font-size:28px;font-weight:700;line-height:1.15;margin-top:4px}
+.stat.k .val{color:var(--kuning)} .stat.h .val{color:var(--hijau)}
+.stat.m .val{color:var(--merah)}  .stat.b .val{color:var(--biru)}
+.stat .sub{font-size:11.5px;color:var(--samar);margin-top:5px}
+.stat .bar{height:6px;border-radius:99px;background:var(--garis);margin-top:9px;overflow:hidden}
+.stat .bar i{display:block;height:100%;background:var(--kuning);transition:width .4s}
 
-/* ---------- saringan ---------- */
-.filter{display:flex;margin-top:26px;border-bottom:1px solid var(--garis);
-  overflow-x:auto;scrollbar-width:none}
-.filter::-webkit-scrollbar{display:none}
-.filter button{font:600 13.5px/1 inherit;padding:11px 14px;border:0;background:none;
-  color:var(--samar);cursor:pointer;white-space:nowrap;
-  border-bottom:2px solid transparent;margin-bottom:-1px}
-.filter button:hover{color:var(--tinta)}
-.filter button[aria-selected="true"]{color:var(--tinta);border-bottom-color:var(--tinta)}
-.filter .n{color:var(--pudar);margin-left:5px}
-.filter button[aria-selected="true"] .n{color:var(--samar)}
+/* ---------- panel tabel ---------- */
+.panel{background:var(--kartu);border:1px solid var(--garis);border-radius:8px;
+  margin-top:18px;overflow:hidden}
+.panel .kepala{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:13px 17px;border-bottom:1px solid var(--garis)}
+.panel .kepala h2{font-size:14.5px;margin:0;flex:1}
+.aksi-massal{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font:600 12px/1 inherit;padding:7px 11px;border-radius:5px;cursor:pointer;
+  border:1px solid var(--garis);background:var(--kartu);color:var(--samar);white-space:nowrap}
+.btn:hover:not(:disabled){background:var(--bg)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.audit{border-color:#bae6fd;color:#0369a1}
+.btn.hard{border-color:#fde68a;color:var(--kuning)}
+.btn.roll{border-color:#fecaca;color:var(--merah)}
+.btn.log{border-color:var(--garis);color:var(--samar)}
 
-/* ---------- bagian ---------- */
-section{margin-top:34px}
-section[hidden]{display:none}
-section > h2{font:600 15.5px/1.35 inherit;margin:0}
-section > .lede{color:var(--samar);font-size:14px;margin:3px 0 0;max-width:58ch}
+table{width:100%;border-collapse:collapse}
+thead th{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--samar);
+  text-align:left;padding:9px 12px;border-bottom:1px solid var(--garis);
+  background:#f8fafc;white-space:nowrap;font-weight:600}
+tbody td{padding:9px 12px;border-bottom:1px solid var(--garis);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:#f8fafc}
+td.no{color:var(--samar);font-family:ui-monospace,Menlo,monospace;font-size:12.5px;width:44px}
+td.poin{font-weight:500;min-width:230px}
+.cis{font:11.5px ui-monospace,Menlo,monospace;background:#f1f5f9;color:var(--samar);
+  padding:2px 6px;border-radius:4px;white-space:nowrap}
+.tag{font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:99px;white-space:nowrap}
+.tag.p{background:var(--hijau-bg);color:var(--hijau)}
+.tag.f{background:var(--merah-bg);color:var(--merah)}
+.tag.n{background:var(--kuning-bg);color:var(--kuning)}
+.tag.x{background:#f1f5f9;color:var(--samar)}
+td.kapan{font:12px ui-monospace,Menlo,monospace;color:var(--samar);white-space:nowrap}
+td.aksi{white-space:nowrap}
+td.aksi .btn{margin-right:4px}
+.hasil{display:block;font-size:11.5px;margin-top:5px}
+.hasil.ok{color:var(--hijau)} .hasil.no{color:var(--merah)} .hasil.jln{color:var(--samar)}
 
-/* Garis punggung: tiap baris menggantung di satu garis vertikal, penandanya
-   duduk di atas garis itu. Mata bisa menyusuri satu jalur, bukan melompat
-   antar kotak yang bentuknya sama semua. */
-.ledger{margin-top:16px;border-left:1px solid var(--garis)}
-.entry{position:relative;border-bottom:1px solid var(--rambut)}
-.entry:last-child{border-bottom:0}
-.entry[hidden]{display:none}
-.entry::before{content:"";position:absolute;left:-4px;top:23px;z-index:1;
-  width:7px;height:7px;background:var(--pudar);
-  border:2px solid var(--kertas);border-radius:1px}
-.entry.ok::before{background:var(--aman)}
-.entry.bad::before{background:var(--rawan)}
-.entry.act{background:var(--panel);border-bottom-color:var(--garis)}
-.entry.act::before{background:var(--tanya);width:9px;height:9px;left:-5px;top:22px;
-  border-color:var(--panel)}
+/* ---------- dialog konfirmasi ---------- */
+dialog{border:0;border-radius:10px;padding:0;max-width:540px;width:calc(100% - 32px);
+  box-shadow:0 18px 50px rgba(15,23,42,.28)}
+dialog::backdrop{background:rgba(15,23,42,.45)}
+.dlg{padding:20px 22px}
+.dlg h3{margin:0 0 4px;font-size:16px}
+.dlg .kid{font:12px ui-monospace,Menlo,monospace;color:var(--samar)}
+.dlg .risiko{border-left:4px solid var(--kuning);background:var(--kuning-bg);
+  padding:11px 13px;border-radius:0 6px 6px 0;margin-top:14px}
+.dlg .risiko b{display:block;font-size:11.5px;text-transform:uppercase;
+  letter-spacing:.03em;color:var(--kuning);margin-bottom:3px}
+.dlg .risiko p{margin:0;font-size:13.5px}
+.dlg .tombol{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.dlg .tombol button{font:600 13px/1 inherit;padding:9px 15px;border-radius:6px;cursor:pointer;
+  border:1px solid var(--garis);background:var(--kartu)}
+.dlg .tombol .ya{background:var(--kuning);border-color:var(--kuning);color:#fff}
 
-/* Baris judul sekaligus tombol buka-tutup. Pakai <summary> supaya keyboard
-   dan pembaca layar dapat perilakunya gratis, tanpa satu baris JS pun. */
-.entry summary{list-style:none;cursor:pointer;padding:15px 16px 15px 26px;
-  display:flex;gap:11px;align-items:baseline}
-.entry summary::-webkit-details-marker{display:none}
-.entry summary:hover .title{text-decoration:underline;text-underline-offset:3px}
-.entry[open] summary{padding-bottom:2px}
-.state{font:600 11px/1.6 ui-monospace,Menlo,monospace;letter-spacing:.05em;
-  text-transform:uppercase;flex:none;width:52px}
-.state.ok{color:var(--aman)} .state.bad{color:var(--rawan)} .state.mid{color:var(--samar)}
-.title{font-weight:600;font-size:16px;flex:1;min-width:0}
-.code{font:12px/1.6 ui-monospace,Menlo,monospace;color:var(--pudar);flex:none}
-.chev{flex:none;color:var(--pudar);font-size:10px;transition:transform .15s ease}
-.entry[open] .chev{transform:rotate(90deg)}
-
-.detail{padding:0 16px 17px 26px}
-.why{color:var(--samar);font-size:14.5px;margin:4px 0 0;max-width:62ch}
-
-/* Nilai dua kolom, biar nilai panjang seperti daftar algoritma SSH tidak
-   membungkus jadi bubur. */
-.pair{display:grid;grid-template-columns:72px 1fr;gap:1px 10px;margin-top:10px;
-  font:12.5px/1.55 ui-monospace,Menlo,monospace}
-.pair dt{color:var(--pudar)}
-.pair dd{margin:0;word-break:break-word}
-.pair dd.was{color:var(--samar);text-decoration:line-through}
-
-/* Kotak akibat. Aturan nomor 4 kontrak: WAJIB kelihatan tepat di sebelah
-   tombol setuju - bukan di tooltip, bukan di halaman lain. Kotak ini dan
-   tombolnya duduk di dalam satu blok yang sama, jadi mustahil melihat
-   tombolnya tanpa ikut melihat akibatnya. */
-.warn{border-left:3px solid var(--tanya);background:var(--tanya-bg);
-  padding:10px 13px;margin-top:14px}
-.warn .cap,.block .cap{display:block;font-size:11.5px;font-weight:700;
-  letter-spacing:.03em;text-transform:uppercase;margin-bottom:3px}
-.warn .cap{color:var(--tanya)}
-.warn p,.block p{margin:0;font-size:14.5px;line-height:1.55}
-.block{border-left:3px solid var(--rawan);padding:8px 0 8px 13px;margin-top:14px}
-.block .cap{color:var(--rawan)}
-
-.acts{display:flex;gap:8px;margin-top:15px;flex-wrap:wrap}
-.acts button{font:600 14px/1 inherit;padding:10px 16px;border-radius:2px;cursor:pointer;
-  border:1px solid var(--garis);background:var(--kertas);color:var(--tinta)}
-.acts button:hover:not(:disabled){border-color:var(--samar)}
-.acts button.go{background:var(--tinta);color:var(--kertas);border-color:var(--tinta)}
-.acts button.go:hover:not(:disabled){opacity:.86}
-.acts button:disabled{opacity:.4;cursor:default}
-.said{font-size:13.5px;color:var(--aman);margin-top:12px}
-.said.bad{color:var(--rawan)}
-
-.none{padding:24px 0 24px 26px;color:var(--samar);font-size:14.5px}
-.none[hidden]{display:none}
-.empty{margin-top:32px;padding-top:26px;border-top:1px solid var(--garis)}
-.empty p{margin:0 0 10px}
-.empty code{font:13.5px ui-monospace,Menlo,monospace;border-bottom:1px solid var(--garis)}
-.foot{margin-top:44px;padding-top:14px;border-top:1px solid var(--garis);
-  font-size:12.5px;line-height:1.6;color:var(--pudar);max-width:60ch}
+/* ---------- log ---------- */
+.logbox{font:12px/1.65 ui-monospace,Menlo,monospace;padding:14px 17px;
+  max-height:60vh;overflow:auto}
+.logbox div{border-bottom:1px solid var(--garis);padding:5px 0;display:flex;gap:10px;flex-wrap:wrap}
+.logbox div:last-child{border-bottom:0}
+.logbox .w{color:var(--samar);flex:none}
+.logbox .s{font-weight:700;flex:none;width:104px}
+.logbox .s.LULUS,.logbox .s.DIKEMBALIKAN{color:var(--hijau)}
+.logbox .s.GAGAL,.logbox .s.DITOLAK,.logbox .s.ERROR{color:var(--merah)}
+.logbox .s.DILEWATI,.logbox .s.PERINGATAN{color:var(--kuning)}
+.kosong{padding:34px 18px;text-align:center;color:var(--samar)}
+.kosong code{background:var(--bg);padding:2px 6px;border-radius:4px;
+  font:12.5px ui-monospace,Menlo,monospace}
+@media (max-width:820px){
+  .side{width:60px}.side .brand span,.side nav a span,.side .kaki{display:none}
+  .side nav a{justify-content:center;padding:12px 0}
+}
 </style>
 </head>
 <body>
-<div class="bar" id="bar"><div class="in">
-  <span class="nm" id="barName"></span><span class="os" id="barOs"></span>
-  <span class="sc" id="barScore"></span>
-</div></div>
+<div class="wrap">
+  <aside class="side">
+    <div class="brand">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2">
+        <path d="M12 2 4 6v6c0 5 3.4 9 8 10 4.6-1 8-5 8-10V6l-8-4z"/></svg>
+      <span>Yoru CIS Agent</span>
+    </div>
+    <nav id="nav">
+      <a data-h="dashboard" class="on">▦ <span>Dashboard</span></a>
+      <a data-h="checklist">☰ <span>CIS Checklist</span></a>
+      <a data-h="log">◷ <span>Audit Logs</span></a>
+      <a data-h="telegram">✈ <span>Telegram Bot</span></a>
+      <a data-h="llm">✦ <span>LLM Settings</span></a>
+      <a data-h="sistem">⚙ <span>System Settings</span></a>
+    </nav>
+    <div class="kaki">Semua tindakan lewat <b>yoructl</b>.<br>Agent tidak punya akses shell.</div>
+  </aside>
 
-<div class="sheet">
-  <div class="head">
-    <div class="wordmark">Yoru<i>.</i></div>
-    <div class="when" id="when"></div>
-  </div>
-  <div class="machine" id="machine"><span>memuat…</span></div>
-  <div id="body"></div>
-  <div class="foot" id="foot"></div>
+  <main class="main">
+    <div class="judul-hal">
+      <h1 id="judul">Dashboard</h1>
+      <span class="meta" id="meta"></span>
+    </div>
+    <div id="isi"></div>
+  </main>
 </div>
 
+<dialog id="dlg"><form method="dialog" class="dlg">
+  <h3 id="dlgJudul"></h3>
+  <div class="kid" id="dlgKid"></div>
+  <p id="dlgKenapa" style="color:var(--samar);font-size:13.5px;margin:10px 0 0"></p>
+  <div class="risiko"><b>Kalau disetujui, ini yang ikut berubah</b><p id="dlgRisiko"></p></div>
+  <div class="tombol">
+    <button value="batal">Batal</button>
+    <button value="ya" class="ya" id="dlgYa">Ya, jalankan</button>
+  </div>
+</form></dialog>
+
 <script>
-const $ = id => document.getElementById(id);
-const elBody = $('body'), elMachine = $('machine'), elWhen = $('when'), elFoot = $('foot');
-let SERVER = null, SARING = 'semua';
+const $ = i => document.getElementById(i);
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let DATA = null, HAL = 'dashboard';
 
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
-  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-
-// Status di kontrak ditulis untuk mesin. Yang baca halaman ini pemilik warung
-// online, bukan sysadmin - jadi katanya diganti yang dia pakai sehari-hari.
-// Artinya tidak digeser sedikit pun.
-const LABEL = {
-  LULUS:['aman','ok'], GAGAL:['rawan','bad'], SEBAGIAN:['separuh','mid'],
-  DILEWATI:['lewat','mid'], ERROR:['?','mid'],
+const pendek = t => {
+  const s = String(t || '');
+  if (s.startsWith('TIDAK_ADA')) return 'di luar CIS L1';
+  return s.length > 22 ? s.slice(0, 21) + '…' : s;
 };
 
-async function load() {
-  let d;
+const TAG = {LULUS:['PASSED','p'], GAGAL:['FAILED','f'], SEBAGIAN:['PARTIAL','n'],
+             DILEWATI:['SKIPPED','x'], ERROR:['ERROR','x']};
+
+async function muat() {
   try {
     const r = await fetch('/api/laporan');
-    if (r.status === 404) return blank();
-    d = await r.json();
-  } catch (e) { return blank('Halaman ini nggak bisa nyambung ke API-nya sendiri.'); }
-  SERVER = d.server?.nama || null;
-  render(d);
+    DATA = r.status === 404 ? null : await r.json();
+  } catch (e) { DATA = null; }
+  gambar();
 }
 
-function blank(msg) {
-  elMachine.innerHTML = '<span>belum ada server yang lapor</span>';
-  elWhen.textContent = ''; elFoot.textContent = '';
-  elBody.innerHTML = `<div class="empty">
-    <p>${esc(msg || 'Belum ada laporan yang masuk ke sini.')}</p>
-    <p>Jalanin agent-nya di server yang mau dijaga:</p>
-    <p><code>sudo yoru-agent --siklus perbaikan</code></p></div>`;
+function gambar() {
+  $('judul').textContent = {dashboard:'Dashboard', checklist:'CIS Checklist',
+    log:'Audit Logs', telegram:'Telegram Bot', llm:'LLM Settings',
+    sistem:'System Settings'}[HAL];
+  document.querySelectorAll('#nav a').forEach(a =>
+    a.classList.toggle('on', a.dataset.h === HAL));
+
+  if (HAL === 'log')      return halLog();
+  if (HAL === 'telegram') return halInfo('Telegram Bot',
+    'Notifikasi dikirim agent, bukan dari halaman ini. Isi TELEGRAM_TOKEN dan TELEGRAM_CHAT_ID di /etc/yoru/yoru.conf. Yoru cuma mengirim kalau ada yang berubah atau ada yang perlu dijawab.');
+  if (HAL === 'llm')      return halInfo('LLM Settings',
+    'Kunci model diisi di konfigurasi Hermes, bukan di sini — supaya cuma ada di satu tempat. Laporan tetap lengkap tanpa model: kalimat penjelasannya diambil dari katalog.');
+  if (HAL === 'sistem')   return halInfo('System Settings',
+    'Konfigurasi ada di /etc/yoru/yoru.conf (root:yoru-agent 640). Jadwal penjagaan diatur lewat systemd timer yoru-watch.timer.');
+
+  if (!DATA) return kosong();
+  $('meta').textContent = `${DATA.server?.nama || '-'} · ${DATA.server?.os || '-'} · ${(DATA.waktu||'').replace('T',' ').slice(0,16)}`;
+  $('isi').innerHTML = (HAL === 'dashboard' ? kartuStat() : '') + tabel();
+  pasangTombol();
 }
 
-function render(d) {
-  const r = d.ringkasan || {}, s = d.server || {};
-  const drift = d.drift || [];
-  const seen = new Set(drift.map(x => x.id));
-  const need = new Set(d.butuh_keputusan || []);
-  const ask  = (d.kontrol || []).filter(k => need.has(k.id) && !seen.has(k.id));
-  const rest = (d.kontrol || []).filter(k => !need.has(k.id) && !seen.has(k.id));
-  const nunggu = drift.length + ask.length;
+function kosong() {
+  $('meta').textContent = '';
+  $('isi').innerHTML = `<div class="panel"><div class="kosong">
+    <p><b>Belum ada laporan yang masuk.</b></p>
+    <p>Jalankan agent di server yang mau dijaga:</p>
+    <p><code>sudo yoru-agent --siklus perbaikan</code></p></div></div>`;
+}
 
-  elWhen.textContent = (d.waktu || '').replace('T', ' ').slice(0, 16);
-  elMachine.innerHTML =
-    `<span><b>${esc(s.nama)}</b></span><span>${esc(s.os)}</span>` +
-    `<span>${esc(s.ip_utama || 'ip tidak terbaca')}</span>` +
-    (s.panel_terdeteksi ? `<span>${esc(s.panel_terdeteksi)}</span>` : '');
+function halInfo(judul, teks) {
+  $('meta').textContent = '';
+  $('isi').innerHTML = `<div class="panel"><div class="kepala"><h2>${esc(judul)}</h2></div>
+    <div style="padding:16px 17px;color:var(--samar);max-width:66ch">${esc(teks)}</div></div>`;
+}
 
-  $('barName').textContent = s.nama || '';
-  $('barOs').textContent = s.os || '';
-  $('barScore').innerHTML = nunggu
-    ? `<span class="wait">${nunggu} nunggu</span> · ${r.skor ?? 0}/100`
-    : `${r.skor ?? 0}/100`;
-
-  // Angkanya harus menjumlah. "1 dari 10 aman, 7 rawan" bikin orang yang
-  // teliti menghitung sisanya lalu bertanya-tanya dua yang lain ke mana.
-  const tally = [`<span class="ok"><b>${r.lulus ?? 0}</b> aman</span>`];
-  if (r.gagal)    tally.push(`<span class="no"><b>${r.gagal}</b> rawan</span>`);
-  if (r.sebagian) tally.push(`<span><b>${r.sebagian}</b> separuh</span>`);
-  if (r.dilewati) tally.push(`<span><b>${r.dilewati}</b> nggak kebaca</span>`);
-
-  const nRawan = (d.kontrol || []).filter(k => k.status === 'GAGAL').length;
-  const nAman  = (d.kontrol || []).filter(k => k.status === 'LULUS').length;
-
-  let h = `
-  <div class="score">
-    <div class="fig">${r.skor ?? 0}</div>
-    <div class="say">
-      <div class="lead">${nunggu ? `Ada ${nunggu} hal yang nunggu kamu.`
-                                 : 'Nggak ada yang perlu kamu kerjain sekarang.'}</div>
-      <div class="tally">${tally.join('')}</div>
-    </div>
-  </div>
-
-  <div class="filter" role="tablist">
-    ${tab('semua', 'Semua', (d.kontrol || []).length)}
-    ${nunggu ? tab('nunggu', 'Nunggu jawaban', nunggu) : ''}
-    ${nRawan ? tab('rawan', 'Rawan', nRawan) : ''}
-    ${nAman  ? tab('aman',  'Aman',  nAman)  : ''}
+function kartuStat() {
+  const r = DATA.ringkasan || {}, t = r.total || 10;
+  const nunggu = (DATA.butuh_keputusan || []).length + (DATA.drift || []).length;
+  return `<div class="stats">
+    <div class="stat k"><div class="atas"><div><div class="lbl">Skor Kepatuhan CIS</div>
+      <div class="val">${r.skor ?? 0}%</div></div><span style="font-size:19px">◔</span></div>
+      <div class="bar"><i style="width:${r.skor ?? 0}%"></i></div></div>
+    <div class="stat h"><div class="atas"><div><div class="lbl">Lolos Audit (Passed)</div>
+      <div class="val">${r.lulus ?? 0} / ${t}</div></div><span style="font-size:19px">✓</span></div>
+      <div class="sub">Sudah sesuai target</div></div>
+    <div class="stat m"><div class="atas"><div><div class="lbl">Perlu Hardening (Failed)</div>
+      <div class="val">${r.gagal ?? 0} / ${t}</div></div><span style="font-size:19px">⚠</span></div>
+      <div class="sub">${nunggu ? nunggu + ' butuh persetujuan kamu' : 'Tidak ada yang menunggu'}</div></div>
+    <div class="stat b"><div class="atas"><div><div class="lbl">Siklus</div>
+      <div class="val" style="font-size:22px">${esc(DATA.siklus || '-')}</div></div>
+      <span style="font-size:19px">◷</span></div>
+      <div class="sub">Human-in-the-Loop aktif</div></div>
   </div>`;
-
-  if (drift.length) h += part('drift', 'Ada yang berubah',
-    'Setelan ini tadinya benar, sekarang nggak. Jawaban kamu di sini jadi patokan buat besok.',
-    drift.map(rowDrift).join(''));
-
-  if (ask.length) h += part('ask', 'Nunggu jawaban kamu',
-    'Yoru nggak ngerjain yang ini tanpa izin — ada layanan lain yang bisa ikut kena.',
-    ask.map(k => row(k, true)).join(''));
-
-  if (rest.length) h += part('rest', 'Sisanya',
-    'Diperiksa juga. Yang rawan di sini dibenerin Yoru sendiri, soalnya nggak ada yang ikut kena. Klik buat lihat rinciannya.',
-    rest.map(k => row(k, false)).join(''));
-
-  h += `<div class="none" id="none" hidden>Nggak ada yang cocok sama saringan itu.</div>`;
-
-  elBody.innerHTML = h;
-  elBody.querySelectorAll('button[data-id]').forEach(b => b.onclick = () => send(b));
-  elBody.querySelectorAll('.filter button').forEach(b => b.onclick = () => saring(b.dataset.f));
-  saring(SARING);
-
-  elFoot.textContent =
-    `Siklus ${d.siklus}. Yoru ngecek ulang tiap hari dan nyatet semua tindakannya ke ` +
-    `/var/log/yoru/ — catatan itu milik root, dan agent-nya sendiri nggak bisa ngedit. ` +
-    `Halaman ini nggak pernah nyentuh server; dia cuma nampung jawaban kamu.`;
 }
 
-const tab = (k, teks, n) =>
-  `<button role="tab" data-f="${k}" aria-selected="${k === SARING}">` +
-  `${esc(teks)}<span class="n">${n}</span></button>`;
+function tabel() {
+  const perlu = new Set(DATA.butuh_keputusan || []);
+  const baris = (DATA.kontrol || []).map((k, i) => {
+    const [teks, kelas] = TAG[k.status] || ['?', 'x'];
+    const halangan = (k.prasyarat_gagal || []).length > 0;
+    return `<tr data-kid="${esc(k.id)}">
+      <td class="no">#${i + 1}</td>
+      <td class="poin" title="${esc(k.kenapa)}">${esc(k.nama)}</td>
+      <td><span class="cis" title="${esc(k.kode_cis || '')}">${esc(pendek(k.kode_cis || k.id))}</span></td>
+      <td><span class="tag ${kelas}">${teks}</span></td>
+      <td class="kapan">${esc((DATA.waktu || '').replace('T', ' ').slice(0, 16))}</td>
+      <td class="aksi">
+        <button class="btn audit" data-a="periksa">Audit</button>
+        <button class="btn hard" data-a="terapkan" ${halangan ? 'disabled title="prasyarat belum terpenuhi"' : ''}
+          data-izin="${perlu.has(k.id) ? 1 : 0}">Hardening</button>
+        <button class="btn roll" data-a="kembalikan">Rollback</button>
+        <span class="hasil" data-slot></span>
+      </td>
+      <td><button class="btn log" data-a="log">Log / AI</button></td>
+    </tr>`;
+  }).join('');
 
-const part = (k, judul, lede, isi) =>
-  `<section data-part="${k}"><h2>${esc(judul)}</h2><p class="lede">${esc(lede)}</p>` +
-  `<div class="ledger">${isi}</div></section>`;
-
-function row(k, act) {
-  const [kata, warna] = LABEL[k.status] || ['?', 'mid'];
-  const blocked = (k.prasyarat_gagal || []).length > 0;
-  const kelas = act ? 'act' : (warna === 'ok' ? 'ok' : warna === 'bad' ? 'bad' : '');
-  // Yang butuh jawaban dibuka dari awal, sisanya dilipat. Hampir separuh teks
-  // di halaman ini soal hal yang sudah beres, dan itu menenggelamkan yang
-  // benar-benar menunggu pemilik.
-  return `
-  <details class="entry ${kelas}" data-st="${esc(k.status)}" data-act="${act ? 1 : 0}" ${act ? 'open' : ''}>
-    <summary>
-      <span class="state ${warna}">${esc(kata)}</span>
-      <span class="title">${esc(k.nama)}</span>
-      <span class="code">${esc(k.id)}</span>
-      <span class="chev">▶</span>
-    </summary>
-    <div class="detail">
-      <p class="why">${esc(k.kenapa)}</p>
-      <dl class="pair">
-        <dt>sekarang</dt><dd>${esc(k.nilai_terbaca)}</dd>
-        <dt>target</dt><dd>${esc(k.nilai_target)}</dd>
-      </dl>
-      ${blocked ? `<div class="block"><span class="cap">Belum bisa dijalanin</span>
-        <p>${esc(k.prasyarat_gagal.join(' · '))}</p></div>` : ''}
-      ${act && !blocked ? `
-        <div class="warn"><span class="cap">Kalau kamu setuju, ini yang ikut berubah</span>
-          <p>${esc(k.yang_rusak_kalau_diterapkan)}</p></div>
-        <div class="acts">
-          <button class="go" data-id="${esc(k.id)}" data-nilai="setuju">Ya, benerin</button>
-          <button data-id="${esc(k.id)}" data-nilai="tolak">Nanti dulu</button>
-        </div>` : ''}
-      ${k.hasil ? `<div class="said${k.hasil.berhasil ? '' : ' bad'}">${k.hasil.berhasil
-          ? 'Udah dibenerin dan dicek ulang — sekarang ' + esc(k.hasil.nilai_sesudah) + '.'
-          : 'Gagal: ' + esc(k.hasil.pesan_error || 'nggak diketahui') + '.'}</div>` : ''}
-    </div>
-  </details>`;
-}
-
-function rowDrift(x) {
-  const jejak = x.siapa
-    ? `Diubah <b>${esc(x.siapa)}</b>${x.kapan_diubah ? ' ' + esc(x.kapan_diubah) : ''}` +
-      `${x.perintah ? ' pakai <code>' + esc(x.perintah) + '</code>' : ''}.`
-    : 'Nggak ada catatan siapa yang ngubah.';
-  return `
-  <details class="entry act" data-st="GAGAL" data-act="1" open>
-    <summary>
-      <span class="state bad">berubah</span>
-      <span class="title">${esc(x.nama)}</span>
-      <span class="code">${esc(x.id)}</span>
-      <span class="chev">▶</span>
-    </summary>
-    <div class="detail">
-      <dl class="pair">
-        <dt>tadinya</dt><dd class="was">${esc(x.berubah_dari)}</dd>
-        <dt>sekarang</dt><dd>${esc(x.berubah_jadi)}</dd>
-      </dl>
-      <p class="why">${jejak}</p>
-      <div class="acts">
-        <button data-id="${esc(x.id)}" data-nilai="sah">Itu emang saya</button>
-        <button class="go" data-id="${esc(x.id)}" data-nilai="kembalikan">Balikin kayak semula</button>
+  return `<div class="panel">
+    <div class="kepala">
+      <h2>Daftar 10 Poin CIS Benchmark Ubuntu 24.04</h2>
+      <div class="aksi-massal">
+        <button class="btn audit" data-massal="periksa">Audit Semua</button>
+        <button class="btn hard" data-massal="terapkan">Hardening Semua</button>
+        <button class="btn roll" data-massal="kembalikan">Rollback Semua</button>
       </div>
     </div>
-  </details>`;
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>No</th><th>Poin CIS Hardening</th><th>Kode CIS</th><th>Status</th>
+        <th>Terakhir Dijalankan</th><th>Aksi Eksekusi</th><th>Log &amp; AI</th></tr></thead>
+      <tbody>${baris}</tbody>
+    </table></div></div>`;
 }
 
-function saring(k) {
-  SARING = k;
-  document.querySelectorAll('.filter button').forEach(b =>
-    b.setAttribute('aria-selected', String(b.dataset.f === k)));
-
-  let tampil = 0;
-  document.querySelectorAll('.entry').forEach(e => {
-    const act = e.dataset.act === '1', st = e.dataset.st;
-    const lolos = k === 'semua' || (k === 'nunggu' && act) ||
-                  (k === 'rawan' && st === 'GAGAL') || (k === 'aman' && st === 'LULUS');
-    e.hidden = !lolos;
-    if (lolos) tampil++;
-  });
-  // Bagian yang seluruh isinya tersembunyi ikut disembunyikan, biar tidak ada
-  // judul menggantung di atas daftar kosong.
-  document.querySelectorAll('section[data-part]').forEach(sec => {
-    sec.hidden = ![...sec.querySelectorAll('.entry')].some(e => !e.hidden);
-  });
-  const none = $('none');
-  if (none) none.hidden = tampil > 0;
+async function halLog(kid) {
+  $('meta').textContent = kid ? kid : 'semua kontrol';
+  const q = kid ? `?kontrol=${encodeURIComponent(kid)}` : '';
+  let d;
+  try { d = await (await fetch('/api/log' + q)).json(); } catch (e) { d = {baris: []}; }
+  const isi = (d.baris || []).length
+    ? d.baris.map(b => `<div><span class="w">${esc((b.waktu||'').replace('T',' ').slice(0,19))}</span>
+        <span class="s ${esc(b.status)}">${esc(b.status)}</span>
+        <span class="w">${esc(b.id)} ${esc(b.tindakan)}</span>
+        <span>${esc(b.nilai ?? '')}${b.pesan ? ' — ' + esc(b.pesan) : ''}</span></div>`).join('')
+    : `<div class="kosong">Belum ada catatan di /var/log/yoru/.
+        ${esc(d.pesan || '')}</div>`;
+  $('isi').innerHTML = `<div class="panel">
+    <div class="kepala"><h2>Jejak tindakan${kid ? ' — ' + esc(kid) : ''}</h2>
+    <div class="aksi-massal">${kid ? '<button class="btn log" id="semuaLog">Lihat semua</button>' : ''}</div></div>
+    <div class="logbox">${isi}</div></div>`;
+  const s = $('semuaLog'); if (s) s.onclick = () => halLog();
 }
 
-async function send(btn) {
-  const baris = btn.closest('.entry');
-  baris.querySelectorAll('button').forEach(b => b.disabled = true);
-  const catat = document.createElement('div');
+function pasangTombol() {
+  document.querySelectorAll('tbody button[data-a]').forEach(b => {
+    b.onclick = () => {
+      const tr = b.closest('tr'), kid = tr.dataset.kid;
+      if (b.dataset.a === 'log') { HAL = 'log'; gambar(); halLog(kid); return; }
+      if (b.dataset.a === 'terapkan' && b.dataset.izin === '1') return tanya(kid, b);
+      jalankan(kid, b.dataset.a, b);
+    };
+  });
+  document.querySelectorAll('button[data-massal]').forEach(b => {
+    b.onclick = async () => {
+      const aksi = b.dataset.massal;
+      if (aksi !== 'periksa' &&
+          !confirm(`Jalankan ${aksi} untuk SEMUA kontrol?\n\nYang berisiko tetap ditanya satu per satu.`)) return;
+      b.disabled = true;
+      for (const tr of document.querySelectorAll('tbody tr')) {
+        const t = tr.querySelector(`button[data-a="${aksi}"]`);
+        if (!t || t.disabled) continue;
+        if (aksi === 'terapkan' && t.dataset.izin === '1') {
+          tr.querySelector('[data-slot]').className = 'hasil jln';
+          tr.querySelector('[data-slot]').textContent = 'dilewati — butuh persetujuan';
+          continue;
+        }
+        await jalankan(tr.dataset.kid, aksi, t);
+      }
+      b.disabled = false;
+      muat();
+    };
+  });
+}
+
+function tanya(kid, tombol) {
+  const k = (DATA.kontrol || []).find(x => x.id === kid) || {};
+  $('dlgJudul').textContent = k.nama || kid;
+  $('dlgKid').textContent = `${kid} · ${k.kode_cis || ''} · sekarang ${k.nilai_terbaca} → target ${k.nilai_target}`;
+  $('dlgKenapa').textContent = k.kenapa || '';
+  $('dlgRisiko').textContent = k.yang_rusak_kalau_diterapkan || '(katalog belum mencantumkan konsekuensinya)';
+  const d = $('dlg');
+  d.onclose = () => { if (d.returnValue === 'ya') jalankan(kid, 'terapkan', tombol); };
+  d.showModal();
+}
+
+async function jalankan(kid, aksi, tombol) {
+  const tr = tombol.closest('tr'), slot = tr.querySelector('[data-slot]');
+  tr.querySelectorAll('button').forEach(b => b.disabled = true);
+  slot.className = 'hasil jln'; slot.textContent = 'menjalankan…';
+  let d;
   try {
-    const r = await fetch('/api/keputusan', {
+    const r = await fetch('/api/jalankan', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({server: SERVER, kontrol: btn.dataset.id, nilai: btn.dataset.nilai})
+      body: JSON.stringify({kontrol: kid, aksi})
     });
-    if (!r.ok) throw new Error(await r.text());
-    catat.className = 'said';
-    catat.textContent = 'Kecatat. Yoru ngerjainnya pas pemeriksaan berikutnya.';
-  } catch (e) {
-    baris.querySelectorAll('button').forEach(b => b.disabled = false);
-    catat.className = 'said bad';
-    catat.textContent = 'Gagal nyimpen jawaban kamu. Coba lagi.';
-  }
-  baris.querySelector('.detail').appendChild(catat);
+    d = await r.json();
+  } catch (e) { d = {status: 'ERROR', pesan: 'API tidak bisa dihubungi'}; }
+
+  const ok = d.berhasil === true;
+  slot.className = 'hasil ' + (ok ? 'ok' : 'no');
+  slot.textContent = `${d.status}${d.nilai ? ' — ' + d.nilai : ''}${d.pesan ? ' — ' + d.pesan : ''}`;
+  tr.querySelectorAll('button').forEach(b => {
+    if (!(b.dataset.a === 'terapkan' && b.title)) b.disabled = false;
+  });
+  if (ok && aksi !== 'periksa') setTimeout(muat, 900);
+  return d;
 }
 
-// Bar nempel muncul begitu kartu skor lewat.
-addEventListener('scroll', () => $('bar').classList.toggle('on', scrollY > 190),
-                 {passive: true});
+$('nav').onclick = e => {
+  const a = e.target.closest('a[data-h]'); if (!a) return;
+  HAL = a.dataset.h; gambar(); if (HAL === 'log') halLog();
+};
 
-load();
-setInterval(load, 30000);
+muat();
+setInterval(() => { if (HAL === 'dashboard' || HAL === 'checklist') muat(); }, 30000);
 </script>
 </body>
 </html>

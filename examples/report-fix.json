@@ -31,7 +31,8 @@
       "yang_rusak_kalau_diterapkan": "Script otomatis yang selama ini login sebagai root akan berhenti jalan — misalnya tool backup atau deploy. Kalau kamu punya yang seperti itu, pindahkan dulu ke akun biasa.",
       "butuh_izin": true,
       "prasyarat_gagal": [],
-      "hasil": null
+      "hasil": null,
+      "kode_cis": "5.1.20"
     },
     {
       "id": "K02",
@@ -45,7 +46,8 @@
       "yang_rusak_kalau_diterapkan": "Semua yang login pakai password berhenti bisa masuk, termasuk aplikasi dan script yang menyimpan password SSH. Kunci SSH kamu harus sudah terpasang dan sudah pernah dipakai berhasil sebelum ini dinyalakan.",
       "butuh_izin": true,
       "prasyarat_gagal": [],
-      "hasil": null
+      "hasil": null,
+      "kode_cis": "TIDAK_ADA_DI_CIS_L1"
     },
     {
       "id": "K03",
@@ -59,7 +61,8 @@
       "yang_rusak_kalau_diterapkan": "Tidak ada. Paling-paling kamu perlu menyambung ulang lebih cepat kalau salah ketik password.",
       "butuh_izin": false,
       "prasyarat_gagal": [],
-      "hasil": null
+      "hasil": null,
+      "kode_cis": "5.1.16 dan 5.1.13"
     },
     {
       "id": "K04",
@@ -73,7 +76,8 @@
       "yang_rusak_kalau_diterapkan": "Aplikasi atau perangkat lama mungkin tidak bisa lagi menyambung — misalnya PuTTY versi lama atau alat bawaan perangkat jaringan. Gagalnya terjadi sebelum tahap password, jadi pesannya bukan “password salah” melainkan gagal menyepakati cara enkripsi.",
       "butuh_izin": true,
       "prasyarat_gagal": [],
-      "hasil": null
+      "hasil": null,
+      "kode_cis": "5.1.6, 5.1.15 dan 5.1.12"
     },
     {
       "id": "K05",
@@ -87,7 +91,8 @@
       "yang_rusak_kalau_diterapkan": "Layanan yang portnya belum didaftarkan jadi tidak bisa diakses dari luar. Web, panel, database — semuanya harus diizinkan lebih dulu.",
       "butuh_izin": true,
       "prasyarat_gagal": [],
-      "hasil": null
+      "hasil": null,
+      "kode_cis": "4.2.1, 4.2.3 dan 4.2.7"
     },
     {
       "id": "K06",
@@ -101,7 +106,8 @@
       "yang_rusak_kalau_diterapkan": "Aplikasi di server LAIN yang menyambung ke database ini akan berhenti bisa konek. Kalau kamu memang butuh itu — replikasi, atau aplikasi yang dipisah dari databasenya — beri tahu dulu. Selain itu database akan restart sebentar, jadi sebaiknya di jam sepi.",
       "butuh_izin": true,
       "prasyarat_gagal": [],
-      "hasil": null
+      "hasil": null,
+      "kode_cis": "2.1.22"
     },
     {
       "id": "K07",
@@ -115,7 +121,8 @@
       "yang_rusak_kalau_diterapkan": "Pembaruan dipasang otomatis, jadi bisa terjadi di jam yang tidak kamu pilih. Untuk sebagian besar server ini justru yang diinginkan, tapi kalau ada aplikasi yang sensitif terhadap versi, kabari dulu.",
       "butuh_izin": false,
       "prasyarat_gagal": [],
-      "hasil": null
+      "hasil": null,
+      "kode_cis": "1.2.2.1 (sebagian)"
     },
     {
       "id": "K08",
@@ -129,7 +136,8 @@
       "yang_rusak_kalau_diterapkan": "Tidak ada. Pencatat jejak ini hanya mengamati, tidak memblokir apa pun. Yang bertambah cuma ukuran catatan.",
       "butuh_izin": false,
       "prasyarat_gagal": [],
-      "hasil": null
+      "hasil": null,
+      "kode_cis": "TIDAK_ADA_DI_CIS_L1 - auditd ada di profil Level 2"
     },
     {
       "id": "K09",
@@ -143,7 +151,8 @@
       "yang_rusak_kalau_diterapkan": "Tidak ada. Yang perlu disepakati cuma seberapa besar batasnya — kalau kekecilan, catatan lama terhapus lebih cepat dari yang kamu harapkan.",
       "butuh_izin": false,
       "prasyarat_gagal": [],
-      "hasil": null
+      "hasil": null,
+      "kode_cis": "6.1.2.4, 6.1.2.3, 6.1.1.3 dan 6.1.1.1"
     },
     {
       "id": "K10",
@@ -157,7 +166,8 @@
       "yang_rusak_kalau_diterapkan": "Untuk server biasa tidak ada. Satu hal yang perlu dicek: kalau penyedia server kamu membagikan alamat IPv6 lewat cara otomatis, salah satu setelan di sini bisa memutusnya.",
       "butuh_izin": false,
       "prasyarat_gagal": [],
-      "hasil": null
+      "hasil": null,
+      "kode_cis": "3.3.3 sampai 3.3.6, 3.3.8 sampai 3.3.11"
     }
   ],
   "drift": [],

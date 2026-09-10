@@ -19,6 +19,7 @@ SUDAH ADA di katalog - dia tidak bisa menyuruh server melakukan hal baru.
 Jangan pernah membalik arahnya demi kepraktisan.
 """
 
+import asyncio
 import json
 import os
 import re
@@ -235,6 +236,68 @@ async def keputusan_untuk_agent(server: Optional[str] = None,
             k.execute("UPDATE port SET diambil=1")
     return {"keputusan": {b["kontrol"]: b["nilai"] for b in kb},
             "port_disetujui": [b["port"] for b in pb]}
+
+
+# ---------------------------------------------------- jalankan lewat yoructl
+YORUCTL = os.environ.get("YORUCTL", "/opt/yoru/bin/yoructl")
+LOG_YORU = Path(os.environ.get("YORU_LOG", "/var/log/yoru"))
+AKSI = {"periksa": "periksa", "audit": "periksa",
+        "terapkan": "terapkan", "hardening": "terapkan",
+        "kembalikan": "kembalikan", "rollback": "kembalikan",
+        "verifikasi": "verifikasi"}
+
+
+@app.post("/api/jalankan")
+async def jalankan(badan: Dict[str, Any] = Body(...)):
+    """Panggil yoructl. Satu program, dua argumen - tidak ada shell."""
+    kid = str(badan.get("kontrol") or "").strip().upper()
+    aksi = AKSI.get(str(badan.get("aksi") or "").strip().lower())
+    if not KONTROL_SAH.match(kid):
+        raise HTTPException(status_code=422, detail="kontrol tidak dikenal")
+    if not aksi:
+        raise HTTPException(status_code=422, detail="tindakan tidak dikenal")
+
+    perintah = ["sudo", "-n", YORUCTL, kid, aksi]
+    if os.geteuid() == 0:
+        perintah = [YORUCTL, kid, aksi]
+    try:
+        p = await asyncio.create_subprocess_exec(
+            *perintah, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        keluar, galat = await asyncio.wait_for(p.communicate(), timeout=200)
+    except (OSError, asyncio.TimeoutError) as e:
+        return {"id": kid, "tindakan": aksi, "status": "ERROR",
+                "berhasil": False, "nilai": None, "pesan": f"{e}"}
+
+    for baris in reversed([b for b in keluar.decode("utf-8", "replace").splitlines() if b.strip()]):
+        try:
+            return json.loads(baris)
+        except json.JSONDecodeError:
+            continue
+    return {"id": kid, "tindakan": aksi, "status": "ERROR", "berhasil": False,
+            "nilai": None,
+            "pesan": (galat.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
+
+
+@app.get("/api/log")
+async def log(kontrol: Optional[str] = None, batas: int = 60):
+    """Jejak tindakan dari /var/log/yoru. Milik root, agent tidak bisa menulis."""
+    batas = max(1, min(batas, 500))
+    nama = "tindakan.log"
+    if kontrol and KONTROL_SAH.match(kontrol.upper()):
+        nama = f"{kontrol.upper()}.log"
+    try:
+        baris = (LOG_YORU / nama).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return {"baris": [], "pesan": f"{LOG_YORU / nama} belum ada atau tidak bisa dibaca"}
+    keluar = []
+    for b in baris[-batas:]:
+        b = b.strip()
+        if b:
+            try:
+                keluar.append(json.loads(b))
+            except json.JSONDecodeError:
+                continue
+    return {"baris": list(reversed(keluar))}
 
 
 @app.get("/", response_class=HTMLResponse)

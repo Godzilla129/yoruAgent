@@ -107,28 +107,24 @@ di `catalog/K02.yaml`.
 
 ## Dashboard
 
-Yang dilihat pemilik server bukan keluaran perintah, tapi halaman ini:
+![Dashboard Yoru](docs/images/dashboard-report.png)
 
-![Laporan Yoru](docs/images/dashboard-report.png)
+Sepuluh kontrol dalam satu tabel: kode CIS-nya, statusnya, dan tiga tombol —
+Audit, Hardening, Rollback. Ketiganya memanggil `yoructl`, program yang sama
+yang dipakai agent. Tidak ada jalur lain ke hak root.
 
-Skor besar di atas, lalu sepuluh kontrol dengan penjelasan bahasa sehari-hari.
-Untuk kontrol yang berisiko, **akibatnya ditulis tepat di sebelah tombol
-setuju** — bukan di tooltip, bukan di halaman lain. Yang menekan tombol harus
-sudah membaca apa yang bakal ikut berubah. Itu aturan yang tidak bisa ditawar,
-dan alasannya ada di `contract/report.md`.
+Untuk kontrol yang berisiko, tombol Hardening **tidak langsung jalan**. Dia
+menampilkan dulu apa yang bakal ikut berubah:
 
-Di siklus penjagaan, yang muncul lebih dulu adalah perubahan mendadak:
+![Konfirmasi sebelum menerapkan](docs/images/dashboard-approve.png)
 
-![Perubahan terdeteksi](docs/images/dashboard-drift.png)
+Orang yang menekan tombol harus sudah membaca akibatnya. Itu aturan yang tidak
+bisa ditawar, dan alasannya ada di `contract/report.md`.
 
-Jawaban pemilik di situ jadi patokan baru. Kalau dia bilang "itu memang saya",
-besok tidak ditanyakan lagi. Tanpa itu, Yoru cuma jadi alarm yang bunyi tiap
-hari, dan alarm yang bunyi terus pasti diabaikan.
+Menu **Audit Logs** membaca `/var/log/yoru/` — jejak milik root yang tidak bisa
+disunting agent.
 
 ### Mencoba tanpa server
-
-Dashboard-nya bisa dijalankan sendiri dengan data contoh, tanpa menyentuh
-mesin siapa pun:
 
 ```bash
 cd web
@@ -136,8 +132,8 @@ python3 -m pip install fastapi uvicorn
 python3 demo.py
 ```
 
-Lalu buka `http://127.0.0.1:8000`. Di Linux dan macOS, `bash demo.sh` juga
-sama saja.
+Buka `http://127.0.0.1:8000`. Datanya dari `examples/`, tidak ada mesin yang
+disentuh. Di Linux dan macOS, `bash demo.sh` sama saja.
 
 ---
 
