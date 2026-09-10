@@ -46,6 +46,8 @@ from pathlib import Path
 
 CONTRACT_VERSION = "1"
 
+TELEGRAM_API = "https://api.telegram.org"
+
 YORUCTL = "/opt/yoru/bin/yoructl"
 CATALOG_DIR = Path("/usr/share/yoru/catalog")
 DATA_DIR = Path("/var/lib/yoru")
@@ -569,6 +571,47 @@ def record_ports(ports):
 
 
 # ------------------------------------------------------------------- telegram
+def find_chat_id(token):
+    """Who is this bot supposed to talk to?
+
+    A Telegram bot cannot start a conversation - the person has to message it
+    first. So the owner sends /start, and the next cycle picks the id up from
+    getUpdates. That is the whole reason TELEGRAM_CHAT_ID may be left empty:
+    "chat id" is our word, not something an ordinary owner should have to hunt
+    for.
+
+    This used to be a promise written in yoru.conf that no code kept. The bot
+    simply never answered, and nothing said why.
+    """
+    answer = http_json("GET", f"{TELEGRAM_API}/bot{token}/getUpdates?limit=10",
+                       None, timeout=15, label="Telegram")
+    if not isinstance(answer, dict) or not answer.get("ok"):
+        return ""
+    for update in reversed(answer.get("result") or []):
+        for key in ("message", "edited_message", "channel_post"):
+            chat = ((update.get(key) or {}).get("chat") or {}).get("id")
+            if chat is not None:
+                return str(chat)
+    return ""
+
+
+def remember_chat_id(chat):
+    """Write it back so the lookup happens once, not every day.
+
+    The agent cannot write /etc/yoru/yoru.conf - that is deliberate. It goes
+    through yoructl, the same door as everything else, and yoructl checks the
+    shape of the value before writing it.
+    """
+    cmd = ["sudo", "-n", YORUCTL, "konfigurasi", "TELEGRAM_CHAT_ID", chat]
+    if os.geteuid() == 0:
+        cmd = [YORUCTL, "konfigurasi", "TELEGRAM_CHAT_ID", chat]
+    try:
+        subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        say(f"chat id Telegram ketemu ({chat}) dan disimpan")
+    except (OSError, subprocess.TimeoutExpired) as e:
+        say(f"chat id ketemu tapi gagal disimpan: {e}")
+
+
 def notify_telegram(report, config):
     """Tell the owner - but only when there is something to tell.
 
@@ -578,9 +621,17 @@ def notify_telegram(report, config):
     changed or something needs an answer.
     """
     token = config.get("TELEGRAM_TOKEN", "").strip()
-    chat = config.get("TELEGRAM_CHAT_ID", "").strip()
-    if not token or not chat:
+    if not token:
         return False
+
+    chat = config.get("TELEGRAM_CHAT_ID", "").strip()
+    if not chat:
+        chat = find_chat_id(token)
+        if not chat:
+            say("chat id Telegram belum ketemu - kirim /start ke botmu, "
+                "lalu jalankan siklus ini lagi")
+            return False
+        remember_chat_id(chat)
 
     summary = report["ringkasan"]
     drift = report.get("drift") or []
@@ -618,12 +669,46 @@ def notify_telegram(report, config):
     # the catalog and from values yoructl already validated. A filename or
     # username containing Markdown characters can at worst look ugly; it cannot
     # smuggle another message out.
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    url = f"{TELEGRAM_API}/bot{token}/sendMessage"
     data = {"chat_id": chat, "text": "\n".join(lines), "parse_mode": "Markdown"}
     if http_json("POST", url, None, data) is None:
         say("Telegram tidak bisa dihubungi - laporan tetap tersimpan")
         return False
     say("kabar terkirim ke Telegram")
+    return True
+
+
+def test_telegram(config):
+    """One test message, so nobody has to wait for real drift to find out that
+    the token was wrong."""
+    token = config.get("TELEGRAM_TOKEN", "").strip()
+    if not token:
+        say("TELEGRAM_TOKEN kosong - isi dulu di dashboard, menu Telegram Bot")
+        return False
+
+    chat = config.get("TELEGRAM_CHAT_ID", "").strip()
+    if not chat:
+        chat = find_chat_id(token)
+        if not chat:
+            say("Belum ada yang pernah mengirim pesan ke bot ini.")
+            say("Buka botmu di Telegram, tekan Start, lalu ulangi perintah ini.")
+            return False
+        remember_chat_id(chat)
+
+    name = (config.get("NAMA_SERVER") or socket.gethostname()).strip()
+    sent = http_json("POST", f"{TELEGRAM_API}/bot{token}/sendMessage", None,
+                     {"chat_id": chat,
+                      "text": f"Yoru terhubung. Server: *{name}*\n"
+                              f"Ini pesan uji - kabar berikutnya cuma dikirim "
+                              f"kalau ada yang berubah atau ada yang perlu dijawab.",
+                      "parse_mode": "Markdown"},
+                     timeout=15, label="Telegram")
+    if not isinstance(sent, dict) or not sent.get("ok"):
+        say("Telegram menolak pesannya. Biasanya tokennya salah ketik.")
+        if isinstance(sent, dict) and sent.get("description"):
+            say(f"Kata Telegram: {sent['description']}")
+        return False
+    say(f"Terkirim ke chat {chat}. Cek Telegram-mu.")
     return True
 
 
@@ -747,6 +832,8 @@ def main():
                     help="jangan hubungi dashboard")
     ap.add_argument("--keluar", default=None,
                     help="tulis laporan ke berkas ini juga (untuk pengujian)")
+    ap.add_argument("--tes-telegram", action="store_true",
+                    help="kirim satu pesan uji ke Telegram lalu berhenti")
     args = ap.parse_args()
 
     # Same rule as yoru-watch. Run as root, the agent no longer goes through
@@ -760,6 +847,10 @@ def main():
         return 2
 
     config = read_config(args.konfigurasi)
+
+    if args.tes_telegram:
+        return 0 if test_telegram(config) else 1
+
     catalog = read_catalog()
     if not catalog:
         say("katalog kosong - tidak bisa menyusun laporan")
