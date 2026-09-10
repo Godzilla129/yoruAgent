@@ -151,6 +151,18 @@ sampai kuncinya ada. Itu memang disengaja — K02 mematikan login password,
 dan tanpa kunci yang terbukti bekerja, itu sama saja menutup satu-satunya
 pintu masuk kamu sendiri.
 
+Kalau kuncinya belum ada, installer akan menawarkan untuk **menerima
+tempelan kunci publik** kamu, memeriksanya pakai `ssh-keygen`, lalu
+menuliskannya dengan izin yang benar. Kunci yang kepotong satu huruf ditolak
+di situ juga, bukan nanti pas kamu sudah tidak bisa masuk.
+
+Yang tidak akan dia lakukan: **membuatkan kunci privat**. Kunci privat yang
+dibuat di server berarti kunci privat yang pernah ada di server, dan untuk
+sampai ke laptop pemiliknya dia harus lewat terminal atau salinan berkas —
+persis kebiasaan yang bikin server orang jebol duluan. Kunci privat lahir di
+mesin pemiliknya. Salah tempel kunci privat ke pertanyaan itu pun dihentikan,
+dan kamu diberitahu bahwa kunci itu sudah tidak bisa dianggap rahasia lagi.
+
 Kalau ini VM buat coba-coba, ambil snapshot dulu. Bukan karena pemasangannya
 berbahaya, tapi karena enak bisa balik ke titik nol kapan pun.
 

@@ -156,10 +156,122 @@ tentukan_pemilik() {
   ok "pemilik server: $PEMILIK"
 
   local rumah; rumah=$(getent passwd "$PEMILIK" | cut -d: -f6)
-  if [ -s "$rumah/.ssh/authorized_keys" ]
-    then ok "kunci SSH $PEMILIK ditemukan"
-    else lewat "kunci SSH $PEMILIK belum ada - K02 akan menolak berjalan sampai kunci terpasang"
+  pasang_kunci_ssh "$rumah"
+}
+
+# Kunci SSH pemilik.
+#
+# Installer ini MENERIMA kunci publik, dan sengaja TIDAK MEMBUATKAN kunci
+# privat. Kunci privat yang dibuat di server berarti kunci privat yang pernah
+# ada di server, dan buat sampai ke laptop pemiliknya dia harus lewat terminal
+# atau salinan berkas - persis kebiasaan yang bikin server orang jebol duluan.
+# Kunci privat lahir di mesin pemiliknya, tidak di mesin yang dia jaga.
+#
+# Kunci publik lain ceritanya: dia memang dibuat untuk disebar.
+pasang_kunci_ssh() {  # pasang_kunci_ssh <folder-rumah>
+  local rumah="$1" berkas="$1/.ssh/authorized_keys"
+
+  if [ -s "$berkas" ]; then
+    ok "kunci SSH $PEMILIK ditemukan"
+    return 0
   fi
+
+  lewat "kunci SSH $PEMILIK belum ada"
+  if [ "$TANYA" != "ya" ] || [ ! -r /dev/tty ]; then
+    lewat "K02 akan menolak berjalan sampai kuncinya terpasang"
+    return 0
+  fi
+
+  cat <<PETUNJUK
+
+    K02 mematikan login pakai password. Tanpa kunci SSH yang bekerja, itu
+    sama saja menutup satu-satunya pintu masuk Anda sendiri - jadi K02 akan
+    menolak berjalan sampai kuncinya ada.
+
+    Kalau belum punya, buat di KOMPUTER ANDA - bukan di server ini:
+
+        ssh-keygen -t ed25519
+
+    Lalu tampilkan bagian publiknya, dan tempel barisnya di bawah:
+
+        Windows  type %USERPROFILE%\\.ssh\\id_ed25519.pub
+        Linux    cat ~/.ssh/id_ed25519.pub
+        macOS    cat ~/.ssh/id_ed25519.pub
+
+    Yang ditempel harus yang berakhiran .pub. Isinya satu baris, diawali
+    "ssh-ed25519" atau "ssh-rsa". Kami tidak pernah minta kunci privat.
+
+PETUNJUK
+
+  local kunci
+  tanya "Tempel kunci publik (kosongkan buat lewati)" kunci
+  printf '\n'
+
+  if [ -z "$kunci" ]; then
+    lewat "dilewati - K02 akan menolak berjalan sampai kuncinya terpasang"
+    return 0
+  fi
+
+  # Yang salah tempel kunci privat harus tahu sekarang juga, bukan nanti.
+  # Kunci yang sudah lewat layar dan riwayat shell tidak bisa dianggap rahasia
+  # lagi, dan diam soal itu jauh lebih berbahaya daripada gagal memasang.
+  case "$kunci" in
+    *PRIVATE\ KEY*|*BEGIN\ OPENSSH*|*BEGIN\ RSA*)
+      printf '    %sBERHENTI%s  itu kunci PRIVAT, bukan publik.\n\n' "$MERAH" "$H"
+      printf '              Kunci itu sekarang sudah lewat layar dan riwayat shell,\n'
+      printf '              jadi sudah tidak bisa dianggap rahasia. Buat yang baru di\n'
+      printf '              komputer Anda, dan tempel yang berakhiran .pub saja.\n\n'
+      mati "tidak ada yang ditulis" ;;
+  esac
+
+  local tmp; tmp=$(mktemp) || { lewat "gagal menyiapkan berkas sementara"; return 0; }
+  printf '%s\n' "$kunci" > "$tmp"
+
+  # Diperiksa pakai ssh-keygen, bukan dicocokkan sendiri pakai pola. Kunci yang
+  # kelihatan benar tapi ada satu huruf hilang tetap tertulis rapi ke berkas,
+  # dan gagalnya baru ketahuan pas login berikutnya - saat password sudah mati.
+  local sidik=""
+  if command -v ssh-keygen >/dev/null 2>&1; then
+    sidik=$(ssh-keygen -l -f "$tmp" 2>/dev/null) || {
+      rm -f "$tmp"
+      lewat "itu bukan kunci publik yang sah - tidak ada yang ditulis"
+      lewat "pastikan yang ditempel isi berkas .pub, utuh satu baris"
+      return 0
+    }
+  else
+    case "$kunci" in
+      ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-*\ *|sk-*\ *) : ;;
+      *) rm -f "$tmp"; lewat "itu bukan kunci publik yang sah - tidak ada yang ditulis"; return 0 ;;
+    esac
+  fi
+  rm -f "$tmp"
+
+  local grup; grup=$(id -gn "$PEMILIK")
+  install -d -o "$PEMILIK" -g "$grup" -m 700 "$rumah/.ssh" \
+    || { lewat "gagal membuat $rumah/.ssh"; return 0; }
+
+  # Ditambah, bukan ditimpa. Berkas ini bisa saja sudah berisi kunci orang lain
+  # yang juga butuh masuk - dan menimpanya berarti mengunci mereka di luar.
+  printf '%s\n' "$kunci" >> "$berkas" || { lewat "gagal menulis $berkas"; return 0; }
+  chown "$PEMILIK":"$grup" "$berkas"; chmod 600 "$berkas"
+
+  ok "kunci ditulis ke $berkas ($PEMILIK:$grup 600)"
+  [ -n "$sidik" ] && ok "sidik jari: $sidik"
+
+  local alamat; alamat=$(hostname -I 2>/dev/null | awk '{print $1}')
+  [ -n "$alamat" ] || alamat="<alamat-server>"
+
+  printf '\n    %sTES DULU SEBELUM LANJUT.%s Buka terminal BARU - jangan tutup yang ini -\n' "$KUNING" "$H"
+  printf '    lalu coba masuk pakai kunci itu:\n\n'
+  printf '        ssh %s@%s\n\n' "$PEMILIK" "$alamat"
+  printf '    Kalau masuk tanpa ditanya password, kuncinya bekerja. Kalau masih\n'
+  printf '    ditanya, sesi ini masih hidup untuk membetulkannya.\n\n'
+
+  # Sengaja berhenti di sini. Kalimat di atas akan tergulung hilang oleh sisa
+  # pemasangan kalau tidak ada yang menahannya, dan ini kalimat yang paling
+  # tidak boleh terlewat di seluruh pemasangan.
+  local lanjut
+  tanya "Tekan Enter kalau sudah dites" lanjut
 }
 
 # --------------------------------------------------------------- pasang
