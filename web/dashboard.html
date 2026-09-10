@@ -128,6 +128,36 @@ dialog::backdrop{background:rgba(15,23,42,.45)}
 .logbox .s.LULUS,.logbox .s.DIKEMBALIKAN{color:var(--hijau)}
 .logbox .s.GAGAL,.logbox .s.ERROR{color:var(--merah)}
 .logbox .s.DITOLAK,.logbox .s.DILEWATI,.logbox .s.PERINGATAN{color:var(--kuning)}
+/* ---------- form setelan ---------- */
+.form{padding:16px 17px;max-width:620px}
+.form .baris{margin-bottom:16px}
+.form label{display:block;font-size:12.5px;font-weight:600;margin-bottom:5px}
+.form input{width:100%;padding:9px 11px;border:1px solid var(--garis);border-radius:6px;
+  font:13px/1.4 inherit;background:#fff;color:inherit}
+.form input:disabled{background:var(--bg);color:var(--samar)}
+.form .bantu{font-size:11.5px;color:var(--samar);margin-top:5px;line-height:1.5}
+.form .simpan{font:600 13px/1 inherit;padding:9px 16px;border-radius:6px;cursor:pointer;
+  border:1px solid var(--kuning);background:var(--kuning);color:#fff}
+.form .simpan:disabled{opacity:.5;cursor:default}
+.form .kabar{font-size:12.5px;margin-top:10px}
+.form .kabar.ok{color:var(--hijau)} .form .kabar.no{color:var(--merah)}
+.catatan{padding:0 17px 16px;color:var(--samar);font-size:12.5px;max-width:66ch;line-height:1.6}
+
+/* ---------- dialog proses ---------- */
+.jalan .langkah{margin:12px 0 0;padding:0;list-style:none;font-size:13px}
+.jalan .langkah li{padding:4px 0 4px 20px;position:relative;color:var(--samar)}
+.jalan .langkah li::before{content:'·';position:absolute;left:6px;font-weight:700}
+.jalan .langkah li.aktif{color:var(--teks)}
+.jalan .langkah li.aktif::before{content:'▸';color:var(--kuning)}
+.jalan .perintah{font:12px ui-monospace,Menlo,monospace;background:var(--sidebar);
+  color:#a7f3d0;padding:9px 11px;border-radius:6px;margin-top:12px;overflow-x:auto;
+  white-space:pre}
+.jalan .jam{font-size:12px;color:var(--samar);margin-top:10px}
+.jalan .balas{margin-top:12px;padding:11px 13px;border-radius:6px;font-size:13px;
+  line-height:1.55;border-left:4px solid var(--garis);background:var(--bg)}
+.jalan .balas.ok{border-left-color:var(--hijau);background:var(--hijau-bg)}
+.jalan .balas.no{border-left-color:var(--merah);background:var(--merah-bg)}
+.jalan .balas.tunggu{border-left-color:var(--kuning);background:var(--kuning-bg)}
 .kosong{padding:34px 18px;text-align:center;color:var(--samar)}
 .kosong code{background:var(--bg);padding:2px 6px;border-radius:4px;
   font:12.5px ui-monospace,Menlo,monospace}
@@ -173,6 +203,19 @@ dialog::backdrop{background:rgba(15,23,42,.45)}
   <div class="tombol">
     <button value="batal">Batal</button>
     <button value="ya" class="ya" id="dlgYa">Ya, jalankan</button>
+  </div>
+</form></dialog>
+
+<dialog id="dlgJalan"><form method="dialog" class="dlg jalan">
+  <h3 id="jalanJudul"></h3>
+  <div class="kid" id="jalanKid"></div>
+  <ul class="langkah" id="jalanLangkah"></ul>
+  <div class="perintah" id="jalanPerintah"></div>
+  <div class="jam" id="jalanJam"></div>
+  <div class="balas" id="jalanBalas" hidden></div>
+  <div class="tombol">
+    <button value="log" id="jalanLog" hidden>Lihat log</button>
+    <button value="tutup" class="ya" id="jalanTutup">Tutup</button>
   </div>
 </form></dialog>
 
@@ -253,12 +296,26 @@ function gambar() {
     a.classList.toggle('on', a.dataset.h === HAL));
 
   if (HAL === 'log')      return halLog();
-  if (HAL === 'telegram') return halInfo('Telegram Bot',
-    'Notifikasi dikirim agent, bukan dari halaman ini. Isi TELEGRAM_TOKEN dan TELEGRAM_CHAT_ID di /etc/yoru/yoru.conf. Yoru cuma mengirim kalau ada yang berubah atau ada yang perlu dijawab.');
+  if (HAL === 'telegram') return halSetelan('Telegram Bot',
+    'Yoru cuma mengirim kalau ada yang berubah atau ada yang perlu dijawab — bukan laporan harian yang isinya "semuanya masih aman". Yang mengirim itu agent di server, bukan halaman ini.',
+    [{kunci:'TELEGRAM_TOKEN', label:'Token bot', rahasia:true,
+      bantu:'Dari @BotFather di Telegram: /newbot, lalu salin utuh barisnya. Bentuknya angka, titik dua, lalu huruf-angka.'},
+     {kunci:'TELEGRAM_CHAT_ID', label:'Chat ID (boleh dikosongkan)',
+      bantu:'Kosongkan saja — Yoru mencarinya sendiri begitu kamu kirim /start ke botmu.'}]);
   if (HAL === 'llm')      return halInfo('LLM Settings',
     'Kunci model diisi di konfigurasi Hermes, bukan di sini — supaya cuma ada di satu tempat. Laporan tetap lengkap tanpa model: kalimat penjelasannya diambil dari katalog.');
-  if (HAL === 'sistem')   return halInfo('System Settings',
-    'Konfigurasi ada di /etc/yoru/yoru.conf (root:yoru-agent 640). Jadwal penjagaan diatur lewat systemd timer yoru-watch.timer.');
+  if (HAL === 'sistem')   return halSetelan('System Settings',
+    'Semua ini disimpan di /etc/yoru/yoru.conf. Halaman ini tidak menulis berkas itu sendiri — dia menitipkannya ke yoructl, program yang sama yang dipakai agent.',
+    [{kunci:'NAMA_SERVER', label:'Nama server',
+      bantu:'Nama yang muncul di dashboard dan bot. Kosong = pakai hostname.'},
+     {kunci:'PORT_DIIZINKAN', label:'Port yang boleh terbuka',
+      bantu:'Dipisah spasi, contoh: 80 443 8000. Port SSH tidak perlu ditulis — Yoru mencarinya sendiri. Selama masih ada port terbuka yang belum ada di sini, K05 menolak menyalakan firewall.'},
+     {kunci:'LEWATI_KONTROL', label:'Kontrol yang dilewati',
+      bantu:'Dipisah koma, contoh: K05,K06. Kosongkan kalau semua boleh dipertimbangkan.'},
+     {kunci:'JAM_PENJAGAAN', label:'Jam penjagaan harian',
+      bantu:'Bentuk HH:MM. Ganti di sini menyimpan nilainya, tapi timer systemd baru ikut berubah setelah install.sh dijalankan ulang.'},
+     {kunci:'ZONA_WAKTU', label:'Zona waktu',
+      bantu:'Contoh: Asia/Jakarta. Dipakai untuk semua jam di laporan.'}]);
 
   if (!DATA) return kosong();
   $('meta').textContent = `${DATA.server?.nama || '-'} · ${DATA.server?.os || '-'} · ${(DATA.waktu||'').replace('T',' ').slice(0,16)}`;
@@ -278,6 +335,75 @@ function halInfo(judul, teks) {
   $('meta').textContent = '';
   $('isi').innerHTML = `<div class="panel"><div class="kepala"><h2>${esc(judul)}</h2></div>
     <div style="padding:16px 17px;color:var(--samar);max-width:66ch">${esc(teks)}</div></div>`;
+}
+
+async function halSetelan(judul, penjelasan, medan) {
+  $('meta').textContent = '';
+  // Tanpa kepala panel - judul halamannya sudah tertulis di atas, dan menulisnya
+  // dua kali cuma bikin orang mengira ada dua bagian berbeda.
+  $('isi').innerHTML = `<div class="panel">
+    <div class="form" id="formSetelan"><div class="kosong">memuat setelan…</div></div></div>`;
+
+  let konf = {};
+  try {
+    const r = await kirim2('/api/konfigurasi');
+    if (!r.ok) throw new Error('tolak');
+    konf = await r.json();
+  } catch (e) {
+    $('formSetelan').innerHTML = `<div class="kabar no">Setelan tidak bisa dibaca.
+      Kalau dashboard dibuka dari komputer lain, tekan salah satu tombol dulu supaya
+      diminta token.</div>`;
+    return;
+  }
+
+  $('formSetelan').innerHTML =
+    `<p style="margin:0 0 16px;color:var(--samar);font-size:13px;line-height:1.6">${esc(penjelasan)}</p>` +
+    medan.map(m => {
+      const isi = konf[m.kunci] || {};
+      const nilai = m.rahasia ? '' : (isi.nilai || '');
+      const tanda = m.rahasia && isi.terisi ? ' — sudah terisi, kosongkan kalau tidak mau diganti' : '';
+      return `<div class="baris">
+        <label for="f_${m.kunci}">${esc(m.label)}${esc(tanda)}</label>
+        <input id="f_${m.kunci}" data-kunci="${m.kunci}" ${m.rahasia ? 'type="password" autocomplete="off"' : 'type="text"'}
+               value="${esc(nilai)}" placeholder="${m.rahasia && isi.terisi ? '••••••••••••' : ''}">
+        <div class="bantu">${esc(m.bantu)}</div>
+      </div>`;
+    }).join('') +
+    `<button class="simpan" id="simpanSetelan">Simpan</button>
+     <div class="kabar" id="kabarSetelan"></div>` +
+    `<div class="catatan" style="padding:16px 0 0">Berkasnya: <code>${esc(konf._berkas || '')}</code>
+      (root:yoru-agent 640). Kunci dashboard dan kunci model sengaja tidak bisa diubah dari sini.</div>`;
+
+  $('simpanSetelan').onclick = async () => {
+    const tombol = $('simpanSetelan'), kabar = $('kabarSetelan');
+    tombol.disabled = true; kabar.className = 'kabar'; kabar.textContent = 'menyimpan…';
+    const gagal = [];
+    let disimpan = 0;
+    for (const m of medan) {
+      const el = document.getElementById('f_' + m.kunci);
+      const nilai = el.value.trim();
+      // Kolom rahasia yang dibiarkan kosong berarti "jangan diubah", bukan
+      // "kosongkan". Kalau tidak begitu, membuka halaman ini lalu menekan
+      // Simpan akan menghapus token yang sudah ada tanpa diminta.
+      if (m.rahasia && nilai === '') continue;
+      const r = await kirim('/api/konfigurasi', {kunci: m.kunci, nilai});
+      let d; try { d = await r.json(); } catch (e) { d = {}; }
+      if (r.ok && d.berhasil === true) { disimpan++; if (m.rahasia) el.value = ''; }
+      else gagal.push(`${m.label}: ${d.pesan || d.detail || 'ditolak'}`);
+    }
+    tombol.disabled = false;
+    if (gagal.length) { kabar.className = 'kabar no'; kabar.textContent = gagal.join(' · '); }
+    else { kabar.className = 'kabar ok'; kabar.textContent = `${disimpan} setelan tersimpan.`; }
+  };
+}
+
+// GET yang ikut membawa token kalau ada. Endpoint setelan dijaga sama seperti
+// tombol: dari 127.0.0.1 bebas, dari jaringan wajib token.
+async function kirim2(url) {
+  const bungkus = () => ({headers: TOKEN ? {Authorization: 'Bearer ' + TOKEN} : {}});
+  let r = await fetch(url, bungkus());
+  if ((r.status === 401 || r.status === 403) && await mintaToken()) r = await fetch(url, bungkus());
+  return r;
 }
 
 function kartuStat() {
@@ -380,7 +506,7 @@ function pasangTombol() {
           tr.querySelector('[data-slot]').textContent = 'dilewati — butuh persetujuan';
           continue;
         }
-        await jalankan(tr.dataset.kid, aksi, t);
+        await jalankan(tr.dataset.kid, aksi, t, true);
       }
       b.disabled = false;
       muat();
@@ -399,16 +525,79 @@ function tanya(kid, tombol) {
   d.showModal();
 }
 
-async function jalankan(kid, aksi, tombol) {
+// Apa yang sebenarnya dikerjakan yoructl untuk tiap tindakan. Bukan animasi
+// hiasan - ini urutan yang memang dijalankan, ditulis dengan kata biasa.
+const LANGKAH = {
+  periksa: ['Membaca keadaan yang benar-benar berlaku sekarang',
+            'Bukan isi berkas konfigurasi - itu belum tentu yang aktif',
+            'Membandingkan dengan nilai target di katalog'],
+  terapkan: ['Merekam keadaan asal ke /var/backups/yoru',
+             'Menulis setelan sebagai berkas milik Yoru sendiri',
+             'Memuat ulang layanannya',
+             'Membaca ulang keadaan efektif untuk memastikan',
+             'Kalau hasilnya tidak sesuai, langsung dikembalikan'],
+  kembalikan: ['Menghapus setelan yang ditulis Yoru',
+               'Memuat ulang layanannya',
+               'Membaca ulang keadaan efektif']
+};
+const NAMA_AKSI = {periksa: 'Audit', terapkan: 'Hardening', kembalikan: 'Rollback'};
+
+let jamJalan = null;
+function bukaJalan(kid, aksi) {
+  const k = (DATA?.kontrol || []).find(x => x.id === kid) || {};
+  $('jalanJudul').textContent = `${NAMA_AKSI[aksi] || aksi} — ${k.nama || kid}`;
+  $('jalanKid').textContent = `${kid}${k.kode_cis ? ' · ' + k.kode_cis : ''}`;
+  $('jalanLangkah').innerHTML = (LANGKAH[aksi] || []).map((s, i) =>
+    `<li class="${i === 0 ? 'aktif' : ''}">${esc(s)}</li>`).join('');
+  $('jalanPerintah').textContent = `sudo yoructl ${kid} ${aksi}`;
+  $('jalanBalas').hidden = true;
+  $('jalanLog').hidden = true;
+  $('jalanTutup').textContent = 'Batal tampilkan';
+
+  const mulai = Date.now();
+  $('jalanJam').textContent = 'berjalan… 0 detik';
+  clearInterval(jamJalan);
+  jamJalan = setInterval(() => {
+    $('jalanJam').textContent = `berjalan… ${Math.round((Date.now() - mulai) / 1000)} detik`;
+  }, 1000);
+
+  const d = $('dlgJalan');
+  if (!d.open) d.showModal();
+}
+
+function tutupJalan(kid, d) {
+  clearInterval(jamJalan);
+  const kotak = $('jalanBalas');
+  const ok = d.berhasil === true;
+  const nunggu = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
+  kotak.className = 'balas ' + (ok ? 'ok' : nunggu ? 'tunggu' : 'no');
+  kotak.innerHTML = `<b>${esc(labelStatus(d.status))}</b>${d.nilai ? ' — ' + esc(d.nilai) : ''}` +
+    (d.pesan ? `<br>${esc(d.pesan)}` : '');
+  kotak.hidden = false;
+  $('jalanJam').textContent = 'selesai';
+  $('jalanLangkah').querySelectorAll('li').forEach(li => li.classList.remove('aktif'));
+  $('jalanTutup').textContent = 'Tutup';
+  $('jalanLog').hidden = false;
+  $('dlgJalan').onclose = () => {
+    if ($('dlgJalan').returnValue === 'log') { HAL = 'log'; gambar(); halLog(kid); }
+  };
+}
+
+const labelStatus = s => s === 'DITOLAK' ? 'BELUM BISA'
+                       : s === 'MENUNGGU' ? 'MASIH JALAN' : s;
+
+async function jalankan(kid, aksi, tombol, diam) {
   const tr = tombol.closest('tr'), slot = tr.querySelector('[data-slot]');
   tr.querySelectorAll('button').forEach(b => b.disabled = true);
   slot.className = 'hasil jln'; slot.textContent = 'menjalankan…';
+  if (!diam) bukaJalan(kid, aksi);
   let d;
   try {
     const r = await kirim('/api/jalankan', {kontrol: kid, aksi});
     d = await r.json();
     if (!r.ok) d = {status: 'DITOLAK', berhasil: false, pesan: d.detail || `HTTP ${r.status}`};
   } catch (e) { d = {status: 'ERROR', pesan: 'API tidak bisa dihubungi'}; }
+  if (!diam) tutupJalan(kid, d);
 
   // Tiga keadaan, bukan dua. "Ditolak" itu Yoru yang sengaja berhenti karena
   // ada syarat yang belum dipenuhi - beda dengan "error", yang artinya ada
@@ -417,13 +606,16 @@ async function jalankan(kid, aksi, tombol) {
   const ok = d.berhasil === true;
   const perluKamu = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
   slot.className = 'hasil ' + (ok ? 'ok' : perluKamu ? 'tunggu' : 'no');
-  const label = d.status === 'DITOLAK' ? 'BELUM BISA'
-                : d.status === 'MENUNGGU' ? 'MASIH JALAN' : d.status;
+  const label = labelStatus(d.status);
   slot.textContent = `${label}${d.nilai ? ' — ' + d.nilai : ''}${d.pesan ? ' — ' + d.pesan : ''}`;
   tr.querySelectorAll('button').forEach(b => {
     if (!(b.dataset.a === 'terapkan' && b.title)) b.disabled = false;
   });
-  if (ok && aksi !== 'periksa') setTimeout(muat, 900);
+  // Termasuk sesudah Audit. Dulu kartu di atas cuma disegarkan sesudah
+  // terapkan/kembalikan, jadi baris yang barusan lolos audit tidak pernah ikut
+  // menambah angka "Lolos Audit" - dan tombolnya kelihatan seperti tidak
+  // mengerjakan apa pun.
+  if (ok && !diam) setTimeout(muat, 600);
   return d;
 }
 

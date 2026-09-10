@@ -13,7 +13,7 @@ umask 022
 export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-VERSI="0.1.8"
+VERSI="0.1.9"
 LOG_DIR=/var/log/yoru
 LOG="$LOG_DIR/tindakan.log"
 
@@ -927,7 +927,85 @@ k10() { case "$1" in
 esac }
 
 # ----------------------------------------------------------------- jalan
+# ---------------------------------------------- setelan lewat dashboard
+# Supaya pemilik tidak perlu membuka terminal cuma untuk mengganti token bot.
+#
+# Kunci yang boleh diubah dari sini DIBATASI daftar di bawah, dan tiap nilai
+# diperiksa bentuknya. Bukan karena kunci lain berbahaya, tapi karena berkas
+# yang sama menyimpan DASHBOARD_TOKEN: kalau dashboard boleh menulis kunci apa
+# saja, dashboard yang jebol bisa mengganti tokennya sendiri - dan pemilik
+# kehilangan satu-satunya pembeda antara dia dan penyerang.
+#
+# Nilainya TIDAK PERNAH ikut dicatat ke log. Yang dicatat cuma nama kuncinya.
+tulis_konf() {  # tulis_konf <berkas> <kunci> <nilai>
+  local berkas="$1" kunci="$2" nilai="$3" tmp
+  tmp=$(mktemp) || return 1
+  awk -v k="$kunci" -v v="$nilai" '
+    BEGIN { sudah = 0 }
+    {
+      salinan = $0
+      sub(/^[[:space:]]+/, "", salinan)
+      if (salinan ~ /^#/ || salinan == "") { print; next }
+      p = index(salinan, "=")
+      if (p == 0) { print; next }
+      nama = substr(salinan, 1, p - 1)
+      sub(/[[:space:]]+$/, "", nama)
+      if (nama == k) { print k "=\"" v "\""; sudah = 1; next }
+      print
+    }
+    END { if (!sudah) print k "=\"" v "\"" }
+  ' "$berkas" > "$tmp" || { rm -f "$tmp"; return 1; }
+  # Isinya yang disalin, bukan berkasnya yang dipindah - supaya pemilik dan
+  # izin berkas aslinya (root:yoru-agent 640) tidak ikut berganti.
+  cat "$tmp" > "$berkas" || { rm -f "$tmp"; return 1; }
+  rm -f "$tmp"
+}
+
+konfigurasi() {  # konfigurasi <KUNCI> <nilai>
+  local kunci="$1" nilai="$2" berkas=/etc/yoru/yoru.conf
+  [ -f "$berkas" ] || tolak "$berkas tidak ada - jalankan install.sh dulu"
+
+  case "$kunci" in
+    TELEGRAM_TOKEN)
+      [ -z "$nilai" ] || [[ "$nilai" =~ ^[0-9]{5,}:[A-Za-z0-9_-]{30,}$ ]] \
+        || tolak "token bot bentuknya <angka>:<huruf-angka>, contoh 8123456789:AAG3x... - salin utuh dari BotFather" ;;
+    TELEGRAM_CHAT_ID)
+      [ -z "$nilai" ] || [[ "$nilai" =~ ^-?[0-9]{1,20}$ ]] \
+        || tolak "chat id harus angka (boleh diawali minus untuk grup)" ;;
+    NAMA_SERVER)
+      [ -z "$nilai" ] || [[ "$nilai" =~ ^[A-Za-z0-9._-]{1,60}$ ]] \
+        || tolak "nama server cuma boleh huruf, angka, titik, garis, dan garis bawah" ;;
+    PORT_DIIZINKAN)
+      [ -z "$nilai" ] || [[ "$nilai" =~ ^[0-9]{1,5}([[:space:]]+[0-9]{1,5})*$ ]] \
+        || tolak "port dipisah spasi, contoh: 80 443 8000" ;;
+    LEWATI_KONTROL)
+      [ -z "$nilai" ] || [[ "$nilai" =~ ^K(0[1-9]|10)(,K(0[1-9]|10))*$ ]] \
+        || tolak "isi dengan nomor kontrol dipisah koma, contoh: K05,K06" ;;
+    JAM_PENJAGAAN)
+      [[ "$nilai" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || tolak "jam harus bentuk HH:MM" ;;
+    ZONA_WAKTU)
+      [ "$nilai" = "UTC" ] || [[ "$nilai" =~ ^[A-Za-z]+/[A-Za-z_+-]+$ ]] \
+        || tolak "zona waktu contohnya Asia/Jakarta atau UTC" ;;
+    *)
+      tolak "kunci '$kunci' tidak boleh diubah dari dashboard - sunting langsung di $berkas" ;;
+  esac
+
+  tulis_konf "$berkas" "$kunci" "$nilai" || tolak "gagal menulis $berkas"
+  chown root:yoru-agent "$berkas" 2>/dev/null; chmod 640 "$berkas" 2>/dev/null
+  selesai DISIMPAN true "$kunci" "tersimpan di $berkas"
+}
+
 KID=""; AKSI=""; PAKSA=0
+
+# Jalur setelan. Ditaruh sebelum penguraian nomor kontrol karena bentuk
+# argumennya beda: tiga argumen, dan yang kedua bukan nama tindakan.
+if [ "${1-}" = "konfigurasi" ]; then
+  KID="konfigurasi"; AKSI="set"
+  [ $# -eq 3 ] || tolak "pakai: yoructl konfigurasi <KUNCI> <nilai>"
+  periksa_diri
+  konfigurasi "$2" "$3"
+fi
+
 case $# in
   2) : ;;
   3) KID="?"; AKSI="?"

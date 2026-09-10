@@ -43,7 +43,48 @@ TOKEN = os.environ.get("YORU_TOKEN", "").strip()
 KONTROL_SAH = re.compile(r"^K(?:0[1-9]|10)$")
 KEPUTUSAN_SAH = {"setuju", "tolak", "sah", "kembalikan"}
 
-app = FastAPI(title="Yoru Dashboard", version="0.1.8")
+KONF = Path(os.environ.get("YORU_KONF", "/etc/yoru/yoru.conf"))
+
+# Kunci yang boleh disetel dari halaman dashboard. Daftar ini HARUS sama dengan
+# daftar di yoructl - yang benar-benar menjaganya tetap yoructl, karena dia yang
+# jalan sebagai root. Daftar di sini cuma supaya halamannya tidak menawarkan
+# kunci yang pasti ditolak.
+KONF_BOLEH = ("TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "NAMA_SERVER",
+              "PORT_DIIZINKAN", "LEWATI_KONTROL", "JAM_PENJAGAAN", "ZONA_WAKTU")
+KONF_RAHASIA = ("TELEGRAM_TOKEN",)
+
+# Sama dengan PETA_STATUS di bin/yoru-agent. Dipakai supaya hasil tombol dan
+# hasil siklus agent memakai kosakata yang sama.
+PETA_STATUS = {"LULUS": "LULUS", "GAGAL": "GAGAL", "DILEWATI": "DILEWATI",
+               "DIKEMBALIKAN": "DILEWATI", "DITOLAK": "ERROR",
+               "ERROR": "ERROR", "PERINGATAN": "ERROR", "MENUNGGU": "ERROR"}
+
+
+def baca_konfigurasi() -> Dict[str, str]:
+    """Dibaca sebagai teks, bukan di-source. Nilai yang mengandung $(...) bakal
+    dijalankan kalau di-source, dan berkas ini menyimpan token."""
+    konf: Dict[str, str] = {}
+    try:
+        isi = KONF.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return konf
+    for baris in isi.splitlines():
+        baris = baris.strip()
+        if not baris or baris.startswith("#") or "=" not in baris:
+            continue
+        k, v = baris.split("=", 1)
+        konf[k.strip()] = v.strip().strip('"')
+    return konf
+
+
+def nama_lokal() -> str:
+    """Nama server yang dipakai agent di mesin ini - persis cara agent
+    menentukannya. Tombol di dashboard cuma menyentuh mesin ini, jadi laporan
+    milik server lain tidak boleh ikut tersentuh."""
+    import socket
+    return (baca_konfigurasi().get("NAMA_SERVER") or "").strip() or socket.gethostname()
+
+app = FastAPI(title="Yoru Dashboard", version="0.1.9")
 
 
 # ------------------------------------------------------------------ simpanan
@@ -278,18 +319,8 @@ AKSI = {"periksa": "periksa", "audit": "periksa",
         "verifikasi": "verifikasi"}
 
 
-@app.post("/api/jalankan")
-async def jalankan(minta: Request, badan: Dict[str, Any] = Body(...),
-                   authorization: Optional[str] = Header(None)):
-    """Panggil yoructl. Satu program, dua argumen - tidak ada shell."""
-    boleh_mengubah(minta, authorization)
-    kid = str(badan.get("kontrol") or "").strip().upper()
-    aksi = AKSI.get(str(badan.get("aksi") or "").strip().lower())
-    if not KONTROL_SAH.match(kid):
-        raise HTTPException(status_code=422, detail="kontrol tidak dikenal")
-    if not aksi:
-        raise HTTPException(status_code=422, detail="tindakan tidak dikenal")
-
+async def jalankan_yoructl(kid: str, aksi: str) -> Dict[str, Any]:
+    """Satu panggilan ke yoructl. Satu program, argumen tetap - tidak ada shell."""
     perintah = ["sudo", "-n", YORUCTL, kid, aksi]
     if os.geteuid() == 0:
         perintah = [YORUCTL, kid, aksi]
@@ -324,6 +355,135 @@ async def jalankan(minta: Request, badan: Dict[str, Any] = Body(...),
             continue
     return {"id": kid, "tindakan": aksi, "status": "ERROR", "berhasil": False,
             "nilai": None,
+            "pesan": (galat.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
+
+
+@app.post("/api/jalankan")
+async def jalankan(minta: Request, badan: Dict[str, Any] = Body(...),
+                   authorization: Optional[str] = Header(None)):
+    boleh_mengubah(minta, authorization)
+    kid = str(badan.get("kontrol") or "").strip().upper()
+    aksi = AKSI.get(str(badan.get("aksi") or "").strip().lower())
+    if not KONTROL_SAH.match(kid):
+        raise HTTPException(status_code=422, detail="kontrol tidak dikenal")
+    if not aksi:
+        raise HTTPException(status_code=422, detail="tindakan tidak dikenal")
+
+    hasil = await jalankan_yoructl(kid, aksi)
+    if hasil.get("berhasil") is True:
+        if aksi in ("terapkan", "kembalikan"):
+            # Status baris dibaca ulang, bukan disimpulkan dari "terapkan
+            # berhasil". Itu aturan yang sama yang dipakai verifikasi: yang
+            # dilaporkan harus keadaan yang benar-benar berlaku sekarang, bukan
+            # niat kita barusan. Tanpa ini, baris yang habis di-rollback malah
+            # tercatat DILEWATI, bukan GAGAL.
+            cek = await jalankan_yoructl(kid, "periksa")
+            segarkan_laporan(kid, cek if cek.get("berhasil") is True else hasil)
+        else:
+            segarkan_laporan(kid, hasil)
+    return hasil
+
+
+def segarkan_laporan(kid: str, hasil: Dict[str, Any]):
+    """Rapikan laporan terakhir supaya cocok dengan yang barusan diukur.
+
+    Tanpa ini, kartu di atas dashboard cuma berubah setelah siklus agent
+    berikutnya - jadi orang menekan Hardening, kontrolnya benar-benar berubah,
+    tapi angka "Lolos Audit" diam saja dan kelihatan seperti tombolnya tidak
+    bekerja.
+    """
+    status = PETA_STATUS.get(str(hasil.get("status") or "ERROR"), "ERROR")
+    nilai = hasil.get("nilai") or "tidak-terbaca"
+    nama = nama_lokal()
+    try:
+        with closing(db()) as k, k:
+            b = k.execute("SELECT id, isi FROM laporan WHERE server=? "
+                          "ORDER BY diterima DESC LIMIT 1", (nama,)).fetchone()
+            if not b:
+                return
+            laporan = json.loads(b["isi"])
+            ketemu = False
+            for e in laporan.get("kontrol", []):
+                if e.get("id") == kid:
+                    e["status"] = status
+                    e["nilai_terbaca"] = nilai
+                    e["hasil"] = {"tindakan": hasil.get("tindakan"),
+                                  "status": hasil.get("status"),
+                                  "pesan": hasil.get("pesan"),
+                                  "waktu": time.strftime("%Y-%m-%dT%H:%M:%S")}
+                    ketemu = True
+            if not ketemu:
+                return
+
+            h = {"LULUS": 0, "GAGAL": 0, "SEBAGIAN": 0, "DILEWATI": 0, "ERROR": 0}
+            for e in laporan["kontrol"]:
+                h[e["status"]] = h.get(e["status"], 0) + 1
+            total = len(laporan["kontrol"])
+            laporan["ringkasan"] = {
+                "total": total, "lulus": h["LULUS"], "gagal": h["GAGAL"],
+                "sebagian": h["SEBAGIAN"], "dilewati": h["DILEWATI"] + h["ERROR"],
+                "skor": round(h["LULUS"] / total * 100) if total else 0,
+            }
+            laporan["butuh_keputusan"] = [
+                e["id"] for e in laporan["kontrol"]
+                if e["status"] == "GAGAL" and e.get("butuh_izin")
+                and not e.get("prasyarat_gagal")]
+            k.execute("UPDATE laporan SET skor=?, isi=? WHERE id=?",
+                      (laporan["ringkasan"]["skor"],
+                       json.dumps(laporan, ensure_ascii=False), b["id"]))
+    except (OSError, sqlite3.Error, ValueError, KeyError):
+        # Laporan gagal disegarkan bukan alasan untuk menggagalkan tindakan yang
+        # sudah terlanjur berhasil di server.
+        return
+
+
+# ------------------------------------------------------------- setelan
+@app.get("/api/konfigurasi")
+async def baca_setelan(minta: Request, authorization: Optional[str] = Header(None)):
+    boleh_mengubah(minta, authorization)
+    konf = baca_konfigurasi()
+    keluar = {}
+    for k in KONF_BOLEH:
+        v = konf.get(k, "")
+        # Token tidak pernah dikirim utuh ke browser. Yang perlu diketahui
+        # pemilik cuma "sudah terisi atau belum".
+        keluar[k] = {"terisi": bool(v),
+                     "nilai": "" if k in KONF_RAHASIA else v}
+    keluar["_berkas"] = str(KONF)
+    return keluar
+
+
+@app.post("/api/konfigurasi")
+async def simpan_setelan(minta: Request, badan: Dict[str, Any] = Body(...),
+                         authorization: Optional[str] = Header(None)):
+    """Menulis lewat yoructl, bukan menulis berkasnya sendiri.
+
+    Dashboard jalan sebagai yoru-agent dan memang tidak boleh bisa menulis
+    /etc/yoru/yoru.conf. Satu-satunya jalan tetap yoructl - program yang sama
+    yang dipakai agent, dengan daftar kunci dan pemeriksaan nilai di dalamnya.
+    """
+    kunci = str(badan.get("kunci") or "").strip()
+    nilai = str(badan.get("nilai") or "").strip()
+    if kunci not in KONF_BOLEH:
+        raise HTTPException(status_code=422, detail=f"kunci '{kunci}' tidak bisa disetel dari sini")
+
+    perintah = ["sudo", "-n", YORUCTL, "konfigurasi", kunci, nilai]
+    if os.geteuid() == 0:
+        perintah = [YORUCTL, "konfigurasi", kunci, nilai]
+    try:
+        p = await asyncio.create_subprocess_exec(
+            *perintah, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        keluar, galat = await asyncio.wait_for(p.communicate(), timeout=30)
+    except (OSError, asyncio.TimeoutError) as e:
+        return {"status": "ERROR", "berhasil": False,
+                "pesan": f"tidak bisa menjalankan yoructl: {e or 'kehabisan waktu'}"}
+
+    for baris in reversed([b for b in keluar.decode("utf-8", "replace").splitlines() if b.strip()]):
+        try:
+            return json.loads(baris)
+        except json.JSONDecodeError:
+            continue
+    return {"status": "ERROR", "berhasil": False,
             "pesan": (galat.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
 
 
