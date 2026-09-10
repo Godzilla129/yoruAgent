@@ -1,103 +1,95 @@
 #!/usr/bin/env python3
 """
-API + penyimpanan dashboard Yoru.
+Dashboard API and storage.
 
-Jalankan:
+Run:
     pip install fastapi uvicorn
-    uvicorn api:app --host 0.0.0.0 --port 8000
+    uvicorn api:app --host 127.0.0.1 --port 8000
 
-Dua arah data, dan arahnya sengaja SATU JALUR:
+Data flows in ONE direction, deliberately:
 
-    agent  --POST /api/laporan-->  dashboard      (agent mengirim keadaan)
-    agent  --GET  /api/keputusan-> dashboard      (agent mengambil jawaban)
+    agent  --POST /api/laporan-->  dashboard      (agent sends state)
+    agent  --GET  /api/keputusan-> dashboard      (agent collects answers)
 
-Dashboard TIDAK PERNAH menghubungi server yang dijaga. Akibatnya server itu
-tidak perlu membuka satu port pun untuk dashboard, dan kalau dashboardnya
-jebol, yang paling jauh bisa dilakukan penyerang cuma menyetujui kontrol yang
-SUDAH ADA di katalog - dia tidak bisa menyuruh server melakukan hal baru.
+The dashboard NEVER contacts a guarded server. So that server never has to
+open a port for the dashboard, and if the dashboard is breached the worst an
+attacker can do is approve a control that ALREADY EXISTS in the catalog - they
+cannot make the server do anything new.
 
-Jangan pernah membalik arahnya demi kepraktisan.
+Never reverse this direction for convenience.
+
+Note on names: the JSON fields, the four action verbs and the SQLite column
+names stay in Indonesian on purpose. They are the product's shared vocabulary,
+documented in contract/report.md and written into databases that already
+exist. Renaming them would break upgrades for no gain.
 """
 
 import asyncio
 import json
 import os
 import re
+import socket
 import sqlite3
 import time
 from contextlib import closing
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from fastapi import Body, FastAPI, Header, HTTPException, Request, Response
+from fastapi import Body, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-DIR = Path(__file__).resolve().parent
-DB = Path(os.environ.get("YORU_DB", DIR / "yoru.db"))
-HALAMAN = DIR / "dashboard.html"
+HERE = Path(__file__).resolve().parent
+DB_FILE = Path(os.environ.get("YORU_DB", HERE / "yoru.db"))
+PAGE = HERE / "dashboard.html"
 
-# Token dibagi ke agent lewat DASHBOARD_TOKEN di /etc/yoru/yoru.conf.
-# Kosong = tanpa pemeriksaan; itu hanya untuk mencoba di laptop sendiri.
+# Shared with the agent through DASHBOARD_TOKEN in /etc/yoru/yoru.conf.
+# Empty means no check at all; that is for trying it out on your own laptop.
 TOKEN = os.environ.get("YORU_TOKEN", "").strip()
 
-KONTROL_SAH = re.compile(r"^K(?:0[1-9]|10)$")
-KEPUTUSAN_SAH = {"setuju", "tolak", "sah", "kembalikan"}
+YORUCTL = os.environ.get("YORUCTL", "/opt/yoru/bin/yoructl")
 
-KONF = Path(os.environ.get("YORU_KONF", "/etc/yoru/yoru.conf"))
+# K07 and K08 install packages through apt. On a new server with a slow link
+# the download alone can pass three minutes, before counting up to 60 seconds
+# waiting for the dpkg lock. The old 200-second limit ran out far too often.
+TIME_LIMIT = int(os.environ.get("YORU_BATAS_WAKTU", "600"))
 
-# Kunci yang boleh disetel dari halaman dashboard. Daftar ini HARUS sama dengan
-# daftar di yoructl - yang benar-benar menjaganya tetap yoructl, karena dia yang
-# jalan sebagai root. Daftar di sini cuma supaya halamannya tidak menawarkan
-# kunci yang pasti ditolak.
-KONF_BOLEH = ("TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "NAMA_SERVER",
-              "PORT_DIIZINKAN", "LEWATI_KONTROL", "JAM_PENJAGAAN", "ZONA_WAKTU")
-KONF_RAHASIA = ("TELEGRAM_TOKEN",)
+LOG_DIR = Path(os.environ.get("YORU_LOG", "/var/log/yoru"))
+CONFIG_FILE = Path(os.environ.get("YORU_KONF", "/etc/yoru/yoru.conf"))
 
-# Sama dengan PETA_STATUS di bin/yoru-agent. Dipakai supaya hasil tombol dan
-# hasil siklus agent memakai kosakata yang sama.
-PETA_STATUS = {"LULUS": "LULUS", "GAGAL": "GAGAL", "DILEWATI": "DILEWATI",
-               "DIKEMBALIKAN": "DILEWATI", "DITOLAK": "ERROR",
-               "ERROR": "ERROR", "PERINGATAN": "ERROR", "MENUNGGU": "ERROR"}
+CONTROL_RE = re.compile(r"^K(?:0[1-9]|10)$")
+VALID_DECISIONS = {"setuju", "tolak", "sah", "kembalikan"}
+ACTIONS = {"periksa": "periksa", "audit": "periksa",
+           "terapkan": "terapkan", "hardening": "terapkan",
+           "kembalikan": "kembalikan", "rollback": "kembalikan",
+           "verifikasi": "verifikasi"}
 
+# Keys the settings page may write. This list must match the one in yoructl -
+# yoructl is what actually enforces it, because yoructl is what runs as root.
+# The copy here only keeps the page from offering a key that would be refused.
+SETTABLE_KEYS = ("TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "NAMA_SERVER",
+                 "PORT_DIIZINKAN", "LEWATI_KONTROL", "JAM_PENJAGAAN", "ZONA_WAKTU")
+SECRET_KEYS = ("TELEGRAM_TOKEN",)
 
-def baca_konfigurasi() -> Dict[str, str]:
-    """Dibaca sebagai teks, bukan di-source. Nilai yang mengandung $(...) bakal
-    dijalankan kalau di-source, dan berkas ini menyimpan token."""
-    konf: Dict[str, str] = {}
-    try:
-        isi = KONF.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return konf
-    for baris in isi.splitlines():
-        baris = baris.strip()
-        if not baris or baris.startswith("#") or "=" not in baris:
-            continue
-        k, v = baris.split("=", 1)
-        konf[k.strip()] = v.strip().strip('"')
-    return konf
+# Same table as STATUS_MAP in bin/yoru-agent, so a button result and a cycle
+# result speak the same vocabulary.
+STATUS_MAP = {"LULUS": "LULUS", "GAGAL": "GAGAL", "DILEWATI": "DILEWATI",
+              "DIKEMBALIKAN": "DILEWATI", "DITOLAK": "ERROR",
+              "ERROR": "ERROR", "PERINGATAN": "ERROR", "MENUNGGU": "ERROR"}
+
+app = FastAPI(title="Yoru Dashboard", version="0.2.0")
 
 
-def nama_lokal() -> str:
-    """Nama server yang dipakai agent di mesin ini - persis cara agent
-    menentukannya. Tombol di dashboard cuma menyentuh mesin ini, jadi laporan
-    milik server lain tidak boleh ikut tersentuh."""
-    import socket
-    return (baca_konfigurasi().get("NAMA_SERVER") or "").strip() or socket.gethostname()
-
-app = FastAPI(title="Yoru Dashboard", version="0.1.9")
-
-
-# ------------------------------------------------------------------ simpanan
+# -------------------------------------------------------------------- storage
 def db():
-    k = sqlite3.connect(DB, timeout=10)
-    k.row_factory = sqlite3.Row
-    k.execute("PRAGMA journal_mode=WAL")
-    return k
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
 
 
-def siapkan():
-    with closing(db()) as k, k:
-        k.execute("""CREATE TABLE IF NOT EXISTS laporan (
+def init_db():
+    with closing(db()) as conn, conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS laporan (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             server TEXT NOT NULL,
             waktu TEXT NOT NULL,
@@ -105,7 +97,7 @@ def siapkan():
             skor INTEGER NOT NULL,
             isi TEXT NOT NULL,
             diterima REAL NOT NULL)""")
-        k.execute("""CREATE TABLE IF NOT EXISTS keputusan (
+        conn.execute("""CREATE TABLE IF NOT EXISTS keputusan (
             server TEXT NOT NULL,
             kontrol TEXT NOT NULL,
             nilai TEXT NOT NULL,
@@ -113,157 +105,183 @@ def siapkan():
             dibuat REAL NOT NULL,
             diambil INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (server, kontrol))""")
-        k.execute("""CREATE TABLE IF NOT EXISTS port (
+        conn.execute("""CREATE TABLE IF NOT EXISTS port (
             server TEXT NOT NULL,
             port INTEGER NOT NULL,
             keterangan TEXT,
             dibuat REAL NOT NULL,
             diambil INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (server, port))""")
-        k.execute("CREATE INDEX IF NOT EXISTS i_laporan ON laporan(server, diterima DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS i_laporan ON laporan(server, diterima DESC)")
 
 
-siapkan()
+init_db()
 
 
-def periksa_token(diberikan: Optional[str]):
+# ------------------------------------------------------------------- identity
+def check_token(given: Optional[str]):
     if not TOKEN:
         return
-    diharapkan = f"Bearer {TOKEN}"
-    # Dibandingkan dengan panjang tetap supaya lama pembandingan tidak
-    # membocorkan berapa karakter awal token yang sudah benar.
+    expected = f"Bearer {TOKEN}"
+    # Fixed-time comparison so how long the check takes cannot leak how many
+    # leading characters of the token were already right.
     import hmac
-    if not diberikan or not hmac.compare_digest(diberikan, diharapkan):
+    if not given or not hmac.compare_digest(given, expected):
         raise HTTPException(status_code=401, detail="token tidak sah")
 
 
-def dari_mesin_ini(minta: Request) -> bool:
-    return bool(minta.client) and minta.client.host in ("127.0.0.1", "::1")
+def from_this_machine(req: Request) -> bool:
+    return bool(req.client) and req.client.host in ("127.0.0.1", "::1")
 
 
-def boleh_mengubah(minta: Request, diberikan: Optional[str]):
-    """Endpoint yang berujung pada perubahan di server sungguhan.
+def require_write_access(req: Request, given: Optional[str]):
+    """Guards every endpoint that ends in a change on a real server.
 
-    Dari mesin itu sendiri: bebas - yang bisa membuka 127.0.0.1 sudah punya
-    akses ke servernya. Dari jaringan: wajib token, dan token kosong berarti
-    ditolak, bukan dibebaskan. Tanpa aturan ini siapa pun yang bisa menjangkau
-    portnya bisa menekan tombol Hardening di server orang.
+    From the machine itself: open - anyone who can reach 127.0.0.1 already has
+    access to that server. From the network: a token is required, and an empty
+    token means refused, not exempt. Without this rule anyone who can reach the
+    port could press Hardening on someone else's server.
     """
-    if dari_mesin_ini(minta):
+    if from_this_machine(req):
         return
     if not TOKEN:
         raise HTTPException(
             status_code=403,
             detail="dashboard dibuka ke jaringan tapi DASHBOARD_TOKEN kosong - "
                    "isi dulu di /etc/yoru/yoru.conf, atau buka lewat 127.0.0.1")
-    periksa_token(diberikan)
+    check_token(given)
 
 
-# ------------------------------------------------------------------ endpoint
+def read_config() -> Dict[str, str]:
+    """Read as text, never sourced. A value containing $(...) would otherwise
+    run in a process holding the tokens, and this file holds them."""
+    config: Dict[str, str] = {}
+    try:
+        text = CONFIG_FILE.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return config
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        config[key.strip()] = val.strip().strip('"')
+    return config
+
+
+def local_server_name() -> str:
+    """The name the agent on this machine uses - worked out exactly the way the
+    agent works it out. The buttons only touch this machine, so another
+    server's report must never be edited by them."""
+    return (read_config().get("NAMA_SERVER") or "").strip() or socket.gethostname()
+
+
+# ------------------------------------------------------------------ endpoints
 @app.post("/api/laporan")
-async def terima_laporan(laporan: Dict[str, Any] = Body(...),
+async def receive_report(laporan: Dict[str, Any] = Body(...),
                          authorization: Optional[str] = Header(None)):
-    periksa_token(authorization)
+    check_token(authorization)
 
-    for wajib in ("versi_kontrak", "server", "waktu", "siklus", "ringkasan", "kontrol"):
-        if wajib not in laporan:
-            raise HTTPException(status_code=422, detail=f"field '{wajib}' tidak ada")
+    for field in ("versi_kontrak", "server", "waktu", "siklus", "ringkasan", "kontrol"):
+        if field not in laporan:
+            raise HTTPException(status_code=422, detail=f"field '{field}' tidak ada")
 
-    nama = str((laporan.get("server") or {}).get("nama") or "tanpa-nama")[:100]
-    with closing(db()) as k, k:
-        k.execute(
+    name = str((laporan.get("server") or {}).get("nama") or "tanpa-nama")[:100]
+    with closing(db()) as conn, conn:
+        conn.execute(
             "INSERT INTO laporan (server, waktu, siklus, skor, isi, diterima) VALUES (?,?,?,?,?,?)",
-            (nama, str(laporan["waktu"]), str(laporan["siklus"]),
+            (name, str(laporan["waktu"]), str(laporan["siklus"]),
              int((laporan.get("ringkasan") or {}).get("skor") or 0),
              json.dumps(laporan, ensure_ascii=False), time.time()),
         )
-        # Keputusan yang sudah dipakai agent dihapus supaya tidak dikerjakan
-        # dua kali di siklus berikutnya.
-        k.execute("DELETE FROM keputusan WHERE server=? AND diambil=1", (nama,))
-        k.execute("DELETE FROM port WHERE server=? AND diambil=1", (nama,))
-    return {"ok": True, "server": nama}
+        # Decisions the agent already collected are dropped so they are not
+        # carried out twice on the next cycle.
+        conn.execute("DELETE FROM keputusan WHERE server=? AND diambil=1", (name,))
+        conn.execute("DELETE FROM port WHERE server=? AND diambil=1", (name,))
+    return {"ok": True, "server": name}
 
 
 @app.get("/api/laporan")
-async def laporan_terakhir(server: Optional[str] = None):
-    with closing(db()) as k:
+async def latest_report(server: Optional[str] = None):
+    with closing(db()) as conn:
         if server:
-            b = k.execute("SELECT isi FROM laporan WHERE server=? ORDER BY diterima DESC LIMIT 1",
-                          (server,)).fetchone()
+            row = conn.execute("SELECT isi FROM laporan WHERE server=? ORDER BY diterima DESC LIMIT 1",
+                               (server,)).fetchone()
         else:
-            b = k.execute("SELECT isi FROM laporan ORDER BY diterima DESC LIMIT 1").fetchone()
-    if not b:
+            row = conn.execute("SELECT isi FROM laporan ORDER BY diterima DESC LIMIT 1").fetchone()
+    if not row:
         return JSONResponse({"kosong": True,
                              "pesan": "belum ada laporan masuk - jalankan agent dulu"},
                             status_code=404)
-    return json.loads(b["isi"])
+    return json.loads(row["isi"])
 
 
 @app.get("/api/server")
-async def daftar_server():
-    with closing(db()) as k:
-        baris = k.execute(
+async def server_list():
+    with closing(db()) as conn:
+        rows = conn.execute(
             "SELECT server, MAX(diterima) d, COUNT(*) n FROM laporan GROUP BY server ORDER BY d DESC"
         ).fetchall()
-    return {"server": [{"nama": b["server"], "laporan": b["n"], "terakhir": b["d"]} for b in baris]}
+    return {"server": [{"nama": r["server"], "laporan": r["n"], "terakhir": r["d"]} for r in rows]}
 
 
 @app.get("/api/riwayat")
-async def riwayat(server: Optional[str] = None, batas: int = 30):
+async def history(server: Optional[str] = None, batas: int = 30):
     batas = max(1, min(batas, 200))
-    with closing(db()) as k:
+    with closing(db()) as conn:
         if server:
-            baris = k.execute(
+            rows = conn.execute(
                 "SELECT waktu, siklus, skor FROM laporan WHERE server=? ORDER BY diterima DESC LIMIT ?",
                 (server, batas)).fetchall()
         else:
-            baris = k.execute(
+            rows = conn.execute(
                 "SELECT waktu, siklus, skor FROM laporan ORDER BY diterima DESC LIMIT ?",
                 (batas,)).fetchall()
-    return {"riwayat": [dict(b) for b in baris]}
+    return {"riwayat": [dict(r) for r in rows]}
 
 
 @app.post("/api/keputusan")
-async def simpan_keputusan(minta: Request, badan: Dict[str, Any] = Body(...),
-                           authorization: Optional[str] = Header(None)):
-    """Jawaban pemilik dari dashboard.
+async def store_decision(req: Request, badan: Dict[str, Any] = Body(...),
+                         authorization: Optional[str] = Header(None)):
+    """The owner's answer from the dashboard.
 
-    Disimpan dulu, tidak langsung dijalankan. Yang menjalankan tetap agent di
-    server, lewat yoructl - dashboard tidak pernah menyentuh server siapa pun.
+    Stored, not executed. The agent on the server is still what carries it out,
+    through yoructl - the dashboard never touches anyone's server.
     """
-    boleh_mengubah(minta, authorization)
+    require_write_access(req, authorization)
     server = str(badan.get("server") or "").strip()[:100]
-    kontrol = str(badan.get("kontrol") or "").strip().upper()
-    nilai = str(badan.get("nilai") or "").strip().lower()
+    control = str(badan.get("kontrol") or "").strip().upper()
+    value = str(badan.get("nilai") or "").strip().lower()
 
     if not server:
         raise HTTPException(status_code=422, detail="server tidak disebut")
-    if not KONTROL_SAH.match(kontrol):
+    if not CONTROL_RE.match(control):
         raise HTTPException(status_code=422, detail="kontrol tidak dikenal")
-    if nilai not in KEPUTUSAN_SAH:
-        raise HTTPException(status_code=422, detail=f"nilai harus salah satu dari {sorted(KEPUTUSAN_SAH)}")
+    if value not in VALID_DECISIONS:
+        raise HTTPException(status_code=422,
+                            detail=f"nilai harus salah satu dari {sorted(VALID_DECISIONS)}")
 
-    with closing(db()) as k, k:
-        k.execute("""INSERT INTO keputusan (server, kontrol, nilai, catatan, dibuat, diambil)
-                     VALUES (?,?,?,?,?,0)
-                     ON CONFLICT(server, kontrol) DO UPDATE SET
-                       nilai=excluded.nilai, catatan=excluded.catatan,
-                       dibuat=excluded.dibuat, diambil=0""",
-                  (server, kontrol, nilai, str(badan.get("catatan") or "")[:500], time.time()))
-    return {"ok": True, "server": server, "kontrol": kontrol, "nilai": nilai}
+    with closing(db()) as conn, conn:
+        conn.execute("""INSERT INTO keputusan (server, kontrol, nilai, catatan, dibuat, diambil)
+                        VALUES (?,?,?,?,?,0)
+                        ON CONFLICT(server, kontrol) DO UPDATE SET
+                          nilai=excluded.nilai, catatan=excluded.catatan,
+                          dibuat=excluded.dibuat, diambil=0""",
+                     (server, control, value, str(badan.get("catatan") or "")[:500], time.time()))
+    return {"ok": True, "server": server, "kontrol": control, "nilai": value}
 
 
 @app.post("/api/port")
-async def simpan_port(minta: Request, badan: Dict[str, Any] = Body(...),
+async def store_ports(req: Request, badan: Dict[str, Any] = Body(...),
                       authorization: Optional[str] = Header(None)):
-    """Pemilik menjawab "iya, port itu memang punya saya"."""
-    boleh_mengubah(minta, authorization)
+    """The owner answering "yes, that port is mine"."""
+    require_write_access(req, authorization)
     server = str(badan.get("server") or "").strip()[:100]
     if not server:
         raise HTTPException(status_code=422, detail="server tidak disebut")
 
-    diterima = []
-    with closing(db()) as k, k:
+    accepted = []
+    with closing(db()) as conn, conn:
         for p in (badan.get("port") or []):
             try:
                 n = int(p)
@@ -271,252 +289,238 @@ async def simpan_port(minta: Request, badan: Dict[str, Any] = Body(...),
                 continue
             if not 1 <= n <= 65535:
                 continue
-            k.execute("""INSERT INTO port (server, port, keterangan, dibuat, diambil)
-                         VALUES (?,?,?,?,0)
-                         ON CONFLICT(server, port) DO UPDATE SET diambil=0""",
-                      (server, n, str(badan.get("keterangan") or "")[:200], time.time()))
-            diterima.append(n)
-    return {"ok": True, "port": diterima}
+            conn.execute("""INSERT INTO port (server, port, keterangan, dibuat, diambil)
+                            VALUES (?,?,?,?,0)
+                            ON CONFLICT(server, port) DO UPDATE SET diambil=0""",
+                         (server, n, str(badan.get("keterangan") or "")[:200], time.time()))
+            accepted.append(n)
+    return {"ok": True, "port": accepted}
 
 
 @app.get("/api/keputusan")
-async def keputusan_untuk_agent(server: Optional[str] = None,
-                                authorization: Optional[str] = Header(None)):
-    """Diambil agent tiap siklus. Menandai yang sudah diambil, bukan menghapus.
+async def decisions_for_agent(server: Optional[str] = None,
+                              authorization: Optional[str] = Header(None)):
+    """Collected by the agent each cycle. Marks them taken; does not delete.
 
-    Kalau langsung dihapus di sini, keputusan hilang saat agent mati di tengah
-    jalan sebelum sempat mengerjakannya - dan pemilik tidak pernah tahu
-    jawabannya menguap. Penghapusan baru dilakukan saat laporan berikutnya
-    masuk, yang artinya agent memang sudah selesai.
+    Deleting here would lose the decision whenever the agent dies mid-run
+    before carrying it out - and the owner would never know their answer
+    evaporated. Deletion happens when the next report arrives, which means the
+    agent did finish.
     """
-    periksa_token(authorization)
-    with closing(db()) as k, k:
+    check_token(authorization)
+    with closing(db()) as conn, conn:
         if server:
-            kb = k.execute("SELECT kontrol, nilai FROM keputusan WHERE server=?", (server,)).fetchall()
-            pb = k.execute("SELECT port FROM port WHERE server=?", (server,)).fetchall()
-            k.execute("UPDATE keputusan SET diambil=1 WHERE server=?", (server,))
-            k.execute("UPDATE port SET diambil=1 WHERE server=?", (server,))
+            decisions = conn.execute("SELECT kontrol, nilai FROM keputusan WHERE server=?",
+                                     (server,)).fetchall()
+            ports = conn.execute("SELECT port FROM port WHERE server=?", (server,)).fetchall()
+            conn.execute("UPDATE keputusan SET diambil=1 WHERE server=?", (server,))
+            conn.execute("UPDATE port SET diambil=1 WHERE server=?", (server,))
         else:
-            kb = k.execute("SELECT kontrol, nilai FROM keputusan").fetchall()
-            pb = k.execute("SELECT port FROM port").fetchall()
-            k.execute("UPDATE keputusan SET diambil=1")
-            k.execute("UPDATE port SET diambil=1")
-    return {"keputusan": {b["kontrol"]: b["nilai"] for b in kb},
-            "port_disetujui": [b["port"] for b in pb]}
+            decisions = conn.execute("SELECT kontrol, nilai FROM keputusan").fetchall()
+            ports = conn.execute("SELECT port FROM port").fetchall()
+            conn.execute("UPDATE keputusan SET diambil=1")
+            conn.execute("UPDATE port SET diambil=1")
+    return {"keputusan": {r["kontrol"]: r["nilai"] for r in decisions},
+            "port_disetujui": [r["port"] for r in ports]}
 
 
-# ---------------------------------------------------- jalankan lewat yoructl
-YORUCTL = os.environ.get("YORUCTL", "/opt/yoru/bin/yoructl")
-
-# K07 dan K08 memasang paket lewat apt. Di server baru dengan jaringan pelan,
-# unduhannya sendiri bisa lewat tiga menit, belum termasuk menunggu kunci dpkg
-# sampai 60 detik. Batas 200 detik yang lama kelewat sering habis duluan.
-BATAS_WAKTU = int(os.environ.get("YORU_BATAS_WAKTU", "600"))
-LOG_YORU = Path(os.environ.get("YORU_LOG", "/var/log/yoru"))
-AKSI = {"periksa": "periksa", "audit": "periksa",
-        "terapkan": "terapkan", "hardening": "terapkan",
-        "kembalikan": "kembalikan", "rollback": "kembalikan",
-        "verifikasi": "verifikasi"}
-
-
-async def jalankan_yoructl(kid: str, aksi: str) -> Dict[str, Any]:
-    """Satu panggilan ke yoructl. Satu program, argumen tetap - tidak ada shell."""
-    perintah = ["sudo", "-n", YORUCTL, kid, aksi]
+# -------------------------------------------------------- running via yoructl
+async def run_yoructl(kid: str, action: str) -> Dict[str, Any]:
+    """One call to yoructl. One program, fixed arguments - no shell."""
+    cmd = ["sudo", "-n", YORUCTL, kid, action]
     if os.geteuid() == 0:
-        perintah = [YORUCTL, kid, aksi]
+        cmd = [YORUCTL, kid, action]
     try:
-        p = await asyncio.create_subprocess_exec(
-            *perintah, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     except OSError as e:
-        return {"id": kid, "tindakan": aksi, "status": "ERROR", "berhasil": False,
+        return {"id": kid, "tindakan": action, "status": "ERROR", "berhasil": False,
                 "nilai": None, "pesan": f"tidak bisa menjalankan {YORUCTL}: {e}"}
 
     try:
-        keluar, galat = await asyncio.wait_for(p.communicate(), timeout=BATAS_WAKTU)
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=TIME_LIMIT)
     except asyncio.TimeoutError:
-        # Prosesnya SENGAJA tidak dibunuh. Kalau yang lagi jalan itu K07 atau
-        # K08, isinya apt - dan membunuh apt di tengah jalan meninggalkan dpkg
-        # setengah jadi, yang jauh lebih repot daripada menunggu.
+        # The process is deliberately NOT killed. If this is K07 or K08 what is
+        # running is apt, and killing apt halfway leaves dpkg in a half state -
+        # far more trouble than waiting.
         #
-        # Dan pesannya jangan pernah kosong. Versi sebelumnya menulis f"{e}",
-        # padahal str(asyncio.TimeoutError()) itu string kosong - jadi yang
-        # muncul di layar cuma tulisan "ERROR" tanpa satu kata pun alasan.
-        return {"id": kid, "tindakan": aksi, "status": "MENUNGGU", "berhasil": False,
+        # And the message must never be empty. An earlier version wrote f"{e}",
+        # but str(asyncio.TimeoutError()) is the empty string - so the screen
+        # showed the word "ERROR" and not one word of why.
+        return {"id": kid, "tindakan": action, "status": "MENUNGGU", "berhasil": False,
                 "nilai": None,
-                "pesan": f"sudah {BATAS_WAKTU} detik dan belum selesai - biasanya apt "
+                "pesan": f"sudah {TIME_LIMIT} detik dan belum selesai - biasanya apt "
                          f"masih mengunduh. Tindakannya TETAP JALAN di server, tidak "
                          f"dibatalkan. Tunggu sebentar lalu tekan Audit untuk melihat "
                          f"hasilnya, atau lihat Audit Logs."}
 
-    for baris in reversed([b for b in keluar.decode("utf-8", "replace").splitlines() if b.strip()]):
+    for line in reversed([b for b in out.decode("utf-8", "replace").splitlines() if b.strip()]):
         try:
-            return json.loads(baris)
+            return json.loads(line)
         except json.JSONDecodeError:
             continue
-    return {"id": kid, "tindakan": aksi, "status": "ERROR", "berhasil": False,
+    return {"id": kid, "tindakan": action, "status": "ERROR", "berhasil": False,
             "nilai": None,
-            "pesan": (galat.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
+            "pesan": (err.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
 
 
 @app.post("/api/jalankan")
-async def jalankan(minta: Request, badan: Dict[str, Any] = Body(...),
-                   authorization: Optional[str] = Header(None)):
-    boleh_mengubah(minta, authorization)
+async def run_action(req: Request, badan: Dict[str, Any] = Body(...),
+                     authorization: Optional[str] = Header(None)):
+    require_write_access(req, authorization)
     kid = str(badan.get("kontrol") or "").strip().upper()
-    aksi = AKSI.get(str(badan.get("aksi") or "").strip().lower())
-    if not KONTROL_SAH.match(kid):
+    action = ACTIONS.get(str(badan.get("aksi") or "").strip().lower())
+    if not CONTROL_RE.match(kid):
         raise HTTPException(status_code=422, detail="kontrol tidak dikenal")
-    if not aksi:
+    if not action:
         raise HTTPException(status_code=422, detail="tindakan tidak dikenal")
 
-    hasil = await jalankan_yoructl(kid, aksi)
-    if hasil.get("berhasil") is True:
-        if aksi in ("terapkan", "kembalikan"):
-            # Status baris dibaca ulang, bukan disimpulkan dari "terapkan
-            # berhasil". Itu aturan yang sama yang dipakai verifikasi: yang
-            # dilaporkan harus keadaan yang benar-benar berlaku sekarang, bukan
-            # niat kita barusan. Tanpa ini, baris yang habis di-rollback malah
-            # tercatat DILEWATI, bukan GAGAL.
-            cek = await jalankan_yoructl(kid, "periksa")
-            segarkan_laporan(kid, cek if cek.get("berhasil") is True else hasil)
+    result = await run_yoructl(kid, action)
+    if result.get("berhasil") is True:
+        if action in ("terapkan", "kembalikan"):
+            # The row's status is read back, not inferred from "apply
+            # succeeded". Same rule verification uses: what we report has to be
+            # the state actually in force now, not the intent we just had.
+            # Without this a row that was just rolled back would be recorded as
+            # DILEWATI instead of GAGAL.
+            check = await run_yoructl(kid, "periksa")
+            refresh_stored_report(kid, check if check.get("berhasil") is True else result)
         else:
-            segarkan_laporan(kid, hasil)
-    return hasil
+            refresh_stored_report(kid, result)
+    return result
 
 
-def segarkan_laporan(kid: str, hasil: Dict[str, Any]):
-    """Rapikan laporan terakhir supaya cocok dengan yang barusan diukur.
+def refresh_stored_report(kid: str, result: Dict[str, Any]):
+    """Bring the stored report in line with what was just measured.
 
-    Tanpa ini, kartu di atas dashboard cuma berubah setelah siklus agent
-    berikutnya - jadi orang menekan Hardening, kontrolnya benar-benar berubah,
-    tapi angka "Lolos Audit" diam saja dan kelihatan seperti tombolnya tidak
-    bekerja.
+    Without this the cards at the top of the dashboard only move after the next
+    agent cycle - so someone presses Hardening, the control really does change,
+    and the "Lolos Audit" number sits still as if the button did nothing.
     """
-    status = PETA_STATUS.get(str(hasil.get("status") or "ERROR"), "ERROR")
-    nilai = hasil.get("nilai") or "tidak-terbaca"
-    nama = nama_lokal()
+    status = STATUS_MAP.get(str(result.get("status") or "ERROR"), "ERROR")
+    value = result.get("nilai") or "tidak-terbaca"
+    name = local_server_name()
     try:
-        with closing(db()) as k, k:
-            b = k.execute("SELECT id, isi FROM laporan WHERE server=? "
-                          "ORDER BY diterima DESC LIMIT 1", (nama,)).fetchone()
-            if not b:
+        with closing(db()) as conn, conn:
+            row = conn.execute("SELECT id, isi FROM laporan WHERE server=? "
+                               "ORDER BY diterima DESC LIMIT 1", (name,)).fetchone()
+            if not row:
                 return
-            laporan = json.loads(b["isi"])
-            ketemu = False
-            for e in laporan.get("kontrol", []):
-                if e.get("id") == kid:
-                    e["status"] = status
-                    e["nilai_terbaca"] = nilai
-                    e["hasil"] = {"tindakan": hasil.get("tindakan"),
-                                  "status": hasil.get("status"),
-                                  "pesan": hasil.get("pesan"),
-                                  "waktu": time.strftime("%Y-%m-%dT%H:%M:%S")}
-                    ketemu = True
-            if not ketemu:
+            report = json.loads(row["isi"])
+            found = False
+            for entry in report.get("kontrol", []):
+                if entry.get("id") == kid:
+                    entry["status"] = status
+                    entry["nilai_terbaca"] = value
+                    entry["hasil"] = {"tindakan": result.get("tindakan"),
+                                      "status": result.get("status"),
+                                      "pesan": result.get("pesan"),
+                                      "waktu": time.strftime("%Y-%m-%dT%H:%M:%S")}
+                    found = True
+            if not found:
                 return
 
-            h = {"LULUS": 0, "GAGAL": 0, "SEBAGIAN": 0, "DILEWATI": 0, "ERROR": 0}
-            for e in laporan["kontrol"]:
-                h[e["status"]] = h.get(e["status"], 0) + 1
-            total = len(laporan["kontrol"])
-            laporan["ringkasan"] = {
-                "total": total, "lulus": h["LULUS"], "gagal": h["GAGAL"],
-                "sebagian": h["SEBAGIAN"], "dilewati": h["DILEWATI"] + h["ERROR"],
-                "skor": round(h["LULUS"] / total * 100) if total else 0,
+            tally = {"LULUS": 0, "GAGAL": 0, "SEBAGIAN": 0, "DILEWATI": 0, "ERROR": 0}
+            for entry in report["kontrol"]:
+                tally[entry["status"]] = tally.get(entry["status"], 0) + 1
+            total = len(report["kontrol"])
+            report["ringkasan"] = {
+                "total": total, "lulus": tally["LULUS"], "gagal": tally["GAGAL"],
+                "sebagian": tally["SEBAGIAN"], "dilewati": tally["DILEWATI"] + tally["ERROR"],
+                "skor": round(tally["LULUS"] / total * 100) if total else 0,
             }
-            laporan["butuh_keputusan"] = [
-                e["id"] for e in laporan["kontrol"]
-                if e["status"] == "GAGAL" and e.get("butuh_izin")
-                and not e.get("prasyarat_gagal")]
-            k.execute("UPDATE laporan SET skor=?, isi=? WHERE id=?",
-                      (laporan["ringkasan"]["skor"],
-                       json.dumps(laporan, ensure_ascii=False), b["id"]))
+            report["butuh_keputusan"] = [
+                e["id"] for e in report["kontrol"]
+                if e["status"] == "GAGAL" and e.get("butuh_izin") and not e.get("prasyarat_gagal")]
+            conn.execute("UPDATE laporan SET skor=?, isi=? WHERE id=?",
+                         (report["ringkasan"]["skor"],
+                          json.dumps(report, ensure_ascii=False), row["id"]))
     except (OSError, sqlite3.Error, ValueError, KeyError):
-        # Laporan gagal disegarkan bukan alasan untuk menggagalkan tindakan yang
-        # sudah terlanjur berhasil di server.
+        # Failing to refresh the report is no reason to fail an action that has
+        # already succeeded on the server.
         return
 
 
-# ------------------------------------------------------------- setelan
+# ------------------------------------------------------------------- settings
 @app.get("/api/konfigurasi")
-async def baca_setelan(minta: Request, authorization: Optional[str] = Header(None)):
-    boleh_mengubah(minta, authorization)
-    konf = baca_konfigurasi()
-    keluar = {}
-    for k in KONF_BOLEH:
-        v = konf.get(k, "")
-        # Token tidak pernah dikirim utuh ke browser. Yang perlu diketahui
-        # pemilik cuma "sudah terisi atau belum".
-        keluar[k] = {"terisi": bool(v),
-                     "nilai": "" if k in KONF_RAHASIA else v}
-    keluar["_berkas"] = str(KONF)
-    return keluar
+async def read_settings(req: Request, authorization: Optional[str] = Header(None)):
+    require_write_access(req, authorization)
+    config = read_config()
+    out: Dict[str, Any] = {}
+    for key in SETTABLE_KEYS:
+        val = config.get(key, "")
+        # A token is never sent to the browser in full. All the owner needs to
+        # know is whether one is set.
+        out[key] = {"terisi": bool(val), "nilai": "" if key in SECRET_KEYS else val}
+    out["_berkas"] = str(CONFIG_FILE)
+    return out
 
 
 @app.post("/api/konfigurasi")
-async def simpan_setelan(minta: Request, badan: Dict[str, Any] = Body(...),
-                         authorization: Optional[str] = Header(None)):
-    """Menulis lewat yoructl, bukan menulis berkasnya sendiri.
+async def write_setting(req: Request, badan: Dict[str, Any] = Body(...),
+                        authorization: Optional[str] = Header(None)):
+    """Writes through yoructl instead of writing the file itself.
 
-    Dashboard jalan sebagai yoru-agent dan memang tidak boleh bisa menulis
-    /etc/yoru/yoru.conf. Satu-satunya jalan tetap yoructl - program yang sama
-    yang dipakai agent, dengan daftar kunci dan pemeriksaan nilai di dalamnya.
+    The dashboard runs as yoru-agent and is deliberately not allowed to write
+    /etc/yoru/yoru.conf. The only way in is yoructl - the same program the
+    agent uses, with the key list and value checks inside it.
     """
-    kunci = str(badan.get("kunci") or "").strip()
-    nilai = str(badan.get("nilai") or "").strip()
-    if kunci not in KONF_BOLEH:
-        raise HTTPException(status_code=422, detail=f"kunci '{kunci}' tidak bisa disetel dari sini")
+    require_write_access(req, authorization)
+    key = str(badan.get("kunci") or "").strip()
+    val = str(badan.get("nilai") or "").strip()
+    if key not in SETTABLE_KEYS:
+        raise HTTPException(status_code=422, detail=f"kunci '{key}' tidak bisa disetel dari sini")
 
-    perintah = ["sudo", "-n", YORUCTL, "konfigurasi", kunci, nilai]
+    cmd = ["sudo", "-n", YORUCTL, "konfigurasi", key, val]
     if os.geteuid() == 0:
-        perintah = [YORUCTL, "konfigurasi", kunci, nilai]
+        cmd = [YORUCTL, "konfigurasi", key, val]
     try:
-        p = await asyncio.create_subprocess_exec(
-            *perintah, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        keluar, galat = await asyncio.wait_for(p.communicate(), timeout=30)
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=30)
     except (OSError, asyncio.TimeoutError) as e:
         return {"status": "ERROR", "berhasil": False,
                 "pesan": f"tidak bisa menjalankan yoructl: {e or 'kehabisan waktu'}"}
 
-    for baris in reversed([b for b in keluar.decode("utf-8", "replace").splitlines() if b.strip()]):
+    for line in reversed([b for b in out.decode("utf-8", "replace").splitlines() if b.strip()]):
         try:
-            return json.loads(baris)
+            return json.loads(line)
         except json.JSONDecodeError:
             continue
     return {"status": "ERROR", "berhasil": False,
-            "pesan": (galat.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
+            "pesan": (err.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
 
 
 @app.get("/api/log")
-async def log(kontrol: Optional[str] = None, batas: int = 60):
-    """Jejak tindakan dari /var/log/yoru. Milik root, agent tidak bisa menulis."""
+async def read_log(kontrol: Optional[str] = None, batas: int = 60):
+    """The action trail from /var/log/yoru. Root-owned; the agent cannot write it."""
     batas = max(1, min(batas, 500))
-    nama = "tindakan.log"
-    if kontrol and KONTROL_SAH.match(kontrol.upper()):
-        nama = f"{kontrol.upper()}.log"
+    name = "tindakan.log"
+    if kontrol and CONTROL_RE.match(kontrol.upper()):
+        name = f"{kontrol.upper()}.log"
     try:
-        baris = (LOG_YORU / nama).read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = (LOG_DIR / name).read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
-        return {"baris": [], "pesan": f"{LOG_YORU / nama} belum ada atau tidak bisa dibaca"}
-    keluar = []
-    for b in baris[-batas:]:
-        b = b.strip()
-        if b:
+        return {"baris": [], "pesan": f"{LOG_DIR / name} belum ada atau tidak bisa dibaca"}
+    out = []
+    for line in lines[-batas:]:
+        line = line.strip()
+        if line:
             try:
-                keluar.append(json.loads(b))
+                out.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
-    return {"baris": list(reversed(keluar))}
+    return {"baris": list(reversed(out))}
 
 
 @app.get("/", response_class=HTMLResponse)
-async def halaman():
+async def page():
     try:
-        return HTMLResponse(HALAMAN.read_text(encoding="utf-8"))
+        return HTMLResponse(PAGE.read_text(encoding="utf-8"))
     except OSError:
         return HTMLResponse("<h1>dashboard.html tidak ditemukan</h1>", status_code=404)
 
 
 @app.get("/sehat")
-async def sehat():
-    return {"ok": True, "versi": app.version, "db": str(DB), "token_aktif": bool(TOKEN)}
+async def health():
+    return {"ok": True, "versi": app.version, "db": str(DB_FILE), "token_aktif": bool(TOKEN)}

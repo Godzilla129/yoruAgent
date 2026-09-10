@@ -7,169 +7,168 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f172a'/%3E%3Ctext x='16' y='23' font-family='Georgia,serif' font-size='20' fill='%2334d399' text-anchor='middle'%3EY%3C/text%3E%3C/svg%3E">
 <style>
 :root{
-  --sidebar:#0f172a; --sidebar-2:#1e293b; --sidebar-teks:#cbd5e1;
-  --bg:#f1f5f9; --kartu:#ffffff; --garis:#e2e8f0;
-  --teks:#0f172a; --samar:#64748b;
-  --hijau:#16a34a; --hijau-bg:#dcfce7;
-  --merah:#dc2626; --merah-bg:#fee2e2;
-  --kuning:#ca8a04; --kuning-bg:#fef9c3;
-  --biru:#0891b2;
+  --sidebar:#0f172a; --sidebar-2:#1e293b; --sidebar-text:#cbd5e1;
+  --bg:#f1f5f9; --card:#ffffff; --line:#e2e8f0;
+  --text:#0f172a; --muted:#64748b;
+  --green:#16a34a; --green-bg:#dcfce7;
+  --red:#dc2626; --red-bg:#fee2e2;
+  --amber:#ca8a04; --amber-bg:#fef9c3;
+  --blue:#0891b2;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--teks);
+body{margin:0;background:var(--bg);color:var(--text);
   font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,sans-serif}
-:focus-visible{outline:2px solid var(--biru);outline-offset:2px}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 
 /* ---------- sidebar ---------- */
 .wrap{display:flex;min-height:100vh}
-.side{width:208px;flex:none;background:var(--sidebar);color:var(--sidebar-teks);
+.sidebar{width:208px;flex:none;background:var(--sidebar);color:var(--sidebar-text);
   display:flex;flex-direction:column}
 .brand{display:flex;align-items:center;gap:9px;padding:18px 18px;
   border-bottom:1px solid var(--sidebar-2);color:#fff;font-weight:700;font-size:15px}
 .brand svg{flex:none}
-.side nav{padding:10px 0;flex:1}
-.side nav a{display:flex;align-items:center;gap:10px;padding:10px 18px;
-  color:var(--sidebar-teks);text-decoration:none;font-size:13.5px;cursor:pointer}
-.side nav a:hover{background:var(--sidebar-2);color:#fff}
-.side nav a.on{background:var(--sidebar-2);color:#fff;font-weight:600;
+.sidebar nav{padding:10px 0;flex:1}
+.sidebar nav a{display:flex;align-items:center;gap:10px;padding:10px 18px;
+  color:var(--sidebar-text);text-decoration:none;font-size:13.5px;cursor:pointer}
+.sidebar nav a:hover{background:var(--sidebar-2);color:#fff}
+.sidebar nav a.on{background:var(--sidebar-2);color:#fff;font-weight:600;
   box-shadow:inset 3px 0 0 #34d399}
-.side .kaki{padding:14px 18px;border-top:1px solid var(--sidebar-2);
+.sidebar .foot{padding:14px 18px;border-top:1px solid var(--sidebar-2);
   font-size:11.5px;color:#64748b;line-height:1.5}
 
-/* ---------- isi ---------- */
+/* ---------- content ---------- */
 .main{flex:1;min-width:0;padding:20px 24px 48px}
-.judul-hal{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-.judul-hal h1{font-size:19px;margin:0}
-.judul-hal .meta{font-size:12.5px;color:var(--samar);
+.page-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.page-head h1{font-size:19px;margin:0}
+.page-head .meta{font-size:12.5px;color:var(--muted);
   font-family:ui-monospace,Menlo,monospace}
 
-/* ---------- kartu statistik ---------- */
+/* ---------- stat cards ---------- */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:16px}
-.stat{background:var(--kartu);border:1px solid var(--garis);border-radius:8px;
-  padding:15px 17px;border-left:4px solid var(--garis)}
-.stat.k{border-left-color:var(--kuning)} .stat.h{border-left-color:var(--hijau)}
-.stat.m{border-left-color:var(--merah)}  .stat.b{border-left-color:var(--biru)}
-.stat .atas{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-.stat .lbl{font-size:12.5px;color:var(--samar)}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:8px;
+  padding:15px 17px;border-left:4px solid var(--line)}
+.stat.warn{border-left-color:var(--amber)} .stat.pass{border-left-color:var(--green)}
+.stat.fail{border-left-color:var(--red)}   .stat.info{border-left-color:var(--blue)}
+.stat .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.stat .lbl{font-size:12.5px;color:var(--muted)}
 .stat .val{font-size:28px;font-weight:700;line-height:1.15;margin-top:4px}
-.stat.k .val{color:var(--kuning)} .stat.h .val{color:var(--hijau)}
-.stat.m .val{color:var(--merah)}  .stat.b .val{color:var(--biru)}
-.stat .sub{font-size:11.5px;color:var(--samar);margin-top:5px}
-.stat .bar{height:6px;border-radius:99px;background:var(--garis);margin-top:9px;overflow:hidden}
-.stat .bar i{display:block;height:100%;background:var(--kuning);transition:width .4s}
+.stat.warn .val{color:var(--amber)} .stat.pass .val{color:var(--green)}
+.stat.fail .val{color:var(--red)}   .stat.info .val{color:var(--blue)}
+.stat .sub{font-size:11.5px;color:var(--muted);margin-top:5px}
+.stat .bar{height:6px;border-radius:99px;background:var(--line);margin-top:9px;overflow:hidden}
+.stat .bar i{display:block;height:100%;background:var(--amber);transition:width .4s}
 
-/* ---------- panel tabel ---------- */
-.panel{background:var(--kartu);border:1px solid var(--garis);border-radius:8px;
+/* ---------- table panel ---------- */
+.panel{background:var(--card);border:1px solid var(--line);border-radius:8px;
   margin-top:18px;overflow:hidden}
-.panel .kepala{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
-  padding:13px 17px;border-bottom:1px solid var(--garis)}
-.panel .kepala h2{font-size:14.5px;margin:0;flex:1}
-.aksi-massal{display:flex;gap:8px;flex-wrap:wrap}
+.panel .head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:13px 17px;border-bottom:1px solid var(--line)}
+.panel .head h2{font-size:14.5px;margin:0;flex:1}
+.bulk{display:flex;gap:8px;flex-wrap:wrap}
 .btn{font:600 12px/1 inherit;padding:7px 11px;border-radius:5px;cursor:pointer;
-  border:1px solid var(--garis);background:var(--kartu);color:var(--samar);white-space:nowrap}
+  border:1px solid var(--line);background:var(--card);color:var(--muted);white-space:nowrap}
 .btn:hover:not(:disabled){background:var(--bg)}
 .btn:disabled{opacity:.45;cursor:default}
 .btn.audit{border-color:#bae6fd;color:#0369a1}
-.btn.hard{border-color:#fde68a;color:var(--kuning)}
-.btn.roll{border-color:#fecaca;color:var(--merah)}
-.btn.log{border-color:var(--garis);color:var(--samar)}
+.btn.harden{border-color:#fde68a;color:var(--amber)}
+.btn.rollback{border-color:#fecaca;color:var(--red)}
+.btn.log{border-color:var(--line);color:var(--muted)}
 
 table{width:100%;border-collapse:collapse}
-thead th{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--samar);
-  text-align:left;padding:9px 12px;border-bottom:1px solid var(--garis);
+thead th{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);
+  text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);
   background:#f8fafc;white-space:nowrap;font-weight:600}
-tbody td{padding:9px 12px;border-bottom:1px solid var(--garis);vertical-align:middle}
+tbody td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
 tbody tr:last-child td{border-bottom:0}
 tbody tr:hover{background:#f8fafc}
-td.no{color:var(--samar);font-family:ui-monospace,Menlo,monospace;font-size:12.5px;width:44px}
-td.poin{font-weight:500;min-width:230px}
-.cis{font:11.5px ui-monospace,Menlo,monospace;background:#f1f5f9;color:var(--samar);
+td.num{color:var(--muted);font-family:ui-monospace,Menlo,monospace;font-size:12.5px;width:44px}
+td.point{font-weight:500;min-width:230px}
+.cis{font:11.5px ui-monospace,Menlo,monospace;background:#f1f5f9;color:var(--muted);
   padding:2px 6px;border-radius:4px;white-space:nowrap}
 .tag{font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:99px;white-space:nowrap}
-.tag.p{background:var(--hijau-bg);color:var(--hijau)}
-.tag.f{background:var(--merah-bg);color:var(--merah)}
-.tag.n{background:var(--kuning-bg);color:var(--kuning)}
-.tag.x{background:#f1f5f9;color:var(--samar)}
-td.kapan{font:12px ui-monospace,Menlo,monospace;color:var(--samar);white-space:nowrap}
-td.aksi{white-space:nowrap}
-td.aksi .btn{margin-right:4px}
-/* td.aksi sengaja nowrap supaya tombolnya tidak patah, tapi pesan hasil harus
-   ikut membungkus - kalau tidak, kalimat panjangnya kepotong di tepi tabel dan
-   justru bagian 'harus ngapain'-nya yang hilang. */
-.hasil{display:block;font-size:11.5px;margin-top:6px;line-height:1.45;
+.tag.p{background:var(--green-bg);color:var(--green)}
+.tag.f{background:var(--red-bg);color:var(--red)}
+.tag.n{background:var(--amber-bg);color:var(--amber)}
+.tag.x{background:#f1f5f9;color:var(--muted)}
+td.when{font:12px ui-monospace,Menlo,monospace;color:var(--muted);white-space:nowrap}
+td.actions{white-space:nowrap}
+td.actions .btn{margin-right:4px}
+/* td.actions is nowrap so the buttons never break, but the result message has
+   to wrap - otherwise a long sentence is cut at the table edge, and the part
+   that says what to do next is exactly the part that disappears. */
+.result{display:block;font-size:11.5px;margin-top:6px;line-height:1.45;
   white-space:normal;max-width:430px}
-.hasil.ok{color:var(--hijau)} .hasil.no{color:var(--merah)}
-.hasil.tunggu{color:var(--kuning)} .hasil.jln{color:var(--samar)}
+.result.ok{color:var(--green)} .result.bad{color:var(--red)}
+.result.wait{color:var(--amber)} .result.busy{color:var(--muted)}
 
-/* ---------- dialog konfirmasi ---------- */
+/* ---------- settings form ---------- */
+.form{padding:16px 17px;max-width:620px}
+.form .field{margin-bottom:16px}
+.form label{display:block;font-size:12.5px;font-weight:600;margin-bottom:5px}
+.form input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;
+  font:13px/1.4 inherit;background:#fff;color:inherit}
+.form .hint{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.5}
+.form .save{font:600 13px/1 inherit;padding:9px 16px;border-radius:6px;cursor:pointer;
+  border:1px solid var(--amber);background:var(--amber);color:#fff}
+.form .save:disabled{opacity:.5;cursor:default}
+.form .note{font-size:12.5px;margin-top:10px}
+.form .note.ok{color:var(--green)} .form .note.bad{color:var(--red)}
+.footnote{padding:0 17px 16px;color:var(--muted);font-size:12.5px;max-width:66ch;line-height:1.6}
+
+/* ---------- dialogs ---------- */
 dialog{border:0;border-radius:10px;padding:0;max-width:540px;width:calc(100% - 32px);
   box-shadow:0 18px 50px rgba(15,23,42,.28)}
 dialog::backdrop{background:rgba(15,23,42,.45)}
 .dlg{padding:20px 22px}
 .dlg h3{margin:0 0 4px;font-size:16px}
-.dlg .kid{font:12px ui-monospace,Menlo,monospace;color:var(--samar)}
-.dlg .risiko{border-left:4px solid var(--kuning);background:var(--kuning-bg);
+.dlg .kid{font:12px ui-monospace,Menlo,monospace;color:var(--muted)}
+.dlg .risk{border-left:4px solid var(--amber);background:var(--amber-bg);
   padding:11px 13px;border-radius:0 6px 6px 0;margin-top:14px}
-.dlg .risiko b{display:block;font-size:11.5px;text-transform:uppercase;
-  letter-spacing:.03em;color:var(--kuning);margin-bottom:3px}
-.dlg .risiko p{margin:0;font-size:13.5px}
-.dlg .tombol{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
-.dlg .tombol button{font:600 13px/1 inherit;padding:9px 15px;border-radius:6px;cursor:pointer;
-  border:1px solid var(--garis);background:var(--kartu)}
-.dlg .tombol .ya{background:var(--kuning);border-color:var(--kuning);color:#fff}
+.dlg .risk b{display:block;font-size:11.5px;text-transform:uppercase;
+  letter-spacing:.03em;color:var(--amber);margin-bottom:3px}
+.dlg .risk p{margin:0;font-size:13.5px}
+.dlg .buttons{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.dlg .buttons button{font:600 13px/1 inherit;padding:9px 15px;border-radius:6px;cursor:pointer;
+  border:1px solid var(--line);background:var(--card)}
+.dlg .buttons .go{background:var(--amber);border-color:var(--amber);color:#fff}
+
+.run .steps{margin:12px 0 0;padding:0;list-style:none;font-size:13px}
+.run .steps li{padding:4px 0 4px 20px;position:relative;color:var(--muted)}
+.run .steps li::before{content:'·';position:absolute;left:6px;font-weight:700}
+.run .steps li.on{color:var(--text)}
+.run .steps li.on::before{content:'▸';color:var(--amber)}
+.run .cmd{font:12px ui-monospace,Menlo,monospace;background:var(--sidebar);
+  color:#a7f3d0;padding:9px 11px;border-radius:6px;margin-top:12px;overflow-x:auto;
+  white-space:pre}
+.run .clock{font-size:12px;color:var(--muted);margin-top:10px}
+.run .reply{margin-top:12px;padding:11px 13px;border-radius:6px;font-size:13px;
+  line-height:1.55;border-left:4px solid var(--line);background:var(--bg)}
+.run .reply.ok{border-left-color:var(--green);background:var(--green-bg)}
+.run .reply.bad{border-left-color:var(--red);background:var(--red-bg)}
+.run .reply.wait{border-left-color:var(--amber);background:var(--amber-bg)}
 
 /* ---------- log ---------- */
 .logbox{font:12px/1.65 ui-monospace,Menlo,monospace;padding:14px 17px;
   max-height:60vh;overflow:auto}
-.logbox div{border-bottom:1px solid var(--garis);padding:5px 0;display:flex;gap:10px;flex-wrap:wrap}
+.logbox div{border-bottom:1px solid var(--line);padding:5px 0;display:flex;gap:10px;flex-wrap:wrap}
 .logbox div:last-child{border-bottom:0}
-.logbox .w{color:var(--samar);flex:none}
+.logbox .w{color:var(--muted);flex:none}
 .logbox .s{font-weight:700;flex:none;width:104px}
-.logbox .s.LULUS,.logbox .s.DIKEMBALIKAN{color:var(--hijau)}
-.logbox .s.GAGAL,.logbox .s.ERROR{color:var(--merah)}
-.logbox .s.DITOLAK,.logbox .s.DILEWATI,.logbox .s.PERINGATAN{color:var(--kuning)}
-/* ---------- form setelan ---------- */
-.form{padding:16px 17px;max-width:620px}
-.form .baris{margin-bottom:16px}
-.form label{display:block;font-size:12.5px;font-weight:600;margin-bottom:5px}
-.form input{width:100%;padding:9px 11px;border:1px solid var(--garis);border-radius:6px;
-  font:13px/1.4 inherit;background:#fff;color:inherit}
-.form input:disabled{background:var(--bg);color:var(--samar)}
-.form .bantu{font-size:11.5px;color:var(--samar);margin-top:5px;line-height:1.5}
-.form .simpan{font:600 13px/1 inherit;padding:9px 16px;border-radius:6px;cursor:pointer;
-  border:1px solid var(--kuning);background:var(--kuning);color:#fff}
-.form .simpan:disabled{opacity:.5;cursor:default}
-.form .kabar{font-size:12.5px;margin-top:10px}
-.form .kabar.ok{color:var(--hijau)} .form .kabar.no{color:var(--merah)}
-.catatan{padding:0 17px 16px;color:var(--samar);font-size:12.5px;max-width:66ch;line-height:1.6}
-
-/* ---------- dialog proses ---------- */
-.jalan .langkah{margin:12px 0 0;padding:0;list-style:none;font-size:13px}
-.jalan .langkah li{padding:4px 0 4px 20px;position:relative;color:var(--samar)}
-.jalan .langkah li::before{content:'·';position:absolute;left:6px;font-weight:700}
-.jalan .langkah li.aktif{color:var(--teks)}
-.jalan .langkah li.aktif::before{content:'▸';color:var(--kuning)}
-.jalan .perintah{font:12px ui-monospace,Menlo,monospace;background:var(--sidebar);
-  color:#a7f3d0;padding:9px 11px;border-radius:6px;margin-top:12px;overflow-x:auto;
-  white-space:pre}
-.jalan .jam{font-size:12px;color:var(--samar);margin-top:10px}
-.jalan .balas{margin-top:12px;padding:11px 13px;border-radius:6px;font-size:13px;
-  line-height:1.55;border-left:4px solid var(--garis);background:var(--bg)}
-.jalan .balas.ok{border-left-color:var(--hijau);background:var(--hijau-bg)}
-.jalan .balas.no{border-left-color:var(--merah);background:var(--merah-bg)}
-.jalan .balas.tunggu{border-left-color:var(--kuning);background:var(--kuning-bg)}
-.kosong{padding:34px 18px;text-align:center;color:var(--samar)}
-.kosong code{background:var(--bg);padding:2px 6px;border-radius:4px;
+.logbox .s.LULUS,.logbox .s.DIKEMBALIKAN{color:var(--green)}
+.logbox .s.GAGAL,.logbox .s.ERROR{color:var(--red)}
+.logbox .s.DITOLAK,.logbox .s.DILEWATI,.logbox .s.PERINGATAN{color:var(--amber)}
+.empty{padding:34px 18px;text-align:center;color:var(--muted)}
+.empty code{background:var(--bg);padding:2px 6px;border-radius:4px;
   font:12.5px ui-monospace,Menlo,monospace}
 @media (max-width:820px){
-  .side{width:60px}.side .brand span,.side nav a span,.side .kaki{display:none}
-  .side nav a{justify-content:center;padding:12px 0}
+  .sidebar{width:60px}.sidebar .brand span,.sidebar nav a span,.sidebar .foot{display:none}
+  .sidebar nav a{justify-content:center;padding:12px 0}
 }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <aside class="side">
+  <aside class="sidebar">
     <div class="brand">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2">
         <path d="M12 2 4 6v6c0 5 3.4 9 8 10 4.6-1 8-5 8-10V6l-8-4z"/></svg>
@@ -181,97 +180,109 @@ dialog::backdrop{background:rgba(15,23,42,.45)}
       <a data-h="log">◷ <span>Audit Logs</span></a>
       <a data-h="telegram">✈ <span>Telegram Bot</span></a>
       <a data-h="llm">✦ <span>LLM Settings</span></a>
-      <a data-h="sistem">⚙ <span>System Settings</span></a>
+      <a data-h="system">⚙ <span>System Settings</span></a>
     </nav>
-    <div class="kaki">Semua tindakan lewat <b>yoructl</b>.<br>Agent tidak punya akses shell.</div>
+    <div class="foot">Semua tindakan lewat <b>yoructl</b>.<br>Agent tidak punya akses shell.</div>
   </aside>
 
   <main class="main">
-    <div class="judul-hal">
-      <h1 id="judul">Dashboard</h1>
+    <div class="page-head">
+      <h1 id="pageTitle">Dashboard</h1>
       <span class="meta" id="meta"></span>
     </div>
-    <div id="isi"></div>
+    <div id="content"></div>
   </main>
 </div>
 
-<dialog id="dlg"><form method="dialog" class="dlg">
-  <h3 id="dlgJudul"></h3>
-  <div class="kid" id="dlgKid"></div>
-  <p id="dlgKenapa" style="color:var(--samar);font-size:13.5px;margin:10px 0 0"></p>
-  <div class="risiko"><b>Kalau disetujui, ini yang ikut berubah</b><p id="dlgRisiko"></p></div>
-  <div class="tombol">
+<dialog id="dlgConfirm"><form method="dialog" class="dlg">
+  <h3 id="confirmTitle"></h3>
+  <div class="kid" id="confirmKid"></div>
+  <p id="confirmWhy" style="color:var(--muted);font-size:13.5px;margin:10px 0 0"></p>
+  <div class="risk"><b>Kalau disetujui, ini yang ikut berubah</b><p id="confirmRisk"></p></div>
+  <div class="buttons">
     <button value="batal">Batal</button>
-    <button value="ya" class="ya" id="dlgYa">Ya, jalankan</button>
+    <button value="ya" class="go" id="confirmGo">Ya, jalankan</button>
   </div>
 </form></dialog>
 
-<dialog id="dlgJalan"><form method="dialog" class="dlg jalan">
-  <h3 id="jalanJudul"></h3>
-  <div class="kid" id="jalanKid"></div>
-  <ul class="langkah" id="jalanLangkah"></ul>
-  <div class="perintah" id="jalanPerintah"></div>
-  <div class="jam" id="jalanJam"></div>
-  <div class="balas" id="jalanBalas" hidden></div>
-  <div class="tombol">
-    <button value="log" id="jalanLog" hidden>Lihat log</button>
-    <button value="tutup" class="ya" id="jalanTutup">Tutup</button>
+<dialog id="dlgRun"><form method="dialog" class="dlg run">
+  <h3 id="runTitle"></h3>
+  <div class="kid" id="runKid"></div>
+  <ul class="steps" id="runSteps"></ul>
+  <div class="cmd" id="runCmd"></div>
+  <div class="clock" id="runClock"></div>
+  <div class="reply" id="runReply" hidden></div>
+  <div class="buttons">
+    <button value="log" id="runLog" hidden>Lihat log</button>
+    <button value="tutup" class="go" id="runClose">Tutup</button>
   </div>
 </form></dialog>
 
 <dialog id="dlgToken"><form method="dialog" class="dlg">
   <h3>Server ini minta token</h3>
-  <p style="color:var(--samar);font-size:13.5px;margin:10px 0 0">
+  <p style="color:var(--muted);font-size:13.5px;margin:10px 0 0">
     Dashboard dibuka dari komputer lain, jadi tombolnya perlu token. Isinya sama
     dengan <b>DASHBOARD_TOKEN</b> di <code>/etc/yoru/yoru.conf</code> pada server itu.
   </p>
-  <input id="isiToken" type="password" autocomplete="off" placeholder="tempel token di sini"
-         style="width:100%;margin-top:12px;padding:9px 11px;border:1px solid var(--garis);
+  <input id="tokenInput" type="password" autocomplete="off" placeholder="tempel token di sini"
+         style="width:100%;margin-top:12px;padding:9px 11px;border:1px solid var(--line);
                 border-radius:7px;font:inherit;background:#fff;color:inherit">
-  <div class="tombol">
+  <div class="buttons">
     <button value="batal">Batal</button>
-    <button value="ya" class="ya">Simpan</button>
+    <button value="ya" class="go">Simpan</button>
   </div>
 </form></dialog>
 
 <script>
-const $ = i => document.getElementById(i);
+// The UI text stays Indonesian - it is what the server's owner reads. The JSON
+// fields, the four action verbs and the API paths stay too: they are the
+// product's shared vocabulary, documented in contract/report.md.
+const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let DATA = null, HAL = 'dashboard';
+let DATA = null, PAGE = 'dashboard';
 
-// Dari 127.0.0.1 token tidak pernah diminta, jadi di server sendiri kotak ini
-// tidak akan pernah muncul. Yang membuka dari komputer lain diminta sekali,
-// dan jawabannya hilang begitu tab ditutup.
+// From 127.0.0.1 a token is never requested, so on the server itself this box
+// never appears. Anyone opening it from another machine is asked once, and the
+// answer is gone when the tab closes.
 let TOKEN = (() => { try { return sessionStorage.getItem('yoru-token') || ''; } catch (e) { return ''; } })();
 
-function mintaToken() {
-  return new Promise(selesai => {
+function askToken() {
+  return new Promise(done => {
     const d = $('dlgToken');
     d.onclose = () => {
-      if (d.returnValue !== 'ya') return selesai(false);
-      TOKEN = $('isiToken').value.trim();
+      if (d.returnValue !== 'ya') return done(false);
+      TOKEN = $('tokenInput').value.trim();
       try { sessionStorage.setItem('yoru-token', TOKEN); } catch (e) {}
-      selesai(!!TOKEN);
+      done(!!TOKEN);
     };
-    $('isiToken').value = TOKEN;
+    $('tokenInput').value = TOKEN;
     d.showModal();
   });
 }
 
-async function kirim(url, badan) {
-  const bungkus = () => ({
+async function post(url, body) {
+  const opts = () => ({
     method: 'POST',
     headers: Object.assign({'Content-Type': 'application/json'},
                            TOKEN ? {Authorization: 'Bearer ' + TOKEN} : {}),
-    body: JSON.stringify(badan)
+    body: JSON.stringify(body)
   });
-  let r = await fetch(url, bungkus());
-  if ((r.status === 401 || r.status === 403) && await mintaToken()) r = await fetch(url, bungkus());
+  let r = await fetch(url, opts());
+  if ((r.status === 401 || r.status === 403) && await askToken()) r = await fetch(url, opts());
   return r;
 }
 
-const pendek = t => {
+// A GET that carries the token when there is one. The settings endpoint is
+// guarded exactly like the buttons: free from 127.0.0.1, token from anywhere else.
+async function get(url) {
+  const opts = () => ({headers: TOKEN ? {Authorization: 'Bearer ' + TOKEN} : {}});
+  let r = await fetch(url, opts());
+  if ((r.status === 401 || r.status === 403) && await askToken()) r = await fetch(url, opts());
+  return r;
+}
+
+const shorten = t => {
   const s = String(t || '');
   if (s.startsWith('TIDAK_ADA')) return 'di luar CIS L1';
   return s.length > 22 ? s.slice(0, 21) + '…' : s;
@@ -280,254 +291,246 @@ const pendek = t => {
 const TAG = {LULUS:['PASSED','p'], GAGAL:['FAILED','f'], SEBAGIAN:['PARTIAL','n'],
              DILEWATI:['SKIPPED','x'], ERROR:['ERROR','x']};
 
-async function muat() {
+const PAGE_TITLE = {dashboard:'Dashboard', checklist:'CIS Checklist', log:'Audit Logs',
+                    telegram:'Telegram Bot', llm:'LLM Settings', system:'System Settings'};
+
+async function load() {
   try {
     const r = await fetch('/api/laporan');
     DATA = r.status === 404 ? null : await r.json();
   } catch (e) { DATA = null; }
-  gambar();
+  render();
 }
 
-function gambar() {
-  $('judul').textContent = {dashboard:'Dashboard', checklist:'CIS Checklist',
-    log:'Audit Logs', telegram:'Telegram Bot', llm:'LLM Settings',
-    sistem:'System Settings'}[HAL];
+function render() {
+  $('pageTitle').textContent = PAGE_TITLE[PAGE];
   document.querySelectorAll('#nav a').forEach(a =>
-    a.classList.toggle('on', a.dataset.h === HAL));
+    a.classList.toggle('on', a.dataset.h === PAGE));
 
-  if (HAL === 'log')      return halLog();
-  if (HAL === 'telegram') return halSetelan('Telegram Bot',
+  if (PAGE === 'log')      return logPage();
+  if (PAGE === 'telegram') return settingsPage('Telegram Bot',
     'Yoru cuma mengirim kalau ada yang berubah atau ada yang perlu dijawab — bukan laporan harian yang isinya "semuanya masih aman". Yang mengirim itu agent di server, bukan halaman ini.',
-    [{kunci:'TELEGRAM_TOKEN', label:'Token bot', rahasia:true,
-      bantu:'Dari @BotFather di Telegram: /newbot, lalu salin utuh barisnya. Bentuknya angka, titik dua, lalu huruf-angka.'},
-     {kunci:'TELEGRAM_CHAT_ID', label:'Chat ID (boleh dikosongkan)',
-      bantu:'Kosongkan saja — Yoru mencarinya sendiri begitu kamu kirim /start ke botmu.'}]);
-  if (HAL === 'llm')      return halInfo('LLM Settings',
+    [{key:'TELEGRAM_TOKEN', label:'Token bot', secret:true,
+      hint:'Dari @BotFather di Telegram: /newbot, lalu salin utuh barisnya. Bentuknya angka, titik dua, lalu huruf-angka.'},
+     {key:'TELEGRAM_CHAT_ID', label:'Chat ID (boleh dikosongkan)',
+      hint:'Kosongkan saja — Yoru mencarinya sendiri begitu kamu kirim /start ke botmu.'}]);
+  if (PAGE === 'llm')      return infoPage(
     'Kunci model diisi di konfigurasi Hermes, bukan di sini — supaya cuma ada di satu tempat. Laporan tetap lengkap tanpa model: kalimat penjelasannya diambil dari katalog.');
-  if (HAL === 'sistem')   return halSetelan('System Settings',
+  if (PAGE === 'system')   return settingsPage('System Settings',
     'Semua ini disimpan di /etc/yoru/yoru.conf. Halaman ini tidak menulis berkas itu sendiri — dia menitipkannya ke yoructl, program yang sama yang dipakai agent.',
-    [{kunci:'NAMA_SERVER', label:'Nama server',
-      bantu:'Nama yang muncul di dashboard dan bot. Kosong = pakai hostname.'},
-     {kunci:'PORT_DIIZINKAN', label:'Port yang boleh terbuka',
-      bantu:'Dipisah spasi, contoh: 80 443 8000. Port SSH tidak perlu ditulis — Yoru mencarinya sendiri. Selama masih ada port terbuka yang belum ada di sini, K05 menolak menyalakan firewall.'},
-     {kunci:'LEWATI_KONTROL', label:'Kontrol yang dilewati',
-      bantu:'Dipisah koma, contoh: K05,K06. Kosongkan kalau semua boleh dipertimbangkan.'},
-     {kunci:'JAM_PENJAGAAN', label:'Jam penjagaan harian',
-      bantu:'Bentuk HH:MM. Ganti di sini menyimpan nilainya, tapi timer systemd baru ikut berubah setelah install.sh dijalankan ulang.'},
-     {kunci:'ZONA_WAKTU', label:'Zona waktu',
-      bantu:'Contoh: Asia/Jakarta. Dipakai untuk semua jam di laporan.'}]);
+    [{key:'NAMA_SERVER', label:'Nama server',
+      hint:'Nama yang muncul di dashboard dan bot. Kosong = pakai hostname.'},
+     {key:'PORT_DIIZINKAN', label:'Port yang boleh terbuka',
+      hint:'Dipisah spasi, contoh: 80 443 8000. Port SSH tidak perlu ditulis — Yoru mencarinya sendiri. Selama masih ada port terbuka yang belum ada di sini, K05 menolak menyalakan firewall.'},
+     {key:'LEWATI_KONTROL', label:'Kontrol yang dilewati',
+      hint:'Dipisah koma, contoh: K05,K06. Kosongkan kalau semua boleh dipertimbangkan.'},
+     {key:'JAM_PENJAGAAN', label:'Jam penjagaan harian',
+      hint:'Bentuk HH:MM. Ganti di sini menyimpan nilainya, tapi timer systemd baru ikut berubah setelah install.sh dijalankan ulang.'},
+     {key:'ZONA_WAKTU', label:'Zona waktu',
+      hint:'Contoh: Asia/Jakarta. Dipakai untuk semua jam di laporan.'}]);
 
-  if (!DATA) return kosong();
+  if (!DATA) return emptyState();
   $('meta').textContent = `${DATA.server?.nama || '-'} · ${DATA.server?.os || '-'} · ${(DATA.waktu||'').replace('T',' ').slice(0,16)}`;
-  $('isi').innerHTML = (HAL === 'dashboard' ? kartuStat() : '') + tabel();
-  pasangTombol();
+  $('content').innerHTML = (PAGE === 'dashboard' ? statCards() : '') + table();
+  wireButtons();
 }
 
-function kosong() {
+function emptyState() {
   $('meta').textContent = '';
-  $('isi').innerHTML = `<div class="panel"><div class="kosong">
+  $('content').innerHTML = `<div class="panel"><div class="empty">
     <p><b>Belum ada laporan yang masuk.</b></p>
     <p>Jalankan agent di server yang mau dijaga:</p>
     <p><code>sudo yoru-agent --siklus perbaikan</code></p></div></div>`;
 }
 
-function halInfo(judul, teks) {
+function infoPage(text) {
   $('meta').textContent = '';
-  $('isi').innerHTML = `<div class="panel"><div class="kepala"><h2>${esc(judul)}</h2></div>
-    <div style="padding:16px 17px;color:var(--samar);max-width:66ch">${esc(teks)}</div></div>`;
+  $('content').innerHTML = `<div class="panel">
+    <div style="padding:16px 17px;color:var(--muted);max-width:66ch">${esc(text)}</div></div>`;
 }
 
-async function halSetelan(judul, penjelasan, medan) {
+async function settingsPage(title, intro, fields) {
   $('meta').textContent = '';
-  // Tanpa kepala panel - judul halamannya sudah tertulis di atas, dan menulisnya
-  // dua kali cuma bikin orang mengira ada dua bagian berbeda.
-  $('isi').innerHTML = `<div class="panel">
-    <div class="form" id="formSetelan"><div class="kosong">memuat setelan…</div></div></div>`;
+  // No panel header - the page title above already says it, and saying it
+  // twice makes people think there are two different sections.
+  $('content').innerHTML = `<div class="panel">
+    <div class="form" id="settingsForm"><div class="empty">memuat setelan…</div></div></div>`;
 
-  let konf = {};
+  let config = {};
   try {
-    const r = await kirim2('/api/konfigurasi');
-    if (!r.ok) throw new Error('tolak');
-    konf = await r.json();
+    const r = await get('/api/konfigurasi');
+    if (!r.ok) throw new Error('refused');
+    config = await r.json();
   } catch (e) {
-    $('formSetelan').innerHTML = `<div class="kabar no">Setelan tidak bisa dibaca.
+    $('settingsForm').innerHTML = `<div class="note bad">Setelan tidak bisa dibaca.
       Kalau dashboard dibuka dari komputer lain, tekan salah satu tombol dulu supaya
       diminta token.</div>`;
     return;
   }
 
-  $('formSetelan').innerHTML =
-    `<p style="margin:0 0 16px;color:var(--samar);font-size:13px;line-height:1.6">${esc(penjelasan)}</p>` +
-    medan.map(m => {
-      const isi = konf[m.kunci] || {};
-      const nilai = m.rahasia ? '' : (isi.nilai || '');
-      const tanda = m.rahasia && isi.terisi ? ' — sudah terisi, kosongkan kalau tidak mau diganti' : '';
-      return `<div class="baris">
-        <label for="f_${m.kunci}">${esc(m.label)}${esc(tanda)}</label>
-        <input id="f_${m.kunci}" data-kunci="${m.kunci}" ${m.rahasia ? 'type="password" autocomplete="off"' : 'type="text"'}
-               value="${esc(nilai)}" placeholder="${m.rahasia && isi.terisi ? '••••••••••••' : ''}">
-        <div class="bantu">${esc(m.bantu)}</div>
+  $('settingsForm').innerHTML =
+    `<p style="margin:0 0 16px;color:var(--muted);font-size:13px;line-height:1.6">${esc(intro)}</p>` +
+    fields.map(f => {
+      const cur = config[f.key] || {};
+      const val = f.secret ? '' : (cur.nilai || '');
+      const mark = f.secret && cur.terisi ? ' — sudah terisi, kosongkan kalau tidak mau diganti' : '';
+      return `<div class="field">
+        <label for="f_${f.key}">${esc(f.label)}${esc(mark)}</label>
+        <input id="f_${f.key}" ${f.secret ? 'type="password" autocomplete="off"' : 'type="text"'}
+               value="${esc(val)}" placeholder="${f.secret && cur.terisi ? '••••••••••••' : ''}">
+        <div class="hint">${esc(f.hint)}</div>
       </div>`;
     }).join('') +
-    `<button class="simpan" id="simpanSetelan">Simpan</button>
-     <div class="kabar" id="kabarSetelan"></div>` +
-    `<div class="catatan" style="padding:16px 0 0">Berkasnya: <code>${esc(konf._berkas || '')}</code>
+    `<button class="save" id="saveSettings">Simpan</button>
+     <div class="note" id="settingsNote"></div>` +
+    `<div class="footnote" style="padding:16px 0 0">Berkasnya: <code>${esc(config._berkas || '')}</code>
       (root:yoru-agent 640). Kunci dashboard dan kunci model sengaja tidak bisa diubah dari sini.</div>`;
 
-  $('simpanSetelan').onclick = async () => {
-    const tombol = $('simpanSetelan'), kabar = $('kabarSetelan');
-    tombol.disabled = true; kabar.className = 'kabar'; kabar.textContent = 'menyimpan…';
-    const gagal = [];
-    let disimpan = 0;
-    for (const m of medan) {
-      const el = document.getElementById('f_' + m.kunci);
-      const nilai = el.value.trim();
-      // Kolom rahasia yang dibiarkan kosong berarti "jangan diubah", bukan
-      // "kosongkan". Kalau tidak begitu, membuka halaman ini lalu menekan
-      // Simpan akan menghapus token yang sudah ada tanpa diminta.
-      if (m.rahasia && nilai === '') continue;
-      const r = await kirim('/api/konfigurasi', {kunci: m.kunci, nilai});
+  $('saveSettings').onclick = async () => {
+    const btn = $('saveSettings'), note = $('settingsNote');
+    btn.disabled = true; note.className = 'note'; note.textContent = 'menyimpan…';
+    const failed = [];
+    let saved = 0;
+    for (const f of fields) {
+      const el = $('f_' + f.key);
+      const val = el.value.trim();
+      // A secret field left empty means "do not change", not "clear it".
+      // Otherwise opening this page and pressing Save would wipe an existing
+      // token without being asked to.
+      if (f.secret && val === '') continue;
+      const r = await post('/api/konfigurasi', {kunci: f.key, nilai: val});
       let d; try { d = await r.json(); } catch (e) { d = {}; }
-      if (r.ok && d.berhasil === true) { disimpan++; if (m.rahasia) el.value = ''; }
-      else gagal.push(`${m.label}: ${d.pesan || d.detail || 'ditolak'}`);
+      if (r.ok && d.berhasil === true) { saved++; if (f.secret) el.value = ''; }
+      else failed.push(`${f.label}: ${d.pesan || d.detail || 'ditolak'}`);
     }
-    tombol.disabled = false;
-    if (gagal.length) { kabar.className = 'kabar no'; kabar.textContent = gagal.join(' · '); }
-    else { kabar.className = 'kabar ok'; kabar.textContent = `${disimpan} setelan tersimpan.`; }
+    btn.disabled = false;
+    if (failed.length) { note.className = 'note bad'; note.textContent = failed.join(' · '); }
+    else { note.className = 'note ok'; note.textContent = `${saved} setelan tersimpan.`; }
   };
 }
 
-// GET yang ikut membawa token kalau ada. Endpoint setelan dijaga sama seperti
-// tombol: dari 127.0.0.1 bebas, dari jaringan wajib token.
-async function kirim2(url) {
-  const bungkus = () => ({headers: TOKEN ? {Authorization: 'Bearer ' + TOKEN} : {}});
-  let r = await fetch(url, bungkus());
-  if ((r.status === 401 || r.status === 403) && await mintaToken()) r = await fetch(url, bungkus());
-  return r;
-}
-
-function kartuStat() {
-  const r = DATA.ringkasan || {}, t = r.total || 10;
-  const nunggu = (DATA.butuh_keputusan || []).length + (DATA.drift || []).length;
+function statCards() {
+  const s = DATA.ringkasan || {}, total = s.total || 10;
+  const waiting = (DATA.butuh_keputusan || []).length + (DATA.drift || []).length;
   return `<div class="stats">
-    <div class="stat k"><div class="atas"><div><div class="lbl">Skor Kepatuhan CIS</div>
-      <div class="val">${r.skor ?? 0}%</div></div><span style="font-size:19px">◔</span></div>
-      <div class="bar"><i style="width:${r.skor ?? 0}%"></i></div></div>
-    <div class="stat h"><div class="atas"><div><div class="lbl">Lolos Audit (Passed)</div>
-      <div class="val">${r.lulus ?? 0} / ${t}</div></div><span style="font-size:19px">✓</span></div>
+    <div class="stat warn"><div class="top"><div><div class="lbl">Skor Kepatuhan CIS</div>
+      <div class="val">${s.skor ?? 0}%</div></div><span style="font-size:19px">◔</span></div>
+      <div class="bar"><i style="width:${s.skor ?? 0}%"></i></div></div>
+    <div class="stat pass"><div class="top"><div><div class="lbl">Lolos Audit (Passed)</div>
+      <div class="val">${s.lulus ?? 0} / ${total}</div></div><span style="font-size:19px">✓</span></div>
       <div class="sub">Sudah sesuai target</div></div>
-    <div class="stat m"><div class="atas"><div><div class="lbl">Perlu Hardening (Failed)</div>
-      <div class="val">${r.gagal ?? 0} / ${t}</div></div><span style="font-size:19px">⚠</span></div>
-      <div class="sub">${nunggu ? nunggu + ' butuh persetujuan kamu' : 'Tidak ada yang menunggu'}</div></div>
-    <div class="stat b"><div class="atas"><div><div class="lbl">Siklus</div>
+    <div class="stat fail"><div class="top"><div><div class="lbl">Perlu Hardening (Failed)</div>
+      <div class="val">${s.gagal ?? 0} / ${total}</div></div><span style="font-size:19px">⚠</span></div>
+      <div class="sub">${waiting ? waiting + ' butuh persetujuan kamu' : 'Tidak ada yang menunggu'}</div></div>
+    <div class="stat info"><div class="top"><div><div class="lbl">Siklus</div>
       <div class="val" style="font-size:22px">${esc(DATA.siklus || '-')}</div></div>
       <span style="font-size:19px">◷</span></div>
       <div class="sub">Human-in-the-Loop aktif</div></div>
   </div>`;
 }
 
-function tabel() {
-  const perlu = new Set(DATA.butuh_keputusan || []);
-  const baris = (DATA.kontrol || []).map((k, i) => {
-    const [teks, kelas] = TAG[k.status] || ['?', 'x'];
-    const halangan = (k.prasyarat_gagal || []).length > 0;
+function table() {
+  const needsApproval = new Set(DATA.butuh_keputusan || []);
+  const rows = (DATA.kontrol || []).map((k, i) => {
+    const [label, cls] = TAG[k.status] || ['?', 'x'];
+    const blocked = (k.prasyarat_gagal || []).length > 0;
     return `<tr data-kid="${esc(k.id)}">
-      <td class="no">#${i + 1}</td>
-      <td class="poin" title="${esc(k.kenapa)}">${esc(k.nama)}</td>
-      <td><span class="cis" title="${esc(k.kode_cis || '')}">${esc(pendek(k.kode_cis || k.id))}</span></td>
-      <td><span class="tag ${kelas}">${teks}</span></td>
-      <td class="kapan">${esc((DATA.waktu || '').replace('T', ' ').slice(0, 16))}</td>
-      <td class="aksi">
+      <td class="num">#${i + 1}</td>
+      <td class="point" title="${esc(k.kenapa)}">${esc(k.nama)}</td>
+      <td><span class="cis" title="${esc(k.kode_cis || '')}">${esc(shorten(k.kode_cis || k.id))}</span></td>
+      <td><span class="tag ${cls}">${label}</span></td>
+      <td class="when">${esc((DATA.waktu || '').replace('T', ' ').slice(0, 16))}</td>
+      <td class="actions">
         <button class="btn audit" data-a="periksa">Audit</button>
-        <button class="btn hard" data-a="terapkan" ${halangan ? 'disabled title="prasyarat belum terpenuhi"' : ''}
-          data-izin="${perlu.has(k.id) ? 1 : 0}">Hardening</button>
-        <button class="btn roll" data-a="kembalikan">Rollback</button>
-        <span class="hasil" data-slot></span>
+        <button class="btn harden" data-a="terapkan" ${blocked ? 'disabled title="prasyarat belum terpenuhi"' : ''}
+          data-approval="${needsApproval.has(k.id) ? 1 : 0}">Hardening</button>
+        <button class="btn rollback" data-a="kembalikan">Rollback</button>
+        <span class="result" data-slot></span>
       </td>
       <td><button class="btn log" data-a="log">Log / AI</button></td>
     </tr>`;
   }).join('');
 
   return `<div class="panel">
-    <div class="kepala">
+    <div class="head">
       <h2>Daftar 10 Poin CIS Benchmark Ubuntu 24.04</h2>
-      <div class="aksi-massal">
-        <button class="btn audit" data-massal="periksa">Audit Semua</button>
-        <button class="btn hard" data-massal="terapkan">Hardening Semua</button>
-        <button class="btn roll" data-massal="kembalikan">Rollback Semua</button>
+      <div class="bulk">
+        <button class="btn audit" data-bulk="periksa">Audit Semua</button>
+        <button class="btn harden" data-bulk="terapkan">Hardening Semua</button>
+        <button class="btn rollback" data-bulk="kembalikan">Rollback Semua</button>
       </div>
     </div>
     <div style="overflow-x:auto"><table>
       <thead><tr><th>No</th><th>Poin CIS Hardening</th><th>Kode CIS</th><th>Status</th>
         <th>Terakhir Dijalankan</th><th>Aksi Eksekusi</th><th>Log &amp; AI</th></tr></thead>
-      <tbody>${baris}</tbody>
+      <tbody>${rows}</tbody>
     </table></div></div>`;
 }
 
-async function halLog(kid) {
+async function logPage(kid) {
   $('meta').textContent = kid ? kid : 'semua kontrol';
   const q = kid ? `?kontrol=${encodeURIComponent(kid)}` : '';
   let d;
   try { d = await (await fetch('/api/log' + q)).json(); } catch (e) { d = {baris: []}; }
-  const isi = (d.baris || []).length
+  const body = (d.baris || []).length
     ? d.baris.map(b => `<div><span class="w">${esc((b.waktu||'').replace('T',' ').slice(0,19))}</span>
         <span class="s ${esc(b.status)}">${esc(b.status)}</span>
         <span class="w">${esc(b.id)} ${esc(b.tindakan)}</span>
         <span>${esc(b.nilai ?? '')}${b.pesan ? ' — ' + esc(b.pesan) : ''}</span></div>`).join('')
-    : `<div class="kosong">Belum ada catatan di /var/log/yoru/.
-        ${esc(d.pesan || '')}</div>`;
-  $('isi').innerHTML = `<div class="panel">
-    <div class="kepala"><h2>Jejak tindakan${kid ? ' — ' + esc(kid) : ''}</h2>
-    <div class="aksi-massal">${kid ? '<button class="btn log" id="semuaLog">Lihat semua</button>' : ''}</div></div>
-    <div class="logbox">${isi}</div></div>`;
-  const s = $('semuaLog'); if (s) s.onclick = () => halLog();
+    : `<div class="empty">Belum ada catatan di /var/log/yoru/. ${esc(d.pesan || '')}</div>`;
+  $('content').innerHTML = `<div class="panel">
+    <div class="head"><h2>Jejak tindakan${kid ? ' — ' + esc(kid) : ''}</h2>
+    <div class="bulk">${kid ? '<button class="btn log" id="allLogs">Lihat semua</button>' : ''}</div></div>
+    <div class="logbox">${body}</div></div>`;
+  const all = $('allLogs'); if (all) all.onclick = () => logPage();
 }
 
-function pasangTombol() {
+function wireButtons() {
   document.querySelectorAll('tbody button[data-a]').forEach(b => {
     b.onclick = () => {
       const tr = b.closest('tr'), kid = tr.dataset.kid;
-      if (b.dataset.a === 'log') { HAL = 'log'; gambar(); halLog(kid); return; }
-      if (b.dataset.a === 'terapkan' && b.dataset.izin === '1') return tanya(kid, b);
-      jalankan(kid, b.dataset.a, b);
+      if (b.dataset.a === 'log') { PAGE = 'log'; render(); logPage(kid); return; }
+      if (b.dataset.a === 'terapkan' && b.dataset.approval === '1') return confirmApply(kid, b);
+      run(kid, b.dataset.a, b);
     };
   });
-  document.querySelectorAll('button[data-massal]').forEach(b => {
+  document.querySelectorAll('button[data-bulk]').forEach(b => {
     b.onclick = async () => {
-      const aksi = b.dataset.massal;
-      if (aksi !== 'periksa' &&
-          !confirm(`Jalankan ${aksi} untuk SEMUA kontrol?\n\nYang berisiko tetap ditanya satu per satu.`)) return;
+      const action = b.dataset.bulk;
+      if (action !== 'periksa' &&
+          !confirm(`Jalankan ${action} untuk SEMUA kontrol?\n\nYang berisiko tetap ditanya satu per satu.`)) return;
       b.disabled = true;
       for (const tr of document.querySelectorAll('tbody tr')) {
-        const t = tr.querySelector(`button[data-a="${aksi}"]`);
-        if (!t || t.disabled) continue;
-        if (aksi === 'terapkan' && t.dataset.izin === '1') {
-          tr.querySelector('[data-slot]').className = 'hasil jln';
-          tr.querySelector('[data-slot]').textContent = 'dilewati — butuh persetujuan';
+        const btn = tr.querySelector(`button[data-a="${action}"]`);
+        if (!btn || btn.disabled) continue;
+        if (action === 'terapkan' && btn.dataset.approval === '1') {
+          const slot = tr.querySelector('[data-slot]');
+          slot.className = 'result busy';
+          slot.textContent = 'dilewati — butuh persetujuan';
           continue;
         }
-        await jalankan(tr.dataset.kid, aksi, t, true);
+        await run(tr.dataset.kid, action, btn, true);
       }
       b.disabled = false;
-      muat();
+      load();
     };
   });
 }
 
-function tanya(kid, tombol) {
+function confirmApply(kid, btn) {
   const k = (DATA.kontrol || []).find(x => x.id === kid) || {};
-  $('dlgJudul').textContent = k.nama || kid;
-  $('dlgKid').textContent = `${kid} · ${k.kode_cis || ''} · sekarang ${k.nilai_terbaca} → target ${k.nilai_target}`;
-  $('dlgKenapa').textContent = k.kenapa || '';
-  $('dlgRisiko').textContent = k.yang_rusak_kalau_diterapkan || '(katalog belum mencantumkan konsekuensinya)';
-  const d = $('dlg');
-  d.onclose = () => { if (d.returnValue === 'ya') jalankan(kid, 'terapkan', tombol); };
+  $('confirmTitle').textContent = k.nama || kid;
+  $('confirmKid').textContent = `${kid} · ${k.kode_cis || ''} · sekarang ${k.nilai_terbaca} → target ${k.nilai_target}`;
+  $('confirmWhy').textContent = k.kenapa || '';
+  $('confirmRisk').textContent = k.yang_rusak_kalau_diterapkan || '(katalog belum mencantumkan konsekuensinya)';
+  const d = $('dlgConfirm');
+  d.onclose = () => { if (d.returnValue === 'ya') run(kid, 'terapkan', btn); };
   d.showModal();
 }
 
-// Apa yang sebenarnya dikerjakan yoructl untuk tiap tindakan. Bukan animasi
-// hiasan - ini urutan yang memang dijalankan, ditulis dengan kata biasa.
-const LANGKAH = {
+// What yoructl actually does for each action. Not decorative animation - this
+// is the real sequence, written in plain words.
+const STEPS = {
   periksa: ['Membaca keadaan yang benar-benar berlaku sekarang',
             'Bukan isi berkas konfigurasi - itu belum tentu yang aktif',
             'Membandingkan dengan nilai target di katalog'],
@@ -540,92 +543,91 @@ const LANGKAH = {
                'Memuat ulang layanannya',
                'Membaca ulang keadaan efektif']
 };
-const NAMA_AKSI = {periksa: 'Audit', terapkan: 'Hardening', kembalikan: 'Rollback'};
+const ACTION_LABEL = {periksa: 'Audit', terapkan: 'Hardening', kembalikan: 'Rollback'};
 
-let jamJalan = null;
-function bukaJalan(kid, aksi) {
+const statusLabel = s => s === 'DITOLAK' ? 'BELUM BISA'
+                       : s === 'MENUNGGU' ? 'MASIH JALAN' : s;
+
+let runTimer = null;
+
+function openRun(kid, action) {
   const k = (DATA?.kontrol || []).find(x => x.id === kid) || {};
-  $('jalanJudul').textContent = `${NAMA_AKSI[aksi] || aksi} — ${k.nama || kid}`;
-  $('jalanKid').textContent = `${kid}${k.kode_cis ? ' · ' + k.kode_cis : ''}`;
-  $('jalanLangkah').innerHTML = (LANGKAH[aksi] || []).map((s, i) =>
-    `<li class="${i === 0 ? 'aktif' : ''}">${esc(s)}</li>`).join('');
-  $('jalanPerintah').textContent = `sudo yoructl ${kid} ${aksi}`;
-  $('jalanBalas').hidden = true;
-  $('jalanLog').hidden = true;
-  $('jalanTutup').textContent = 'Batal tampilkan';
+  $('runTitle').textContent = `${ACTION_LABEL[action] || action} — ${k.nama || kid}`;
+  $('runKid').textContent = `${kid}${k.kode_cis ? ' · ' + k.kode_cis : ''}`;
+  $('runSteps').innerHTML = (STEPS[action] || []).map((s, i) =>
+    `<li class="${i === 0 ? 'on' : ''}">${esc(s)}</li>`).join('');
+  $('runCmd').textContent = `sudo yoructl ${kid} ${action}`;
+  $('runReply').hidden = true;
+  $('runLog').hidden = true;
+  $('runClose').textContent = 'Batal tampilkan';
 
-  const mulai = Date.now();
-  $('jalanJam').textContent = 'berjalan… 0 detik';
-  clearInterval(jamJalan);
-  jamJalan = setInterval(() => {
-    $('jalanJam').textContent = `berjalan… ${Math.round((Date.now() - mulai) / 1000)} detik`;
+  const started = Date.now();
+  $('runClock').textContent = 'berjalan… 0 detik';
+  clearInterval(runTimer);
+  runTimer = setInterval(() => {
+    $('runClock').textContent = `berjalan… ${Math.round((Date.now() - started) / 1000)} detik`;
   }, 1000);
 
-  const d = $('dlgJalan');
+  const d = $('dlgRun');
   if (!d.open) d.showModal();
 }
 
-function tutupJalan(kid, d) {
-  clearInterval(jamJalan);
-  const kotak = $('jalanBalas');
+function closeRun(kid, d) {
+  clearInterval(runTimer);
+  const box = $('runReply');
   const ok = d.berhasil === true;
-  const nunggu = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
-  kotak.className = 'balas ' + (ok ? 'ok' : nunggu ? 'tunggu' : 'no');
-  kotak.innerHTML = `<b>${esc(labelStatus(d.status))}</b>${d.nilai ? ' — ' + esc(d.nilai) : ''}` +
+  const waiting = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
+  box.className = 'reply ' + (ok ? 'ok' : waiting ? 'wait' : 'bad');
+  box.innerHTML = `<b>${esc(statusLabel(d.status))}</b>${d.nilai ? ' — ' + esc(d.nilai) : ''}` +
     (d.pesan ? `<br>${esc(d.pesan)}` : '');
-  kotak.hidden = false;
-  $('jalanJam').textContent = 'selesai';
-  $('jalanLangkah').querySelectorAll('li').forEach(li => li.classList.remove('aktif'));
-  $('jalanTutup').textContent = 'Tutup';
-  $('jalanLog').hidden = false;
-  $('dlgJalan').onclose = () => {
-    if ($('dlgJalan').returnValue === 'log') { HAL = 'log'; gambar(); halLog(kid); }
+  box.hidden = false;
+  $('runClock').textContent = 'selesai';
+  $('runSteps').querySelectorAll('li').forEach(li => li.classList.remove('on'));
+  $('runClose').textContent = 'Tutup';
+  $('runLog').hidden = false;
+  $('dlgRun').onclose = () => {
+    if ($('dlgRun').returnValue === 'log') { PAGE = 'log'; render(); logPage(kid); }
   };
 }
 
-const labelStatus = s => s === 'DITOLAK' ? 'BELUM BISA'
-                       : s === 'MENUNGGU' ? 'MASIH JALAN' : s;
-
-async function jalankan(kid, aksi, tombol, diam) {
-  const tr = tombol.closest('tr'), slot = tr.querySelector('[data-slot]');
+async function run(kid, action, btn, quiet) {
+  const tr = btn.closest('tr'), slot = tr.querySelector('[data-slot]');
   tr.querySelectorAll('button').forEach(b => b.disabled = true);
-  slot.className = 'hasil jln'; slot.textContent = 'menjalankan…';
-  if (!diam) bukaJalan(kid, aksi);
+  slot.className = 'result busy'; slot.textContent = 'menjalankan…';
+  if (!quiet) openRun(kid, action);
   let d;
   try {
-    const r = await kirim('/api/jalankan', {kontrol: kid, aksi});
+    const r = await post('/api/jalankan', {kontrol: kid, aksi: action});
     d = await r.json();
     if (!r.ok) d = {status: 'DITOLAK', berhasil: false, pesan: d.detail || `HTTP ${r.status}`};
   } catch (e) { d = {status: 'ERROR', pesan: 'API tidak bisa dihubungi'}; }
-  if (!diam) tutupJalan(kid, d);
+  if (!quiet) closeRun(kid, d);
 
-  // Tiga keadaan, bukan dua. "Ditolak" itu Yoru yang sengaja berhenti karena
-  // ada syarat yang belum dipenuhi - beda dengan "error", yang artinya ada
-  // yang rusak. Dua-duanya merah bikin server yang sebenarnya sehat kelihatan
-  // penuh masalah, dan orang berhenti membaca pesannya.
+  // Three states, not two. "Refused" is Yoru stopping on purpose because some
+  // condition is unmet - different from "error", which means something broke.
+  // Painting both red makes a healthy server look full of problems, and then
+  // people stop reading the message.
   const ok = d.berhasil === true;
-  const perluKamu = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
-  slot.className = 'hasil ' + (ok ? 'ok' : perluKamu ? 'tunggu' : 'no');
-  const label = labelStatus(d.status);
-  slot.textContent = `${label}${d.nilai ? ' — ' + d.nilai : ''}${d.pesan ? ' — ' + d.pesan : ''}`;
+  const waiting = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
+  slot.className = 'result ' + (ok ? 'ok' : waiting ? 'wait' : 'bad');
+  slot.textContent = `${statusLabel(d.status)}${d.nilai ? ' — ' + d.nilai : ''}${d.pesan ? ' — ' + d.pesan : ''}`;
   tr.querySelectorAll('button').forEach(b => {
     if (!(b.dataset.a === 'terapkan' && b.title)) b.disabled = false;
   });
-  // Termasuk sesudah Audit. Dulu kartu di atas cuma disegarkan sesudah
-  // terapkan/kembalikan, jadi baris yang barusan lolos audit tidak pernah ikut
-  // menambah angka "Lolos Audit" - dan tombolnya kelihatan seperti tidak
-  // mengerjakan apa pun.
-  if (ok && !diam) setTimeout(muat, 600);
+  // Including after Audit. The cards used to refresh only after apply or
+  // rollback, so a row that had just passed its audit never moved the "Lolos
+  // Audit" number - and the button looked like it had done nothing.
+  if (ok && !quiet) setTimeout(load, 600);
   return d;
 }
 
 $('nav').onclick = e => {
   const a = e.target.closest('a[data-h]'); if (!a) return;
-  HAL = a.dataset.h; gambar(); if (HAL === 'log') halLog();
+  PAGE = a.dataset.h; render(); if (PAGE === 'log') logPage();
 };
 
-muat();
-setInterval(() => { if (HAL === 'dashboard' || HAL === 'checklist') muat(); }, 30000);
+load();
+setInterval(() => { if (PAGE === 'dashboard' || PAGE === 'checklist') load(); }, 30000);
 </script>
 </body>
 </html>

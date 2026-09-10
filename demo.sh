@@ -1,16 +1,16 @@
 #!/bin/bash
-# demo.sh - nyalakan dashboard Yoru dengan data contoh.
+# demo.sh - start the dashboard with sample data.
 #
-# Ini cuma pembungkus tipis untuk web/demo.py. Isinya sengaja satu tempat saja:
-# dua implementasi demo yang harus dijaga bersamaan pasti berbeda perilaku
-# suatu hari, dan yang menemukan bedanya biasanya orang yang sedang presentasi.
+# A thin wrapper around web/demo.py. The logic lives in exactly one place on
+# purpose: two demo implementations kept in parallel will behave differently
+# one day, and the person who finds the difference is usually mid-presentation.
 #
 #   bash demo.sh            nyalakan di http://127.0.0.1:8000
 #   bash demo.sh 9000       ganti port
 #   bash demo.sh --bersih   hapus database demo, mulai dari nol
 #   bash demo.sh --luar     biar bisa dibuka dari komputer lain
 #
-# Di Windows tidak ada bash. Pakai ini, sama saja:
+# Windows has no bash. This does the same thing:
 #   cd web
 #   python -m pip install fastapi uvicorn
 #   python demo.py

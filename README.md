@@ -124,6 +124,14 @@ bisa ditawar, dan alasannya ada di `contract/report.md`.
 Menu **Audit Logs** membaca `/var/log/yoru/` — jejak milik root yang tidak bisa
 disunting agent.
 
+Menu **Telegram Bot** dan **System Settings** menulis ke
+`/etc/yoru/yoru.conf`, jadi pemilik server tidak perlu membuka terminal lagi
+setelah pemasangan. Halamannya sendiri tidak punya izin menulis berkas itu —
+dia menitipkannya ke `yoructl konfigurasi`, dengan daftar kunci tertutup dan
+setiap nilai diperiksa bentuknya. `DASHBOARD_TOKEN` sengaja tidak ada di
+daftar itu: dashboard yang boleh mengganti tokennya sendiri berarti dashboard
+yang jebol bisa mengunci pemiliknya di luar.
+
 ### Mencoba tanpa server
 
 ```bash
@@ -263,11 +271,13 @@ yoructl K01 kembalikan    # mengembalikan
 sedang dipakai. `terapkan` mengubah setelan sungguhan — ambil snapshot dulu,
 dan baca bagian `yang_rusak_kalau_diterapkan` di berkas katalognya.
 
-> **Jangan jalankan `yoructl K05 terapkan` di server yang ada aaPanel atau
-> CyberPanel.** K05 menyalakan firewall dan hanya membuka port 22, jadi panel
-> di port 8888 atau 8090 langsung tidak bisa diakses. Peringatannya ada di
-> `catalog/K05.yaml`, tapi dispatcher belum memaksa memeriksanya — untuk
-> sekarang manusianya yang harus tahu.
+> **K05 menolak menyala selama masih ada port terbuka yang belum kamu jawab.**
+> Port SSH dicarinya sendiri dari `sshd -T`, jadi server yang SSH-nya bukan di
+> 22 tetap aman. Untuk layanan lain — web, panel, apa pun — Yoru berhenti dan
+> menyebutkan port berikut nama prosesnya, lalu menunggu jawabanmu. Daftarkan
+> lewat halaman System Settings di dashboard, atau isi `PORT_DIIZINKAN` di
+> `/etc/yoru/yoru.conf`. Yoru tidak pernah menebak port mana yang boleh
+> terbuka.
 
 ### Mencopot
 
@@ -292,7 +302,7 @@ bin/yoructl     satu-satunya pintu ke hak root - 10 kontrol x 4 tindakan
 bin/yoru-agent  otaknya: memeriksa, merakit laporan, menerapkan yang disetujui
 bin/yoru-watch  pembungkus yang dipanggil timer harian
 catalog/        10 kontrol keamanan, satu berkas YAML per kontrol
-contract/       bentuk data laporan JSON - dipakai bersama tiga lane
+contract/       bentuk data laporan JSON, dipakai dispatcher sampai dashboard
 web/            API dashboard dan halamannya
 systemd/        unit systemd: siklus penjagaan harian dan dashboard
 examples/       contoh laporan, contoh konfigurasi, jembatan FastAPI
@@ -319,6 +329,20 @@ menyunting catatan tindakannya sendiri.
 
 ---
 
+## Catatan untuk yang membaca kodenya
+
+Nama fungsi, variabel, dan seluruh komentar ditulis dalam bahasa Inggris.
+
+Yang sengaja **tidak** diterjemahkan: empat nama tindakan (`periksa`,
+`terapkan`, `kembalikan`, `verifikasi`), nama field di laporan JSON, kunci
+YAML di katalog, kolom SQLite, dan setiap kalimat yang dibaca pemilik server.
+Itu bukan detail implementasi — itu kosakata produknya, tertulis di
+`contract/report.md`, dipakai bersama oleh dispatcher, agent, dan dashboard,
+dan sudah ada di dalam database yang terpasang. Menerjemahkannya berarti
+memutus semuanya sekaligus tanpa dapat apa-apa.
+
+---
+
 ## Batasan saat ini
 
 Ini masih versi awal. Yang belum ada, ditulis apa adanya:
@@ -342,7 +366,7 @@ Ini masih versi awal. Yang belum ada, ditulis apa adanya:
 - **Model AI belum dicolok.** Laporannya dirakit tanpa model — kalimat
   penjelasannya diambil dari katalog, yang memang ditulis manusia untuk orang
   awam. Itu disengaja: laporan tidak boleh gagal keluar cuma karena satu
-  panggilan API. Tempat memasang modelnya sudah ada di `Penimbang` di dalam
+  panggilan API. Tempat memasang modelnya sudah ada di kelas `Reasoner` di dalam
   `bin/yoru-agent`.
 - **Notifikasi Telegram belum diuji dengan bot sungguhan.** Kodenya jalan dan
   sudah diuji dengan server tiruan, tapi belum pernah dikirim ke Telegram
@@ -353,11 +377,13 @@ Ini masih versi awal. Yang belum ada, ditulis apa adanya:
   `/etc/ufw/user.rules.<tanggal>`, jadi datanya tidak hilang — tapi Yoru
   belum memulihkan dari arsip itu. Untuk kontrol ini, "kembalikan" lebih
   tepat dibaca "dikosongkan".
-- **Prasyarat K02 hanya memeriksa satu pemilik.** Kalau server dipakai
-  beramai-ramai dan ada yang masih login pakai password, K02 tidak akan tahu,
-  dan orang itu terkunci di luar begitu kontrolnya diterapkan. Pastikan semua
-  yang perlu masuk sudah punya kunci SSH yang pernah dipakai login.
+- **K02 mengabaikan AllowGroups dan DenyGroups.** Semua akun yang masih bisa
+  masuk lewat SSH sudah diperiksa satu per satu, termasuk yang bukan pemilik.
+  Yang belum dibaca cuma pembatasan berbasis grup. Keduanya hanya
+  *mempersempit* siapa yang boleh masuk, jadi mengabaikannya membuat daftar
+  peringatan kepanjangan — tidak pernah kependekan.
 - **Pagu log K09 masih dipatok 500M.** Katalognya sendiri bilang angka itu
   harus dihitung ulang per server. Masuk akal untuk disk 10–100 GB, tidak
   untuk di luar itu.
-- Dashboard, bot Telegram, dan kontrol untuk lapisan web sedang dikerjakan.
+- Kontrol untuk lapisan web (nginx, TLS, header) belum ada. Sepuluh kontrol
+  yang sekarang semuanya di lapisan sistem operasi.
