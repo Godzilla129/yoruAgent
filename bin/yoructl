@@ -13,7 +13,7 @@ umask 022
 export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
-VERSI="0.1.7"
+VERSI="0.1.8"
 LOG_DIR=/var/log/yoru
 LOG="$LOG_DIR/tindakan.log"
 
@@ -271,14 +271,30 @@ pemilik_server() {
 }
 
 kunci_ssh_terbukti() {
+  [ -z "$(alasan_kunci_belum_terbukti)" ]
+}
+
+# Empat hal bisa bikin K02 belum boleh diterapkan, dan keempatnya butuh
+# tindakan yang berbeda. Versi sebelumnya melipat semuanya jadi satu kalimat
+# "belum ada bukti login SSH key berhasil" - benar, tapi orang yang membacanya
+# tetap tidak tahu harus ngapain. Kosong artinya boleh.
+alasan_kunci_belum_terbukti() {
   local u; u="$(pemilik_server)"
-  [ -n "$u" ] || return 1
-  getent passwd "$u" >/dev/null || return 1
+  [ -n "$u" ] || {
+    printf 'pemilik server tidak diketahui - /etc/yoru/pemilik kosong atau tidak terbaca'
+    return 0; }
+  getent passwd "$u" >/dev/null || {
+    printf "pemilik server tertulis '%s' tapi pengguna itu tidak ada di sini" "$u"
+    return 0; }
   local rumah; rumah=$(getent passwd "$u" | cut -d: -f6)
-  [ -s "$rumah/.ssh/authorized_keys" ] || return 1
-  ada_teks "Accepted publickey for $u" journalctl -t sshd --since "-30 days" \
-    || return 1
-  return 0
+  [ -s "$rumah/.ssh/authorized_keys" ] || {
+    printf '%s belum punya kunci SSH di %s/.ssh/authorized_keys' "$u" "$rumah"
+    return 0; }
+  # Kunci terpasang belum berarti kunci bekerja. Yang membuktikan cuma satu:
+  # login yang benar-benar berhasil pakai kunci itu.
+  ada_teks "Accepted publickey for $u" journalctl -t sshd --since "-30 days" || {
+    printf 'kunci %s sudah terpasang tapi belum pernah dipakai login. Login sekali pakai kunci itu (ssh %s@<alamat-server>), lalu ulangi' "$u" "$u"
+    return 0; }
 }
 
 # ---------------------------------------------------- semua penghuni server
@@ -435,14 +451,15 @@ k01() { case "$1" in
   kembalikan) hapus_ssh 01-yoru-k01.conf; selesai DIKEMBALIKAN true "$(sshd_nilai permitrootlogin)" ;;
 esac }
 
-k02() { local kurang; case "$1" in
+k02() { local kurang alasan_k02; case "$1" in
   periksa|verifikasi) nilai=$(sshd_nilai passwordauthentication)
     pastikan_sshd_terbaca "$nilai"
     [ "$nilai" = "no" ] && selesai LULUS true "$nilai" || selesai GAGAL true "$nilai" ;;
   terapkan)
     berkas_sama "/etc/ssh/sshd_config.d/01-yoru-k02.conf" "$K02_ISI" && [ "$(sshd_nilai passwordauthentication)" = "no" ] \
       && selesai DILEWATI true "no" "sudah diterapkan - sshd tidak di-reload lagi"
-    kunci_ssh_terbukti || tolak "belum ada bukti login SSH key berhasil - menerapkan ini menutup satu-satunya jalan masuk"
+    alasan_k02="$(alasan_kunci_belum_terbukti)"
+    [ -z "$alasan_k02" ] || tolak "menerapkan ini menutup satu-satunya jalan masuk. $alasan_k02"
 
     # Pemilik aman belum berarti semua orang aman. Tanpa langkah ini, K02
     # bisa mengunci penghuni lain di luar dan tetap melapor LULUS.
@@ -744,7 +761,11 @@ k06() { case "$1" in
     elif ada_teks '127.0.0.1:3306' ss -tulpn; then selesai LULUS true "127.0.0.1:3306"
     else selesai DILEWATI true "tidak ada layanan di 3306"; fi ;;
   terapkan)
-    [ -d /etc/mysql/mariadb.conf.d ] || tolak "MariaDB tidak terpasang"
+    # Tidak terpasang itu "tidak berlaku di server ini", bukan "gagal". Dulu ini
+    # DITOLAK, dan di dashboard kelihatan merah persis seperti kontrol yang
+    # benar-benar rusak - padahal tidak ada yang perlu dikerjakan.
+    [ -d /etc/mysql/mariadb.conf.d ] \
+      || selesai DILEWATI true "tidak ada layanan di 3306" "MariaDB tidak terpasang - tidak ada yang perlu dikunci di server ini"
     # mariadb TIDAK di-restart kalau semuanya memang sudah benar
     berkas_sama "$K06_BERKAS" "$K06_ISI" && ada_teks '127.0.0.1:3306' ss -tulpn \
       && selesai DILEWATI true "127.0.0.1:3306" "sudah diterapkan - mariadb tidak direstart"

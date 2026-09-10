@@ -43,7 +43,7 @@ TOKEN = os.environ.get("YORU_TOKEN", "").strip()
 KONTROL_SAH = re.compile(r"^K(?:0[1-9]|10)$")
 KEPUTUSAN_SAH = {"setuju", "tolak", "sah", "kembalikan"}
 
-app = FastAPI(title="Yoru Dashboard", version="0.1.7")
+app = FastAPI(title="Yoru Dashboard", version="0.1.8")
 
 
 # ------------------------------------------------------------------ simpanan
@@ -266,6 +266,11 @@ async def keputusan_untuk_agent(server: Optional[str] = None,
 
 # ---------------------------------------------------- jalankan lewat yoructl
 YORUCTL = os.environ.get("YORUCTL", "/opt/yoru/bin/yoructl")
+
+# K07 dan K08 memasang paket lewat apt. Di server baru dengan jaringan pelan,
+# unduhannya sendiri bisa lewat tiga menit, belum termasuk menunggu kunci dpkg
+# sampai 60 detik. Batas 200 detik yang lama kelewat sering habis duluan.
+BATAS_WAKTU = int(os.environ.get("YORU_BATAS_WAKTU", "600"))
 LOG_YORU = Path(os.environ.get("YORU_LOG", "/var/log/yoru"))
 AKSI = {"periksa": "periksa", "audit": "periksa",
         "terapkan": "terapkan", "hardening": "terapkan",
@@ -291,10 +296,26 @@ async def jalankan(minta: Request, badan: Dict[str, Any] = Body(...),
     try:
         p = await asyncio.create_subprocess_exec(
             *perintah, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        keluar, galat = await asyncio.wait_for(p.communicate(), timeout=200)
-    except (OSError, asyncio.TimeoutError) as e:
-        return {"id": kid, "tindakan": aksi, "status": "ERROR",
-                "berhasil": False, "nilai": None, "pesan": f"{e}"}
+    except OSError as e:
+        return {"id": kid, "tindakan": aksi, "status": "ERROR", "berhasil": False,
+                "nilai": None, "pesan": f"tidak bisa menjalankan {YORUCTL}: {e}"}
+
+    try:
+        keluar, galat = await asyncio.wait_for(p.communicate(), timeout=BATAS_WAKTU)
+    except asyncio.TimeoutError:
+        # Prosesnya SENGAJA tidak dibunuh. Kalau yang lagi jalan itu K07 atau
+        # K08, isinya apt - dan membunuh apt di tengah jalan meninggalkan dpkg
+        # setengah jadi, yang jauh lebih repot daripada menunggu.
+        #
+        # Dan pesannya jangan pernah kosong. Versi sebelumnya menulis f"{e}",
+        # padahal str(asyncio.TimeoutError()) itu string kosong - jadi yang
+        # muncul di layar cuma tulisan "ERROR" tanpa satu kata pun alasan.
+        return {"id": kid, "tindakan": aksi, "status": "MENUNGGU", "berhasil": False,
+                "nilai": None,
+                "pesan": f"sudah {BATAS_WAKTU} detik dan belum selesai - biasanya apt "
+                         f"masih mengunduh. Tindakannya TETAP JALAN di server, tidak "
+                         f"dibatalkan. Tunggu sebentar lalu tekan Audit untuk melihat "
+                         f"hasilnya, atau lihat Audit Logs."}
 
     for baris in reversed([b for b in keluar.decode("utf-8", "replace").splitlines() if b.strip()]):
         try:
