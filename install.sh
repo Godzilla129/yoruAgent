@@ -2,10 +2,16 @@
 # install.sh - pemasang Yoru
 #
 # Pakai:
-#   sudo bash install.sh                 pasang
-#   sudo bash install.sh --pemilik budi  pasang, tentukan pemilik server
-#   sudo bash install.sh --tanpa-tanya   pasang tanpa tanya jawab
-#   sudo bash install.sh --copot         copot
+#   sudo bash install.sh                     pasang semuanya
+#   sudo bash install.sh --pemilik budi      pasang, tentukan pemilik server
+#   sudo bash install.sh --tanpa-tanya       pasang tanpa tanya jawab
+#   sudo bash install.sh --tanpa-dashboard   pasang tanpa dashboard web
+#   sudo bash install.sh --host 0.0.0.0      dashboard bisa dibuka dari luar
+#   sudo bash install.sh --port 8080         ganti port dashboard
+#   sudo bash install.sh --copot             copot
+#
+# Sekali jalan, semuanya terpasang: dispatcher, katalog, agent, siklus
+# penjagaan harian, dan dashboard.
 #
 # Skrip ini SENGAJA tidak dirancang untuk dijalankan lewat
 # "curl ... | sudo bash". Kami produk keamanan; menyuruh orang menyalurkan
@@ -35,8 +41,11 @@ DIR_LOG=/var/log/yoru
 DIR_DATA=/var/lib/yoru
 DIR_SYSTEMD=/etc/systemd/system
 DIR_ASAL=/var/backups/yoru
+DIR_WEB=/opt/yoru/web
 KONF="$DIR_ETC/yoru.conf"
+KONF_WEB="$DIR_ETC/web.env"
 SUDOERS=/etc/sudoers.d/yoru
+DB_WEB="$DIR_DATA/dashboard.db"
 
 H=$'\033[0m'; HIJAU=$'\033[32m'; MERAH=$'\033[31m'; KUNING=$'\033[33m'; TEBAL=$'\033[1m'
 langkah() { printf '\n%s==> %s%s\n' "$TEBAL" "$1" "$H"; }
@@ -179,18 +188,32 @@ buat_pengguna() {
 
 buat_folder() {
   langkah "Menyiapkan folder"
-  install -d -o root -g root -m 755 "$DIR_BIN" "$DIR_CATALOG" "$DIR_ETC" "$DIR_LOG" \
+  install -d -o root -g root -m 755 "$DIR_BIN" "$DIR_CATALOG" "$DIR_ETC" \
     || mati "gagal membuat folder"
   ok "$DIR_BIN"
   ok "$DIR_CATALOG"
   ok "$DIR_ETC"
-  ok "$DIR_LOG (root:root - agent tidak bisa menulis, ini jejak audit)"
+
+  # 2750, bukan 755. Angka 2 di depan itu setgid: berkas log yang dibuat root
+  # di dalamnya ikut bergrup yoru-agent, jadi dashboard yang jalan sebagai
+  # agent bisa MEMBACA jejaknya. Grup tetap tanpa izin tulis dan foldernya
+  # milik root, jadi agent tetap tidak bisa menyunting atau menghapus
+  # catatannya sendiri - itu bagian yang penting.
+  install -d -o root -g "$AGEN" -m 2750 "$DIR_LOG" || mati "gagal membuat $DIR_LOG"
+  # Pemasangan lama menulis log sebagai root:root, dan setgid tidak berlaku
+  # surut untuk berkas yang sudah ada.
+  chgrp "$AGEN" "$DIR_LOG"/*.log 2>/dev/null
+  ok "$DIR_LOG (root:$AGEN 2750 - agent boleh baca, tidak boleh menulis)"
 
   # Tempat laporan, sesuai contract/report.md. Satu-satunya folder yang boleh
   # ditulis agent - laporan memang keluarannya sendiri. $DIR_LOG tetap milik
   # root: alat keamanan tidak boleh bisa menyunting jejaknya sendiri.
   install -d -o "$AGEN" -g "$AGEN" -m 750 "$DIR_DATA" "$DIR_DATA/riwayat" \
     || mati "gagal membuat $DIR_DATA"
+  # Isinya ikut dibetulkan pemiliknya. Kalau ada yang pernah menjalankan agent
+  # pakai sudo, laporan-terakhir.json jadi milik root - dan sejak itu siklus
+  # harian tidak bisa menimpanya lagi, diam-diam, tanpa ada yang tahu.
+  chown -R "$AGEN":"$AGEN" "$DIR_DATA" 2>/dev/null
   ok "$DIR_DATA dan $DIR_DATA/riwayat ($AGEN:$AGEN 750)"
 
   # Rekaman keadaan asal server, sebelum Yoru menyentuh apa pun. Milik root
@@ -381,6 +404,173 @@ pasang_penjagaan() {
   ok "timer aktif"
 }
 
+# ------------------------------------------------------------ dashboard
+# Dashboard berjalan sebagai yoru-agent, bukan root. Tombolnya memanggil
+# yoructl lewat sudo persis seperti agent - lewat satu pintu yang sama, dengan
+# batasan yang sama. Tidak ada jalur istimewa buat yang datang dari browser.
+pasang_dashboard() {
+  langkah "Memasang dashboard"
+
+  if [ "$DASHBOARD" != "ya" ]; then
+    lewat "dilewati atas permintaan (--tanpa-dashboard)"
+    return 0
+  fi
+  for b in web/api.py web/dashboard.html systemd/yoru-web.service; do
+    [ -f "$ASAL/$b" ] || { lewat "$b tidak ada - dashboard dilewati"; return 0; }
+  done
+
+  install -d -o root -g root -m 755 "$DIR_WEB" || mati "gagal membuat $DIR_WEB"
+  install -o root -g root -m 644 "$ASAL/web/api.py" "$DIR_WEB/api.py" \
+    || mati "gagal menyalin api.py"
+  install -o root -g root -m 644 "$ASAL/web/dashboard.html" "$DIR_WEB/dashboard.html" \
+    || mati "gagal menyalin dashboard.html"
+  ok "$DIR_WEB (root:root - agent menjalankannya, tapi tidak bisa mengubahnya)"
+
+  # venv, bukan pip ke sistem. Dashboard butuh fastapi versi tertentu; menimpa
+  # paket python milik sistem demi itu bisa merusak alat lain di server orang.
+  if [ ! -x "$DIR_WEB/venv/bin/python" ]; then
+    python3 -m venv "$DIR_WEB/venv" >/dev/null 2>&1 || {
+      lewat "python3-venv belum ada, memasang"
+      DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 \
+        install python3-venv >/dev/null 2>&1
+      python3 -m venv "$DIR_WEB/venv" >/dev/null 2>&1
+    }
+  fi
+  if [ ! -x "$DIR_WEB/venv/bin/python" ]; then
+    lewat "gagal membuat venv - dashboard tidak dipasang, sisanya tetap jalan"
+    return 0
+  fi
+
+  if ! "$DIR_WEB/venv/bin/python" -c 'import fastapi, uvicorn' 2>/dev/null; then
+    printf '    ..   mengunduh fastapi dan uvicorn, ini yang paling lama\n'
+    "$DIR_WEB/venv/bin/pip" install --quiet --disable-pip-version-check \
+      fastapi uvicorn >/dev/null 2>&1
+  fi
+  if ! "$DIR_WEB/venv/bin/python" -c 'import fastapi, uvicorn' 2>/dev/null; then
+    lewat "fastapi/uvicorn gagal dipasang - periksa koneksi internet server ini"
+    lewat "sisanya tetap terpasang. Ulangi installer setelah internet jalan."
+    return 0
+  fi
+  ok "fastapi dan uvicorn siap di $DIR_WEB/venv"
+
+  # Token. Dari 127.0.0.1 tidak diperlukan - yang bisa membuka 127.0.0.1 sudah
+  # punya akses ke server itu. Begitu dashboard dibuka ke jaringan, tombolnya
+  # jadi tombol yang bisa ditekan siapa saja, jadi tokennya dibuatkan di sini
+  # supaya tidak ada yang lupa mengisinya.
+  local token; token="$(ambil_konf "$KONF" DASHBOARD_TOKEN)"
+  case "$HOST_WEB" in
+    127.0.0.1|localhost|::1) : ;;
+    *) if [ -z "$token" ]; then
+         token="$(python3 -c 'import secrets; print(secrets.token_hex(24))')"
+         set_konf "$KONF" DASHBOARD_TOKEN "$token"
+         lewat "dashboard dibuka ke $HOST_WEB - token dibuatkan otomatis"
+       fi ;;
+  esac
+
+  if [ -n "$token" ]; then
+    printf 'YORU_TOKEN=%s\n' "$token" > "$KONF_WEB"
+    chown root:"$AGEN" "$KONF_WEB"; chmod 640 "$KONF_WEB"
+    ok "$KONF_WEB (root:$AGEN 640 - token tidak ikut muncul di 'ps')"
+  else
+    rm -f "$KONF_WEB"
+  fi
+
+  sed -e "s|@HOST@|$HOST_WEB|" -e "s|@PORT@|$PORT_WEB|" \
+      "$ASAL/systemd/yoru-web.service" > "$DIR_SYSTEMD/yoru-web.service" \
+    || mati "gagal memasang unit dashboard"
+  chown root:root "$DIR_SYSTEMD/yoru-web.service"
+  chmod 644 "$DIR_SYSTEMD/yoru-web.service"
+
+  systemctl daemon-reload || mati "systemctl daemon-reload gagal"
+  systemctl enable yoru-web.service >/dev/null 2>&1
+  systemctl restart yoru-web.service >/dev/null 2>&1 \
+    || mati "dashboard gagal dinyalakan - lihat: journalctl -u yoru-web -n 30"
+
+  # Ditunggu sampai benar-benar menjawab, bukan cuma sampai systemd bilang
+  # "active". Proses yang mati satu detik setelah start tetap terhitung aktif
+  # sesaat, dan kegagalannya baru ketahuan pas orang membuka browsernya.
+  if python3 - "$PORT_WEB" <<'PY'
+import sys, time, urllib.request, urllib.error
+alamat = "http://127.0.0.1:%s/sehat" % sys.argv[1]
+for _ in range(30):
+    try:
+        if urllib.request.urlopen(alamat, timeout=2).status == 200:
+            sys.exit(0)
+    except Exception:
+        time.sleep(1)
+sys.exit(1)
+PY
+  then :
+  else mati "dashboard tidak menjawab dalam 30 detik - lihat: journalctl -u yoru-web -n 30"
+  fi
+
+  # Ada yang menjawab di port itu belum tentu KITA yang menjawab. Kalau port
+  # sudah dipakai program lain, unit kita mati sendiri sementara program itu
+  # tetap membalas - dan pemasangan akan bilang "berhasil" untuk sesuatu yang
+  # sama sekali bukan Yoru.
+  systemctl is-active yoru-web.service >/dev/null 2>&1 \
+    || mati "port $PORT_WEB sudah dipakai program lain, bukan Yoru. Pilih port lain: --port <angka>"
+  ok "dashboard menjawab di http://$HOST_WEB:$PORT_WEB"
+
+  # Agent bicara ke 127.0.0.1 walau dashboardnya dibuka ke jaringan - dia satu
+  # mesin dengan dashboardnya, tidak perlu lewat luar.
+  local url_lama; url_lama="$(ambil_konf "$KONF" DASHBOARD_URL)"
+  if [ -z "$url_lama" ]; then
+    set_konf "$KONF" DASHBOARD_URL "http://127.0.0.1:$PORT_WEB"
+    ok "agent diarahkan ke http://127.0.0.1:$PORT_WEB"
+  elif [ "${url_lama%/}" = "http://127.0.0.1:$PORT_WEB" ]; then
+    ok "agent sudah diarahkan ke http://127.0.0.1:$PORT_WEB"
+  else
+    # Sengaja tidak ditimpa - itu berkas pemiliknya, dan bisa saja memang
+    # sengaja diarahkan ke dashboard lain. Tapi diam soal ini berarti
+    # dashboard yang baru dipasang tidak akan pernah menerima satu laporan pun.
+    lewat "DASHBOARD_URL di $KONF masih '$url_lama', bukan port yang baru dipasang"
+    lewat "laporan tidak akan masuk ke dashboard ini sampai barisnya diganti jadi"
+    lewat "  DASHBOARD_URL=\"http://127.0.0.1:$PORT_WEB\""
+  fi
+  chown root:"$AGEN" "$KONF"; chmod 640 "$KONF"
+}
+
+hitung_laporan() {
+  python3 - "$PORT_WEB" <<'PY' 2>/dev/null || printf '0\n'
+import sys, json, urllib.request
+try:
+    with urllib.request.urlopen("http://127.0.0.1:%s/api/server" % sys.argv[1], timeout=5) as j:
+        print(sum(int(s.get("laporan") or 0) for s in json.load(j).get("server", [])))
+except Exception:
+    print(0)
+PY
+}
+
+# Dashboard yang kosong pas pertama dibuka bikin orang mengira pemasangannya
+# gagal. Dijalankan dengan --kering: kontrolnya diperiksa dan laporannya
+# dikirim, tapi tidak ada satu pun setelan server yang disentuh. Pemasangan
+# tidak berhak mengubah server; yang boleh memutuskan itu pemiliknya.
+isi_dashboard_pertama() {
+  [ "$DASHBOARD" = "ya" ] || return 0
+  [ -x "$DIR_BIN/yoru-agent" ] || return 0
+  systemctl is-active yoru-web.service >/dev/null 2>&1 || return 0
+
+  langkah "Memeriksa server sekali, biar dashboard tidak kosong"
+  printf '    ..   memeriksa 10 kontrol, tidak ada yang diubah\n'
+
+  local sebelum; sebelum="$(hitung_laporan)"
+  timeout 300 sudo -u "$AGEN" env HOME="$DIR_DATA" "$DIR_BIN/yoru-agent" \
+    --siklus penjagaan --kering --konfigurasi "$KONF" >/dev/null 2>&1
+
+  # Dihitung sebelum dan sesudah, bukan sekadar "ada isinya". Pemasangan ulang
+  # selalu menemukan laporan lama di database, dan itu bukan bukti bahwa yang
+  # barusan sampai. Kode keluar agent juga bukan bukti: dia memang sengaja
+  # tetap keluar 0 walau dashboardnya tidak bisa dihubungi, karena laporan ke
+  # disk lebih penting daripada laporan ke layar.
+  if [ "$(hitung_laporan)" -gt "$sebelum" ]
+    then ok "laporan pertama sudah masuk ke dashboard"
+  else lewat "dashboard masih kosong - laporannya belum sampai"
+       lewat "jalankan manual dan baca pesannya:"
+       lewat "  sudo -u $AGEN $DIR_BIN/yoru-agent --siklus penjagaan --kering"
+  fi
+}
+
 # ----------------------------------------------------------------- uji
 uji_sendiri() {
   langkah "Menguji hasil pemasangan"
@@ -431,14 +621,23 @@ copot() {
   langkah "Mencopot Yoru"
 
   systemctl disable --now yoru-watch.timer >/dev/null 2>&1
-  rm -f "$DIR_SYSTEMD/yoru-watch.timer" "$DIR_SYSTEMD/yoru-watch.service"
+  systemctl disable --now yoru-web.service >/dev/null 2>&1
+  rm -f "$DIR_SYSTEMD/yoru-watch.timer" "$DIR_SYSTEMD/yoru-watch.service" \
+        "$DIR_SYSTEMD/yoru-web.service"
   systemctl daemon-reload >/dev/null 2>&1
-  ok "timer dan unit penjagaan dihapus"
+  ok "timer penjagaan dan dashboard dihentikan, unitnya dihapus"
 
+  rm -f "$KONF_WEB"         && ok "$KONF_WEB dihapus"
   rm -f "$SUDOERS"          && ok "aturan sudoers dihapus"
   rm -rf /opt/yoru          && ok "/opt/yoru dihapus"
   rm -rf /usr/share/yoru    && ok "/usr/share/yoru dihapus"
-  if id "$AGEN" >/dev/null 2>&1; then userdel "$AGEN" 2>/dev/null && ok "pengguna $AGEN dihapus"; fi
+  if id "$AGEN" >/dev/null 2>&1; then
+    if userdel "$AGEN" 2>/dev/null
+      then ok "pengguna $AGEN dihapus"
+      else lewat "pengguna $AGEN tidak bisa dihapus - biasanya masih ada prosesnya"
+           lewat "lihat dulu: pgrep -u $AGEN -a   lalu: sudo userdel $AGEN"
+    fi
+  fi
   lewat "$DIR_LOG, $DIR_ETC, $DIR_DATA dan $DIR_ASAL sengaja DIBIARKAN - itu catatan, laporan, dan rekaman keadaan asal"
 
   # Menghapus berkas orang tanpa diminta bukan hak kami. Tapi diam soal kunci
@@ -458,15 +657,27 @@ copot() {
 # ---------------------------------------------------------------- jalan
 PEMILIK=""
 TANYA="ya"
+DASHBOARD="ya"
+HOST_WEB="127.0.0.1"
+PORT_WEB="8000"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --pemilik)     PEMILIK="${2-}"; shift 2 ;;
-    --tanpa-tanya) TANYA="tidak"; shift ;;
-    --copot)       [ "$(id -u)" -eq 0 ] || mati "jalankan dengan sudo"; copot ;;
-    -h|--help)     sed -n '2,17p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    --pemilik)         PEMILIK="${2-}"; shift 2 ;;
+    --tanpa-tanya)     TANYA="tidak"; shift ;;
+    --tanpa-dashboard) DASHBOARD="tidak"; shift ;;
+    --host)            HOST_WEB="${2-}"; shift 2 ;;
+    --port)            PORT_WEB="${2-}"; shift 2 ;;
+    --copot)           [ "$(id -u)" -eq 0 ] || mati "jalankan dengan sudo"; copot ;;
+    -h|--help)         sed -n '2,23p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *) mati "argumen tidak dikenal: $1" ;;
   esac
 done
+
+[ -n "$HOST_WEB" ] || mati "--host tidak boleh kosong"
+case "$PORT_WEB" in
+  ''|*[!0-9]*) mati "--port harus angka, isinya '$PORT_WEB'" ;;
+esac
+[ "$PORT_WEB" -ge 1 ] && [ "$PORT_WEB" -le 65535 ] || mati "--port di luar jangkauan: $PORT_WEB"
 
 printf '\n%sYoru %s%s  -  pemasangan\n' "$TEBAL" "$VERSI" "$H"
 
@@ -479,20 +690,29 @@ pasang_catalog
 pasang_sudoers
 tulis_konfigurasi
 pasang_penjagaan
+pasang_dashboard
 uji_sendiri
+isi_dashboard_pertama
 
 JAM_TERPASANG="$(ambil_konf "$KONF" JAM_PENJAGAAN)"; [ -n "$JAM_TERPASANG" ] || JAM_TERPASANG="03:17"
 ZONA_TERPASANG="$(ambil_konf "$KONF" ZONA_WAKTU)";   [ -n "$ZONA_TERPASANG" ] || ZONA_TERPASANG="UTC"
+
+if systemctl is-active yoru-web.service >/dev/null 2>&1
+  then ALAMAT_WEB="http://$HOST_WEB:$PORT_WEB"
+  else ALAMAT_WEB="tidak dipasang"
+fi
 
 cat <<SELESAI
 
 ${TEBAL}Selesai.${H}
 
   Dispatcher   $DIR_BIN/yoructl
+  Agent        $DIR_BIN/yoru-agent
   Katalog      $DIR_CATALOG
   Konfigurasi  $KONF   (root:$AGEN 640)
   Pemilik      $PEMILIK
   Penjagaan    setiap hari $JAM_TERPASANG $ZONA_TERPASANG
+  Dashboard    $ALAMAT_WEB
   Catatan      $DIR_LOG/tindakan.log   (root, agent tidak bisa menulis)
   Laporan      $DIR_DATA/laporan-terakhir.json   (ditulis agent)
   Keadaan asal $DIR_ASAL/<kontrol>/   (direkam sebelum terapkan pertama)
@@ -500,13 +720,34 @@ ${TEBAL}Selesai.${H}
   Coba sendiri:
     sudo -u $AGEN sudo -n $DIR_BIN/yoructl K05 periksa
 
+  Jalankan siklus perbaikan sekarang:
+    sudo -u $AGEN $DIR_BIN/yoru-agent --siklus perbaikan
+
   Lihat jadwal berikutnya:
     systemctl list-timers yoru-watch.timer
+
+  Kalau dashboard bermasalah:
+    journalctl -u yoru-web -n 30
 
   Mencopot:
     sudo bash install.sh --copot
 
 SELESAI
+
+case "$HOST_WEB" in
+  127.0.0.1|localhost|::1) : ;;
+  *)
+    if systemctl is-active yoru-web.service >/dev/null 2>&1; then
+      TOKEN_TERPASANG="$(ambil_konf "$KONF" DASHBOARD_TOKEN)"
+      printf '  %sDashboard terbuka ke jaringan.%s\n' "$KUNING" "$H"
+      printf '  Token untuk menekan tombolnya dari komputer lain:\n\n'
+      printf '      %s\n\n' "${TOKEN_TERPASANG:-(kosong - isi DASHBOARD_TOKEN di $KONF)}"
+      printf '  Dan port %s belum ada di PORT_DIIZINKAN. K05 memang tidak akan\n' "$PORT_WEB"
+      printf '  menyalakan firewall selama masih ada port terbuka yang belum dijawab -\n'
+      printf '  tambahkan sendiri kalau port ini memang mau dibiarkan terbuka:\n\n'
+      printf '      PORT_DIIZINKAN="%s"   di %s\n\n' "$PORT_WEB" "$KONF"
+    fi ;;
+esac
 
 if [ ! -x "$DIR_BIN/yoru-agent" ]; then
   printf '  %sBelum selesai betul.%s Agent Hermes belum terpasang di %s/yoru-agent.\n' "$KUNING" "$H" "$DIR_BIN"

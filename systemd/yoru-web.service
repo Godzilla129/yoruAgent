@@ -1,0 +1,39 @@
+[Unit]
+Description=Yoru - dashboard dan API
+Documentation=https://github.com/Godzilla129/yoruAgent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=yoru-agent
+Group=yoru-agent
+WorkingDirectory=/opt/yoru/web
+
+Environment=YORU_DB=/var/lib/yoru/dashboard.db
+Environment=YORU_LOG=/var/log/yoru
+Environment=YORUCTL=/opt/yoru/bin/yoructl
+
+# Tanda minus = boleh tidak ada. Di sinilah YORU_TOKEN ditaruh kalau dashboard
+# dibuka ke jaringan; berkasnya root:yoru-agent 640, bukan di baris perintah,
+# supaya tokennya tidak muncul di "ps".
+EnvironmentFile=-/etc/yoru/web.env
+
+ExecStart=/opt/yoru/web/venv/bin/uvicorn api:app --host @HOST@ --port @PORT@
+
+# Satu-satunya unit Yoru yang boleh mencoba ulang sendiri. Siklus penjagaan
+# yang gagal harus kelihatan gagal, tapi dashboard yang mati diam-diam bikin
+# pemiliknya buta.
+Restart=on-failure
+RestartSec=5
+
+# JANGAN tambah empat arahan ini. Kelihatannya mengeraskan, padahal tombol di
+# dashboard memanggil yoructl lewat sudo, jadi semua batasan di sini ikut
+# dibawa turun ke kontrolnya:
+#   NoNewPrivileges=yes   sudo mati -> tidak ada tombol yang bisa jalan
+#   ProtectSystem=strict  /etc baca-saja -> tempat semua kontrol menulis
+#   ProtectHome=yes       /home hilang -> K02 selalu menolak (lihat K02.yaml)
+#   PrivateTmp=yes        kunci di /run/lock tidak lagi dilihat proses lain
+
+[Install]
+WantedBy=multi-user.target

@@ -687,6 +687,16 @@ def main():
                     help="tulis laporan ke berkas ini juga (untuk pengujian)")
     a = ap.parse_args()
 
+    # Sama seperti yoru-watch. Dijalankan sebagai root, agent tidak lagi lewat
+    # sudoers - jadi seluruh pembatasannya cuma hiasan. Dan efek sampingnya
+    # diam-diam: laporan yang ditulisnya jadi milik root, lalu siklus harian
+    # berikutnya tidak bisa menimpanya lagi dan berhenti tanpa ada yang tahu.
+    if os.geteuid() == 0:
+        kabar("berhenti: harus berjalan sebagai yoru-agent, bukan root")
+        kabar("coba: sudo -u yoru-agent /opt/yoru/bin/yoru-agent "
+              f"--siklus {a.siklus}")
+        return 2
+
     konf = baca_konfigurasi(a.konfigurasi)
     katalog = baca_katalog()
     if not katalog:

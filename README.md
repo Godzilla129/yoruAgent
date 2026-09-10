@@ -162,6 +162,25 @@ cd yoruAgent
 sudo bash install.sh
 ```
 
+Satu perintah itu memasang semuanya: dispatcher, katalog sepuluh kontrol,
+agent, siklus penjagaan harian, dan dashboard. Selesai memasang, dashboard
+sudah jalan di `http://127.0.0.1:8000` dan sudah ada isinya — servernya
+diperiksa sekali di akhir pemasangan, tanpa mengubah satu setelan pun.
+
+Kalau dashboardnya mau dibuka dari komputer lain:
+
+```bash
+sudo bash install.sh --host 0.0.0.0 --port 8080
+```
+
+Begitu dibuka ke jaringan, tombol Hardening di halaman itu jadi tombol yang
+bisa ditekan siapa saja yang bisa menjangkau portnya. Jadi installer
+membuatkan token, mencetaknya di akhir, dan dashboard akan memintanya sekali
+di browser. Dari `127.0.0.1` token tidak pernah diminta — yang sudah bisa
+membuka `127.0.0.1` memang sudah punya akses ke server itu.
+
+Tidak mau dashboardnya sama sekali: `--tanpa-dashboard`.
+
 Pemasangnya cuma menanyakan dua hal: token bot Telegram dan alamat
 dashboard. Dua-duanya boleh dikosongkan dan diisi belakangan di
 `/etc/yoru/yoru.conf`. Yang rahasia diketik tanpa ditampilkan di layar, dan
@@ -263,10 +282,10 @@ bin/yoru-watch  pembungkus yang dipanggil timer harian
 catalog/        10 kontrol keamanan, satu berkas YAML per kontrol
 contract/       bentuk data laporan JSON - dipakai bersama tiga lane
 web/            API dashboard dan halamannya
-systemd/        unit dan timer untuk siklus penjagaan harian
+systemd/        unit systemd: siklus penjagaan harian dan dashboard
 examples/       contoh laporan, contoh konfigurasi, jembatan FastAPI
 docs/           penjelasan alur dan panduan pasang di VPS
-install.sh      pemasang, sekalian menguji hasilnya sendiri
+install.sh      pemasang semuanya, sekalian menguji hasilnya sendiri
 check-all.sh    periksa 10 kontrol sekaligus, tanpa memasang apa pun
 demo.sh         nyalakan dashboard dengan data contoh
 ```
@@ -278,7 +297,8 @@ Setelah terpasang, berkas-berkasnya duduk di sini:
 /usr/share/yoru/catalog/    katalog, milik root - agent cuma boleh membaca
 /etc/yoru/yoru.conf         konfigurasi, root:yoru-agent 640
 /var/log/yoru/tindakan.log  catatan tindakan, milik root - agent TIDAK bisa menulis
-/var/lib/yoru/              laporan, milik yoru-agent - satu-satunya yang boleh ditulis agent
+/var/lib/yoru/              laporan dan database dashboard, milik yoru-agent
+/opt/yoru/web/              dashboard dan venv-nya, milik root - agent cuma menjalankan
 ```
 
 Pembagian izin itu inti desainnya: agent boleh menulis laporannya sendiri,

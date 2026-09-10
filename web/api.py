@@ -29,7 +29,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import Body, FastAPI, Header, HTTPException, Response
+from fastapi import Body, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
 DIR = Path(__file__).resolve().parent
@@ -94,6 +94,28 @@ def periksa_token(diberikan: Optional[str]):
     import hmac
     if not diberikan or not hmac.compare_digest(diberikan, diharapkan):
         raise HTTPException(status_code=401, detail="token tidak sah")
+
+
+def dari_mesin_ini(minta: Request) -> bool:
+    return bool(minta.client) and minta.client.host in ("127.0.0.1", "::1")
+
+
+def boleh_mengubah(minta: Request, diberikan: Optional[str]):
+    """Endpoint yang berujung pada perubahan di server sungguhan.
+
+    Dari mesin itu sendiri: bebas - yang bisa membuka 127.0.0.1 sudah punya
+    akses ke servernya. Dari jaringan: wajib token, dan token kosong berarti
+    ditolak, bukan dibebaskan. Tanpa aturan ini siapa pun yang bisa menjangkau
+    portnya bisa menekan tombol Hardening di server orang.
+    """
+    if dari_mesin_ini(minta):
+        return
+    if not TOKEN:
+        raise HTTPException(
+            status_code=403,
+            detail="dashboard dibuka ke jaringan tapi DASHBOARD_TOKEN kosong - "
+                   "isi dulu di /etc/yoru/yoru.conf, atau buka lewat 127.0.0.1")
+    periksa_token(diberikan)
 
 
 # ------------------------------------------------------------------ endpoint
@@ -161,12 +183,14 @@ async def riwayat(server: Optional[str] = None, batas: int = 30):
 
 
 @app.post("/api/keputusan")
-async def simpan_keputusan(badan: Dict[str, Any] = Body(...)):
+async def simpan_keputusan(minta: Request, badan: Dict[str, Any] = Body(...),
+                           authorization: Optional[str] = Header(None)):
     """Jawaban pemilik dari dashboard.
 
     Disimpan dulu, tidak langsung dijalankan. Yang menjalankan tetap agent di
     server, lewat yoructl - dashboard tidak pernah menyentuh server siapa pun.
     """
+    boleh_mengubah(minta, authorization)
     server = str(badan.get("server") or "").strip()[:100]
     kontrol = str(badan.get("kontrol") or "").strip().upper()
     nilai = str(badan.get("nilai") or "").strip().lower()
@@ -189,8 +213,10 @@ async def simpan_keputusan(badan: Dict[str, Any] = Body(...)):
 
 
 @app.post("/api/port")
-async def simpan_port(badan: Dict[str, Any] = Body(...)):
+async def simpan_port(minta: Request, badan: Dict[str, Any] = Body(...),
+                      authorization: Optional[str] = Header(None)):
     """Pemilik menjawab "iya, port itu memang punya saya"."""
+    boleh_mengubah(minta, authorization)
     server = str(badan.get("server") or "").strip()[:100]
     if not server:
         raise HTTPException(status_code=422, detail="server tidak disebut")
@@ -248,8 +274,10 @@ AKSI = {"periksa": "periksa", "audit": "periksa",
 
 
 @app.post("/api/jalankan")
-async def jalankan(badan: Dict[str, Any] = Body(...)):
+async def jalankan(minta: Request, badan: Dict[str, Any] = Body(...),
+                   authorization: Optional[str] = Header(None)):
     """Panggil yoructl. Satu program, dua argumen - tidak ada shell."""
+    boleh_mengubah(minta, authorization)
     kid = str(badan.get("kontrol") or "").strip().upper()
     aksi = AKSI.get(str(badan.get("aksi") or "").strip().lower())
     if not KONTROL_SAH.match(kid):

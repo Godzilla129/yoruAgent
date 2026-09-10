@@ -171,11 +171,57 @@ dialog::backdrop{background:rgba(15,23,42,.45)}
   </div>
 </form></dialog>
 
+<dialog id="dlgToken"><form method="dialog" class="dlg">
+  <h3>Server ini minta token</h3>
+  <p style="color:var(--samar);font-size:13.5px;margin:10px 0 0">
+    Dashboard dibuka dari komputer lain, jadi tombolnya perlu token. Isinya sama
+    dengan <b>DASHBOARD_TOKEN</b> di <code>/etc/yoru/yoru.conf</code> pada server itu.
+  </p>
+  <input id="isiToken" type="password" autocomplete="off" placeholder="tempel token di sini"
+         style="width:100%;margin-top:12px;padding:9px 11px;border:1px solid var(--garis);
+                border-radius:7px;font:inherit;background:#fff;color:inherit">
+  <div class="tombol">
+    <button value="batal">Batal</button>
+    <button value="ya" class="ya">Simpan</button>
+  </div>
+</form></dialog>
+
 <script>
 const $ = i => document.getElementById(i);
 const esc = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let DATA = null, HAL = 'dashboard';
+
+// Dari 127.0.0.1 token tidak pernah diminta, jadi di server sendiri kotak ini
+// tidak akan pernah muncul. Yang membuka dari komputer lain diminta sekali,
+// dan jawabannya hilang begitu tab ditutup.
+let TOKEN = (() => { try { return sessionStorage.getItem('yoru-token') || ''; } catch (e) { return ''; } })();
+
+function mintaToken() {
+  return new Promise(selesai => {
+    const d = $('dlgToken');
+    d.onclose = () => {
+      if (d.returnValue !== 'ya') return selesai(false);
+      TOKEN = $('isiToken').value.trim();
+      try { sessionStorage.setItem('yoru-token', TOKEN); } catch (e) {}
+      selesai(!!TOKEN);
+    };
+    $('isiToken').value = TOKEN;
+    d.showModal();
+  });
+}
+
+async function kirim(url, badan) {
+  const bungkus = () => ({
+    method: 'POST',
+    headers: Object.assign({'Content-Type': 'application/json'},
+                           TOKEN ? {Authorization: 'Bearer ' + TOKEN} : {}),
+    body: JSON.stringify(badan)
+  });
+  let r = await fetch(url, bungkus());
+  if ((r.status === 401 || r.status === 403) && await mintaToken()) r = await fetch(url, bungkus());
+  return r;
+}
 
 const pendek = t => {
   const s = String(t || '');
@@ -354,11 +400,9 @@ async function jalankan(kid, aksi, tombol) {
   slot.className = 'hasil jln'; slot.textContent = 'menjalankan…';
   let d;
   try {
-    const r = await fetch('/api/jalankan', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({kontrol: kid, aksi})
-    });
+    const r = await kirim('/api/jalankan', {kontrol: kid, aksi});
     d = await r.json();
+    if (!r.ok) d = {status: 'DITOLAK', berhasil: false, pesan: d.detail || `HTTP ${r.status}`};
   } catch (e) { d = {status: 'ERROR', pesan: 'API tidak bisa dihubungi'}; }
 
   const ok = d.berhasil === true;
