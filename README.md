@@ -363,11 +363,12 @@ Ini masih versi awal. Yang belum ada, ditulis apa adanya:
   berpengaruh karena kernel memakai nilai maksimum antara `all` dan
   per-kartu, dan mode ketat bisa memutus lalu lintas yang jalurnya tidak
   simetris.
-- **Model AI belum dicolok.** Laporannya dirakit tanpa model — kalimat
-  penjelasannya diambil dari katalog, yang memang ditulis manusia untuk orang
-  awam. Itu disengaja: laporan tidak boleh gagal keluar cuma karena satu
-  panggilan API. Tempat memasang modelnya sudah ada di kelas `Reasoner` di dalam
-  `bin/yoru-agent`.
+- **Model baru dipakai di satu tempat.** Yoru menyambung ke Hermes lewat
+  `HERMES_URL`, dan sejauh ini modelnya cuma dipakai untuk satu hal: menilai
+  port terbuka yang belum dijawab pemilik. Sisa kalimat di laporan masih diambil
+  apa adanya dari katalog. Itu disengaja untuk sekarang — laporan tidak boleh
+  gagal keluar cuma karena satu panggilan API, jadi tiap tambahan harus punya
+  jalan mundur yang jelas dulu.
 - **Notifikasi Telegram belum diuji dengan bot sungguhan.** Kodenya jalan dan
   sudah diuji dengan server tiruan, tapi belum pernah dikirim ke Telegram
   beneran.

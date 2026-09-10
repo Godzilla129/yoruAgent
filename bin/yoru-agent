@@ -239,8 +239,67 @@ class Reasoner:
 
     def __init__(self, config):
         self.config = config
-        self.model = config.get("AI_MODEL", "").strip()
-        self.enabled = bool(self.model)
+        # Hermes runs its own API server and speaks the OpenAI shape:
+        # POST {base}/v1/chat/completions. The provider key lives in Hermes'
+        # config, set with `hermes setup` - it is deliberately NOT in
+        # yoru.conf, so this file never holds a model credential at all.
+        self.base = config.get("HERMES_URL", "").strip().rstrip("/")
+        self.model = config.get("AI_MODEL", "").strip() or "hermes"
+        self.enabled = bool(self.base)
+
+    def ask(self, instruction, material, limit=400):
+        """Ask Hermes for prose. Returns None when anything at all goes wrong.
+
+        Three rules hold this together:
+          1. The answer is only ever DISPLAYED. It never becomes a command, a
+             control id, or an action. A model that hallucinates here produces
+             a wrong sentence, not a wrong change to someone's server.
+          2. Everything falls back to the catalog. No model, no network, bad
+             JSON - the report still comes out complete, just stiffer.
+          3. Short timeout. The daily cycle must not hang because a model is
+             slow.
+        """
+        if not self.enabled:
+            return None
+        answer = http_json("POST", f"{self.base}/v1/chat/completions", None, {
+            "model": self.model,
+            "max_tokens": 300,
+            "temperature": 0.2,
+            "messages": [
+                {"role": "system",
+                 "content": "Kamu asisten keamanan server yang bicara ke pemilik "
+                            "usaha kecil, bukan ke sysadmin. Jawab dalam bahasa "
+                            "Indonesia yang sederhana, maksimal 3 kalimat. Jangan "
+                            "pernah menuliskan perintah shell, dan jangan menyuruh "
+                            "menjalankan apa pun."},
+                {"role": "user", "content": f"{instruction}\n\n{material}"},
+            ],
+        }, timeout=20, label="Hermes")
+        try:
+            text = answer["choices"][0]["message"]["content"]
+        except (TypeError, KeyError, IndexError):
+            return None
+        text = tidy(text)[:limit]
+        return text or None
+
+    def judge_ports(self, raw):
+        """Is this open port normal, or is it a hole?
+
+        This is the one judgement a fixed rule does badly. Memorising port
+        numbers is the same mistake as pinning SSH to 22 - people move things,
+        and there are more services than anyone can list. A model reads the
+        process name and says something useful about it.
+
+        Whatever it answers, K05 still refuses to switch the firewall on until
+        the owner has actually answered. This adds a sentence to help them
+        decide; it does not decide for them.
+        """
+        return self.ask(
+            "Server ini punya port terbuka yang belum dijawab pemiliknya. Untuk "
+            "tiap port, jelaskan singkat itu kemungkinan layanan apa, dan apakah "
+            "wajar terbuka ke internet atau mencurigakan. Jangan menyuruh "
+            "menutup atau membuka apa pun - pemiliknya yang memutuskan.",
+            f"Port terbuka: {raw}")
 
     def order(self, ids):
         rank = {k: i for i, k in enumerate(self.ORDER)}
@@ -328,6 +387,13 @@ def build_report(cycle, config, catalog, reasoner, checks, previous=None):
         if kid == "K05" and raw.get("pesan"):
             blockers = [tidy(raw["pesan"])]
 
+        # Sengaja cuma K05. Itu satu-satunya kontrol yang hasilnya bergantung
+        # pada layanan apa yang kebetulan jalan di server ini - selebihnya
+        # jawabannya sudah pasti dan sudah ada di katalog.
+        note = None
+        if kid == "K05" and blockers and reasoner.enabled:
+            note = reasoner.judge_ports(blockers[0])
+
         controls.append({
             "id": kid,
             "nama": cat.get("nama") or kid,
@@ -341,6 +407,7 @@ def build_report(cycle, config, catalog, reasoner, checks, previous=None):
             "yang_rusak_kalau_diterapkan": reasoner.consequence(kid, catalog),
             "butuh_izin": risky,
             "prasyarat_gagal": blockers,
+            "catatan_ai": note,
             "hasil": None,
         })
 
@@ -429,7 +496,7 @@ def read_previous_report():
 
 
 # ------------------------------------------------------------------ dashboard
-def http_json(method, url, token, data=None, timeout=15):
+def http_json(method, url, token, data=None, timeout=15, label="dashboard"):
     if not url:
         return None
     body = json.dumps(data).encode() if data is not None else None
@@ -442,7 +509,7 @@ def http_json(method, url, token, data=None, timeout=15):
             body = r.read().decode("utf-8", "replace")
             return json.loads(body) if body.strip() else {}
     except (urllib.error.URLError, json.JSONDecodeError, OSError) as e:
-        say(f"dashboard tidak bisa dihubungi ({method} {url}): {e}")
+        say(f"{label} tidak bisa dihubungi ({method} {url}): {e}")
         return None
 
 

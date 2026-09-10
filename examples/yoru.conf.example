@@ -41,16 +41,33 @@ NAMA_SERVER=""
 
 # ============================ MODEL AI =================================
 #
-# TIDAK ADA di sini, dan itu disengaja.
+# KUNCI API-nya TIDAK ADA di sini, dan itu disengaja.
 #
-# Yang memanggil model AI itu Hermes, bukan Yoru. Yoru cuma menyediakan
-# katalog, dispatcher, dan laporan - dia tidak pernah bicara ke model sama
-# sekali. Jadi kunci API dan nama model tinggal di konfigurasi Hermes, satu
-# tempat saja.
+# Yang memegang kunci model itu Hermes. Yoru cuma menanyakan sesuatu ke
+# Hermes lewat HTTP di dalam server yang sama - jadi berkas ini tidak pernah
+# menyimpan satu pun kredensial model. Kalau ditaruh di sini juga, ada dua
+# tempat yang menyimpan rahasia yang sama: dua tempat yang bisa bocor, dan
+# dua tempat yang bisa beda isinya tanpa ada yang sadar.
 #
-# Kalau ditaruh di sini juga, ada dua tempat yang menyimpan rahasia yang
-# sama: dua tempat yang bisa bocor, dan dua tempat yang bisa beda isinya
-# tanpa ada yang sadar.
+# Cara menyambungkannya:
+#
+#   1. Setel penyedia dan kuncinya di Hermes, sekali saja:
+#          hermes setup
+#          hermes model
+#   2. Nyalakan API server Hermes (bentuknya OpenAI-compatible):
+#          hermes api-server
+#   3. Isi alamatnya di bawah. Cek portnya dulu: hermes api-server --help
+#
+# Kosong = Yoru jalan tanpa model sama sekali. Laporannya tetap keluar
+# lengkap, kalimat penjelasannya diambil dari katalog. Yang hilang cuma satu:
+# penilaian atas port terbuka yang belum dijawab pemilik.
+#
+# Yang model TIDAK PERNAH boleh lakukan, dan ini dipagari di kode:
+# jawabannya cuma ditampilkan sebagai kalimat. Tidak pernah jadi perintah,
+# tidak pernah jadi nomor kontrol, tidak pernah jadi tindakan.
+
+HERMES_URL=""
+AI_MODEL=""
 
 
 # ======================= TELEGRAM (opsional) ===========================
