@@ -319,8 +319,12 @@ function render() {
       hint:'Dari @BotFather di Telegram: /newbot, lalu salin utuh barisnya. Bentuknya angka, titik dua, lalu huruf-angka.'},
      {key:'TELEGRAM_CHAT_ID', label:'Chat ID (boleh dikosongkan)',
       hint:'Kosongkan saja — Yoru mencarinya sendiri begitu kamu kirim /start ke botmu.'}]);
-  if (PAGE === 'llm')      return infoPage(
-    'Kunci model diisi di konfigurasi Hermes, bukan di sini — supaya cuma ada di satu tempat. Laporan tetap lengkap tanpa model: kalimat penjelasannya diambil dari katalog.');
+  if (PAGE === 'llm')      return settingsPage('LLM Settings',
+    'Yoru menanyakan sesuatu ke Hermes lewat alamat ini. Kunci API model TIDAK diisi di sini — kuncinya tinggal di Hermes, disetel sekali dengan "hermes setup". Kosongkan alamatnya kalau belum ada: laporan tetap keluar lengkap, kalimat penjelasannya diambil dari katalog.',
+    [{key:'HERMES_URL', label:'Alamat Hermes',
+      hint:'Bentuknya http://host:port. Nyalakan dulu "hermes api-server" di server ini, lalu cek portnya dengan "hermes api-server --help". Contoh: http://127.0.0.1:8080'},
+     {key:'AI_MODEL', label:'Nama model (boleh dikosongkan)',
+      hint:'Diteruskan apa adanya ke Hermes. Kosong = pakai model yang sudah dipilih di Hermes lewat "hermes model".'}]);
   if (PAGE === 'system')   return settingsPage('System Settings',
     'Semua ini disimpan di /etc/yoru/yoru.conf. Halaman ini tidak menulis berkas itu sendiri — dia menitipkannya ke yoructl, program yang sama yang dipakai agent.',
     [{key:'NAMA_SERVER', label:'Nama server',

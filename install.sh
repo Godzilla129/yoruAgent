@@ -460,18 +460,22 @@ write_config() {
     return 0
   fi
 
-  # The model API key is NOT asked for here. Hermes is what calls the model,
-  # and its key already lives in Hermes' own config. Asking again would mean
-  # storing the same secret in two places.
-  printf '\n    Dua pertanyaan, dua-duanya boleh dikosongkan dan diisi belakangan\n'
-  printf '    dengan menyunting %s\n\n' "$CONFIG_FILE"
+  # The model API key is NOT asked for here, and that is the point. Hermes holds
+  # the provider key; we only ask where Hermes is listening. So this file - the
+  # one file the agent can read - never holds a spendable credential. An agent
+  # that gets talked into something by a log line it read can make the model say
+  # a wrong sentence; it cannot walk off with the key.
+  printf '\n    Tiga pertanyaan, semuanya boleh dikosongkan dan diisi belakangan -\n'
+  printf '    lewat dashboard, atau dengan menyunting %s\n\n' "$CONFIG_FILE"
 
-  local token url
+  local token url hermes
   ask "Token bot Telegram (kosongkan kalau tidak pakai) " token secret
   ask "Alamat dashboard   (kosongkan kalau belum ada)   " url
+  ask "Alamat Hermes      (contoh http://127.0.0.1:8080)" hermes
 
-  [ -n "$token" ] && config_set "$CONFIG_FILE" TELEGRAM_TOKEN "$token"
-  [ -n "$url" ]   && config_set "$CONFIG_FILE" DASHBOARD_URL  "$url"
+  [ -n "$token" ]  && config_set "$CONFIG_FILE" TELEGRAM_TOKEN "$token"
+  [ -n "$url" ]    && config_set "$CONFIG_FILE" DASHBOARD_URL  "$url"
+  [ -n "$hermes" ] && config_set "$CONFIG_FILE" HERMES_URL     "$hermes"
 
   chown root:"$AGENT" "$CONFIG_FILE"; chmod 640 "$CONFIG_FILE"
   printf '\n'
@@ -480,6 +484,12 @@ write_config() {
   else skip "Telegram tidak dipakai"; fi
   if [ -n "$url" ]; then ok "dashboard: $url"
   else skip "dashboard tidak dipakai - laporan hanya ditulis ke $DATA_DIR"; fi
+  if [ -n "$hermes" ]; then
+    ok "Hermes: $hermes"
+    skip "kunci API model tidak disimpan di sini - setel di Hermes: hermes setup"
+  else
+    skip "Hermes tidak dipakai - laporan tetap lengkap, kalimatnya dari katalog"
+  fi
 }
 
 install_timer() {
