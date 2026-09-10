@@ -43,20 +43,27 @@ NAMA_SERVER=""
 #
 # KUNCI API-nya TIDAK ADA di sini, dan itu disengaja.
 #
-# Yang memegang kunci model itu Hermes. Yoru cuma menanyakan sesuatu ke
-# Hermes lewat HTTP di dalam server yang sama - jadi berkas ini tidak pernah
-# menyimpan satu pun kredensial model. Kalau ditaruh di sini juga, ada dua
-# tempat yang menyimpan rahasia yang sama: dua tempat yang bisa bocor, dan
-# dua tempat yang bisa beda isinya tanpa ada yang sadar.
+# Yoru cuma bicara ke sebuah server model di dalam server yang sama, lewat
+# HTTP bentuk OpenAI. Yang memegang kunci API itu server tersebut, bukan
+# berkas ini. Kalau kuncinya ditaruh di sini juga, ada dua tempat yang
+# menyimpan rahasia yang sama: dua tempat yang bisa bocor, dan dua tempat
+# yang bisa beda isinya tanpa ada yang sadar.
 #
-# Cara menyambungkannya:
+# installer menanyakan ini waktu dipasang. Dua pilihan yang disiapkan:
 #
-#   1. Setel penyedia dan kuncinya di Hermes, sekali saja:
-#          hermes setup
-#          hermes model
-#   2. Nyalakan API server Hermes (bentuknya OpenAI-compatible):
-#          hermes api-server
-#   3. Isi alamatnya di bawah. Cek portnya dulu: hermes api-server --help
+#   1. Google Gemini - installer memasang penghubung kecil (yoru-model-proxy)
+#      yang memegang kuncinya di /etc/yoru/model.env, milik pengguna
+#      yoru-model. Agent tidak bisa membaca berkas itu.
+#
+#   2. hermes proxy - kalau server ini punya Hermes dan kamu sudah login ke
+#      penyedianya:
+#          hermes proxy providers
+#          hermes proxy start --provider nous --port 8645
+#      Isi HERMES_URL dengan alamat itu, dan HERMES_TOKEN dengan token bebas
+#      (hermes proxy menerima token apa pun; kredensial aslinya dia yang
+#      tempel).
+#
+# HERMES_TOKEN itu token layanan di 127.0.0.1, bukan kunci berbayar.
 #
 # Kosong = Yoru jalan tanpa model sama sekali. Laporannya tetap keluar
 # lengkap, kalimat penjelasannya diambil dari katalog. Yang hilang cuma satu:
@@ -67,6 +74,7 @@ NAMA_SERVER=""
 # tidak pernah jadi nomor kontrol, tidak pernah jadi tindakan.
 
 HERMES_URL=""
+HERMES_TOKEN=""
 AI_MODEL=""
 
 

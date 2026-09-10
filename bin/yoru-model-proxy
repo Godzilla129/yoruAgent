@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Penghubung Yoru ke Gemini.
+
+Menerima permintaan bentuk OpenAI di 127.0.0.1, menempelkan kunci API, lalu
+meneruskannya ke Gemini. Yoru sendiri tidak pernah memegang kunci itu.
+"""
+
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+UPSTREAM = os.environ.get("GEMINI_BASE", "https://generativelanguage.googleapis.com/v1beta/openai")
+MAX_BODY = 256 * 1024
+
+API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
+HOST = os.environ.get("LISTEN_HOST", "127.0.0.1")
+PORT = int(os.environ.get("LISTEN_PORT", "8080"))
+
+
+def upstream(path, payload=None, timeout=30):
+    body = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(f"{UPSTREAM}{path}", data=body,
+                                 method="POST" if body else "GET")
+    req.add_header("Authorization", f"Bearer {API_KEY}")
+    req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.status, r.read()
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, fmt, *args):
+        sys.stderr.write("%s %s\n" % (self.address_string(), fmt % args))
+
+    def reply(self, status, payload):
+        raw = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def do_GET(self):
+        if self.path.rstrip("/") == "/sehat":
+            self.reply(200, {"status": "hidup", "model": MODEL})
+        else:
+            self.reply(404, {"error": "hanya /v1/chat/completions"})
+
+    def do_POST(self):
+        if self.path.rstrip("/") != "/v1/chat/completions":
+            self.reply(404, {"error": "hanya /v1/chat/completions"})
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        if length <= 0 or length > MAX_BODY:
+            self.reply(400, {"error": "badan permintaan tidak wajar"})
+            return
+        try:
+            payload = json.loads(self.rfile.read(length))
+        except (ValueError, UnicodeDecodeError):
+            self.reply(400, {"error": "bukan JSON"})
+            return
+
+        payload["model"] = MODEL
+        payload.pop("stream", None)
+
+        try:
+            status, raw = upstream("/chat/completions", payload)
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:500].decode("utf-8", "replace")
+            sys.stderr.write(f"gemini menolak {e.code}: {detail}\n")
+            self.reply(502, {"error": f"gemini menolak ({e.code})"})
+            return
+        except (urllib.error.URLError, OSError) as e:
+            sys.stderr.write(f"gemini tidak terjangkau: {e}\n")
+            self.reply(502, {"error": "gemini tidak terjangkau"})
+            return
+
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+
+def main():
+    if not API_KEY:
+        sys.stderr.write("GEMINI_API_KEY kosong\n")
+        return 1
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

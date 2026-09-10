@@ -949,6 +949,9 @@ set_config() {  # set_config <KEY> <value>
     TELEGRAM_TOKEN)
       [ -z "$val" ] || [[ "$val" =~ ^[0-9]{5,}:[A-Za-z0-9_-]{30,}$ ]] \
         || refuse "token bot bentuknya <angka>:<huruf-angka>, contoh 8123456789:AAG3x... - salin utuh dari BotFather" ;;
+    HERMES_TOKEN)
+      [ -z "$val" ] || [[ "$val" =~ ^[A-Za-z0-9._~+/=-]{1,200}$ ]] \
+        || refuse "token cuma boleh huruf, angka, dan tanda . _ ~ + / = -" ;;
     HERMES_URL)
       [ -z "$val" ] || [[ "$val" =~ ^https?://[A-Za-z0-9._-]+(:[0-9]{1,5})?$ ]] \
         || refuse "alamat Hermes bentuknya http://host:port, contoh http://127.0.0.1:8080" ;;

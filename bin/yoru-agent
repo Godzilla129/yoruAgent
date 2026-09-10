@@ -247,6 +247,7 @@ class Reasoner:
         # yoru.conf, so this file never holds a model credential at all.
         self.base = config.get("HERMES_URL", "").strip().rstrip("/")
         self.model = config.get("AI_MODEL", "").strip() or "hermes"
+        self.token = config.get("HERMES_TOKEN", "").strip()
         self.enabled = bool(self.base)
 
     def ask(self, instruction, material, limit=400):
@@ -263,7 +264,7 @@ class Reasoner:
         """
         if not self.enabled:
             return None
-        answer = http_json("POST", f"{self.base}/v1/chat/completions", None, {
+        answer = http_json("POST", f"{self.base}/v1/chat/completions", self.token, {
             "model": self.model,
             "max_tokens": 300,
             "temperature": 0.2,

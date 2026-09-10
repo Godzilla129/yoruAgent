@@ -66,10 +66,11 @@ ACTIONS = {"periksa": "periksa", "audit": "periksa",
 # Keys the settings page may write. This list must match the one in yoructl -
 # yoructl is what actually enforces it, because yoructl is what runs as root.
 # The copy here only keeps the page from offering a key that would be refused.
-SETTABLE_KEYS = ("TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "HERMES_URL", "AI_MODEL",
+SETTABLE_KEYS = ("TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "HERMES_URL", "HERMES_TOKEN",
+                 "AI_MODEL",
                  "NAMA_SERVER", "PORT_DIIZINKAN", "LEWATI_KONTROL",
                  "JAM_PENJAGAAN", "ZONA_WAKTU")
-SECRET_KEYS = ("TELEGRAM_TOKEN",)
+SECRET_KEYS = ("TELEGRAM_TOKEN", "HERMES_TOKEN")
 
 # Same table as STATUS_MAP in bin/yoru-agent, so a button result and a cycle
 # result speak the same vocabulary.

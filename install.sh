@@ -465,17 +465,15 @@ write_config() {
   # one file the agent can read - never holds a spendable credential. An agent
   # that gets talked into something by a log line it read can make the model say
   # a wrong sentence; it cannot walk off with the key.
-  printf '\n    Tiga pertanyaan, semuanya boleh dikosongkan dan diisi belakangan -\n'
+  printf '\n    Dua pertanyaan, boleh dikosongkan dan diisi belakangan -\n'
   printf '    lewat dashboard, atau dengan menyunting %s\n\n' "$CONFIG_FILE"
 
-  local token url hermes
-  ask "Token bot Telegram (kosongkan kalau tidak pakai) " token secret
-  ask "Alamat dashboard   (kosongkan kalau belum ada)   " url
-  ask "Alamat Hermes      (contoh http://127.0.0.1:8080)" hermes
+  local token url
+  ask "Token bot Telegram (kosongkan kalau tidak pakai)" token secret
+  ask "Alamat dashboard   (kosongkan kalau belum ada)  " url
 
   [ -n "$token" ]  && config_set "$CONFIG_FILE" TELEGRAM_TOKEN "$token"
   [ -n "$url" ]    && config_set "$CONFIG_FILE" DASHBOARD_URL  "$url"
-  [ -n "$hermes" ] && config_set "$CONFIG_FILE" HERMES_URL     "$hermes"
 
   chown root:"$AGENT" "$CONFIG_FILE"; chmod 640 "$CONFIG_FILE"
   printf '\n'
@@ -484,12 +482,171 @@ write_config() {
   else skip "Telegram tidak dipakai"; fi
   if [ -n "$url" ]; then ok "dashboard: $url"
   else skip "dashboard tidak dipakai - laporan hanya ditulis ke $DATA_DIR"; fi
-  if [ -n "$hermes" ]; then
-    ok "Hermes: $hermes"
-    skip "kunci API model tidak disimpan di sini - setel di Hermes: hermes setup"
-  else
-    skip "Hermes tidak dipakai - laporan tetap lengkap, kalimatnya dari katalog"
+}
+
+# ------------------------------------------------------------------- model AI
+# Yoru bicara ke server model lewat bentuk OpenAI di 127.0.0.1. Kunci API tidak
+# pernah masuk ke yoru.conf - berkas itu satu-satunya yang boleh dibaca agent,
+# jadi kredensial yang bisa dipakai belanja tidak ditaruh di sana.
+MODEL_USER="yoru-model"
+MODEL_ENV="/etc/yoru/model.env"
+MODEL_BIN="$BIN_DIR/yoru-model-proxy"
+MODEL_UNIT="/etc/systemd/system/yoru-model.service"
+
+hermes_upstreams() {
+  command -v hermes >/dev/null 2>&1 || return 1
+  hermes proxy providers 2>/dev/null \
+    | sed -n 's/^ *\([a-z][a-z0-9-]*\) *—.*/\1/p' | tr '\n' ' ' | sed 's/ *$//'
+}
+
+install_gemini_connector() {  # install_gemini_connector <key> <model>
+  local key="$1" model="$2" port=8080 busy
+
+  busy="$(ss -tlnH "sport = :8080" 2>/dev/null || true)"
+  [ -n "$busy" ] && port=8090
+
+  id "$MODEL_USER" >/dev/null 2>&1 \
+    || useradd --system --no-create-home --shell /usr/sbin/nologin "$MODEL_USER" \
+    || { skip "gagal membuat pengguna $MODEL_USER"; return 1; }
+
+  umask 077
+  printf 'GEMINI_API_KEY=%s\nGEMINI_MODEL=%s\n' "$key" "$model" > "$MODEL_ENV"
+  umask 022
+  chown root:"$MODEL_USER" "$MODEL_ENV"; chmod 0640 "$MODEL_ENV"
+  ok "kunci di $MODEL_ENV (root:$MODEL_USER 640)"
+
+  if sudo -u "$AGENT" test -r "$MODEL_ENV" 2>/dev/null; then
+    skip "$AGENT masih bisa membaca kunci - dibatalkan"
+    rm -f "$MODEL_ENV"; return 1
   fi
+  ok "$AGENT tidak bisa membaca kunci"
+
+  install -o root -g root -m 755 "$SRC/bin/yoru-model-proxy" "$MODEL_BIN" \
+    || { skip "gagal menyalin yoru-model-proxy"; return 1; }
+
+  cat > "$MODEL_UNIT" <<EOF
+[Unit]
+Description=Penghubung Yoru ke model Gemini
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=$MODEL_USER
+Group=$MODEL_USER
+EnvironmentFile=$MODEL_ENV
+Environment=LISTEN_HOST=127.0.0.1
+Environment=LISTEN_PORT=$port
+ExecStart=$MODEL_BIN
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now yoru-model.service >/dev/null 2>&1 || true
+  sleep 2
+  systemctl is-active --quiet yoru-model.service \
+    || { skip "layanan yoru-model tidak hidup - lihat: journalctl -u yoru-model -n 20"; return 1; }
+  ok "penghubung hidup di 127.0.0.1:$port"
+
+  local answer
+  answer="$(model_probe "http://127.0.0.1:$port" "" "$model")"
+  case "$answer" in
+    ERROR*|"") skip "model belum menjawab: $answer"
+               skip "  lihat sebabnya: journalctl -u yoru-model -n 20 --no-pager"
+               return 1 ;;
+    *) ok "model menjawab: $answer" ;;
+  esac
+
+  config_set "$CONFIG_FILE" HERMES_URL "http://127.0.0.1:$port"
+  ok "HERMES_URL = http://127.0.0.1:$port"
+}
+
+model_probe() {  # model_probe <url> <token> <model>
+  python3 - "$1" "$2" "$3" <<'EOF'
+import json, sys, urllib.request
+url, token, model = sys.argv[1].rstrip("/"), sys.argv[2], sys.argv[3] or "hermes"
+body = json.dumps({"model": model, "max_tokens": 60, "messages": [
+    {"role": "user", "content": "Balas satu kalimat pendek bahasa Indonesia: kamu siap."}]}).encode()
+req = urllib.request.Request(url + "/v1/chat/completions", data=body, method="POST")
+req.add_header("Content-Type", "application/json")
+if token:
+    req.add_header("Authorization", "Bearer " + token)
+try:
+    with urllib.request.urlopen(req, timeout=45) as r:
+        print(json.load(r)["choices"][0]["message"]["content"].strip()[:160])
+except Exception as e:
+    print("ERROR", e)
+EOF
+}
+
+setup_model() {
+  step "Model AI"
+
+  local existing; existing="$(config_get "$CONFIG_FILE" HERMES_URL)"
+  if [ -n "$existing" ]; then
+    ok "sudah disetel sebelumnya: $existing"
+    return 0
+  fi
+
+  local upstreams=""
+  if command -v hermes >/dev/null 2>&1; then
+    upstreams="$(hermes_upstreams || true)"
+    ok "Hermes terpasang di server ini"
+    [ -n "$upstreams" ] && skip "penyedia yang dilayani hermes proxy: $upstreams"
+  else
+    skip "Hermes tidak terpasang - tidak masalah"
+  fi
+
+  if [ "$INTERACTIVE" != "ya" ] || [ ! -r /dev/tty ]; then
+    skip "tanpa tanya jawab - setel belakangan lewat dashboard"
+    return 0
+  fi
+
+  printf '\n    Yoru bisa jalan tanpa model. Kalimat laporannya diambil dari\n'
+  printf '    katalog - lebih kaku, tapi tetap benar.\n\n'
+  printf '      1) Google Gemini - tempel kunci API\n'
+  if [ -n "$upstreams" ]; then
+    printf '      2) Lewat hermes proxy (%s) - perlu login dulu\n' "$upstreams"
+  fi
+  printf '      3) Lewati\n\n'
+
+  local pick; ask "Pilih 1/2/3 (kosong = lewati)" pick
+  case "$pick" in
+    1)
+      local key model
+      ask "Kunci API Gemini" key secret
+      [ -n "$key" ] || { skip "kunci kosong - dilewati"; return 0; }
+      ask "Nama model (kosong = gemini-2.5-flash)" model
+      [ -n "$model" ] || model="gemini-2.5-flash"
+      install_gemini_connector "$key" "$model" || skip "model tidak jadi disetel"
+      ;;
+    2)
+      [ -n "$upstreams" ] || { skip "hermes proxy tidak tersedia"; return 0; }
+      local prov port token
+      ask "Penyedia ($upstreams)" prov
+      [ -n "$prov" ] || prov="nous"
+      ask "Port hermes proxy (kosong = 8645)" port
+      [ -n "$port" ] || port=8645
+      token="$(head -c 18 /dev/urandom | base64 | tr -d '/+=' )"
+      config_set "$CONFIG_FILE" HERMES_URL   "http://127.0.0.1:$port"
+      config_set "$CONFIG_FILE" HERMES_TOKEN "$token"
+      ok "HERMES_URL = http://127.0.0.1:$port"
+      skip "hermes proxy perlu login dulu, lalu jalankan:"
+      skip "  hermes proxy start --provider $prov --port $port"
+      ;;
+    *)
+      skip "tanpa model - laporan tetap lengkap, kalimatnya dari katalog"
+      ;;
+  esac
+
+  chown root:"$AGENT" "$CONFIG_FILE"; chmod 640 "$CONFIG_FILE"
 }
 
 install_timer() {
@@ -762,10 +919,17 @@ uninstall() {
 
   systemctl disable --now yoru-watch.timer >/dev/null 2>&1
   systemctl disable --now yoru-web.service >/dev/null 2>&1
+  systemctl disable --now yoru-model.service >/dev/null 2>&1
   rm -f "$SYSTEMD_DIR/yoru-watch.timer" "$SYSTEMD_DIR/yoru-watch.service" \
-        "$SYSTEMD_DIR/yoru-web.service"
+        "$SYSTEMD_DIR/yoru-web.service" "$SYSTEMD_DIR/yoru-model.service"
   systemctl daemon-reload >/dev/null 2>&1
-  ok "timer penjagaan dan dashboard dihentikan, unitnya dihapus"
+  ok "timer penjagaan, dashboard, dan penghubung model dihentikan"
+
+  if [ -f "$MODEL_ENV" ]; then
+    rm -f "$MODEL_ENV" && ok "$MODEL_ENV dihapus - kunci model ikut hilang"
+  fi
+  id "$MODEL_USER" >/dev/null 2>&1 && userdel "$MODEL_USER" 2>/dev/null \
+    && ok "pengguna $MODEL_USER dihapus"
 
   rm -f "$WEB_ENV"          && ok "$WEB_ENV dihapus"
   rm -f "$SUDOERS"          && ok "aturan sudoers dihapus"
@@ -830,6 +994,7 @@ install_dispatcher
 install_catalog
 install_sudoers
 write_config
+setup_model
 install_timer
 install_dashboard
 self_test
