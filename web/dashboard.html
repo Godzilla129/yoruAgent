@@ -247,6 +247,20 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let DATA = null, PAGE = 'dashboard';
 
+// Which control's log to show. It lives here rather than being passed around
+// because render() is the only thing allowed to draw a page, and it needs to
+// know - otherwise every caller has to call render() AND logPage(), which is
+// how one click ended up fetching /api/log twice.
+let LOG_KID = null;
+
+// Bumped by every render. A page function that awaits a fetch checks it again
+// afterwards and gives up if the number moved: while it was waiting, the owner
+// clicked something else, and the screen is no longer theirs to write to.
+// Without this, a slow settings page would land on top of the page that
+// replaced it - and when its own container was already gone it threw
+// "Cannot set properties of null" into a console nobody has open.
+let RENDER = 0;
+
 // From 127.0.0.1 a token is never requested, so on the server itself this box
 // never appears. Anyone opening it from another machine is asked once, and the
 // answer is gone when the tab closes.
@@ -300,32 +314,39 @@ const PAGE_TITLE = {dashboard:'Dashboard', checklist:'CIS Checklist', log:'Audit
                     telegram:'Telegram Bot', llm:'LLM Settings', system:'System Settings'};
 
 async function load() {
+  // Through get(), not a bare fetch. Reading the report is guarded exactly like
+  // pressing a button now - it names every control that FAILS on this server -
+  // so from another machine this is where the token gets asked for, before the
+  // page has drawn anything.
   try {
-    const r = await fetch('/api/laporan');
-    DATA = r.status === 404 ? null : await r.json();
+    const r = await get('/api/laporan');
+    DATA = (r.status === 404 || !r.ok) ? null : await r.json();
   } catch (e) { DATA = null; }
   render();
 }
 
 function render() {
+  const gen = ++RENDER;
   $('pageTitle').textContent = PAGE_TITLE[PAGE];
   document.querySelectorAll('#nav a').forEach(a =>
     a.classList.toggle('on', a.dataset.h === PAGE));
 
-  if (PAGE === 'log')      return logPage();
-  if (PAGE === 'telegram') return settingsPage('Telegram Bot',
+  if (PAGE === 'log')      return logPage(LOG_KID, gen);
+  if (PAGE === 'telegram') return settingsPage(gen, 'Telegram Bot',
     'Yoru cuma mengirim kalau ada yang berubah atau ada yang perlu dijawab — bukan laporan harian yang isinya "semuanya masih aman". Yang mengirim itu agent di server, bukan halaman ini.',
     [{key:'TELEGRAM_TOKEN', label:'Token bot', secret:true,
       hint:'Dari @BotFather di Telegram: /newbot, lalu salin utuh barisnya. Bentuknya angka, titik dua, lalu huruf-angka.'},
      {key:'TELEGRAM_CHAT_ID', label:'Chat ID (boleh dikosongkan)',
       hint:'Kosongkan saja — Yoru mencarinya sendiri begitu kamu kirim /start ke botmu.'}]);
-  if (PAGE === 'llm')      return settingsPage('LLM Settings',
+  if (PAGE === 'llm')      return settingsPage(gen, 'LLM Settings',
     'Yoru menanyakan sesuatu ke Hermes lewat alamat ini. Kunci API model TIDAK diisi di sini — kuncinya tinggal di Hermes, disetel sekali dengan "hermes setup". Kosongkan alamatnya kalau belum ada: laporan tetap keluar lengkap, kalimat penjelasannya diambil dari katalog.',
     [{key:'HERMES_URL', label:'Alamat Hermes',
       hint:'Bentuknya http://host:port. Nyalakan dulu "hermes api-server" di server ini, lalu cek portnya dengan "hermes api-server --help". Contoh: http://127.0.0.1:8080'},
      {key:'AI_MODEL', label:'Nama model (boleh dikosongkan)',
-      hint:'Diteruskan apa adanya ke Hermes. Kosong = pakai model yang sudah dipilih di Hermes lewat "hermes model".'}]);
-  if (PAGE === 'system')   return settingsPage('System Settings',
+      hint:'Diteruskan apa adanya ke Hermes. Kosong = pakai model yang sudah dipilih di Hermes lewat "hermes model".'},
+     {key:'HERMES_TOKEN', label:'Token Hermes (boleh dikosongkan)', secret:true,
+      hint:'Cuma perlu kalau Hermes-mu minta token. Ini token layanan di 127.0.0.1, bukan kunci berbayar — kunci model tetap tinggal di Hermes.'}]);
+  if (PAGE === 'system')   return settingsPage(gen, 'System Settings',
     'Semua ini disimpan di /etc/yoru/yoru.conf. Halaman ini tidak menulis berkas itu sendiri — dia menitipkannya ke yoructl, program yang sama yang dipakai agent.',
     [{key:'NAMA_SERVER', label:'Nama server',
       hint:'Nama yang muncul di dashboard dan bot. Kosong = pakai hostname.'},
@@ -334,9 +355,9 @@ function render() {
      {key:'LEWATI_KONTROL', label:'Kontrol yang dilewati',
       hint:'Dipisah koma, contoh: K05,K06. Kosongkan kalau semua boleh dipertimbangkan.'},
      {key:'JAM_PENJAGAAN', label:'Jam penjagaan harian',
-      hint:'Bentuk HH:MM. Ganti di sini menyimpan nilainya, tapi timer systemd baru ikut berubah setelah install.sh dijalankan ulang.'},
+      hint:'Bentuk HH:MM. Timer systemd langsung ikut diganti begitu disimpan — pilih jam sepi.'},
      {key:'ZONA_WAKTU', label:'Zona waktu',
-      hint:'Contoh: Asia/Jakarta. Dipakai untuk semua jam di laporan.'}]);
+      hint:'Contoh: Asia/Jakarta. Dipakai untuk jam penjagaan dan semua jam di laporan.'}]);
 
   if (!DATA) return emptyState();
   $('meta').textContent = `${DATA.server?.nama || '-'} · ${DATA.server?.os || '-'} · ${(DATA.waktu||'').replace('T',' ').slice(0,16)}`;
@@ -352,13 +373,7 @@ function emptyState() {
     <p><code>sudo yoru-agent --siklus perbaikan</code></p></div></div>`;
 }
 
-function infoPage(text) {
-  $('meta').textContent = '';
-  $('content').innerHTML = `<div class="panel">
-    <div style="padding:16px 17px;color:var(--muted);max-width:66ch">${esc(text)}</div></div>`;
-}
-
-async function settingsPage(title, intro, fields) {
+async function settingsPage(gen, title, intro, fields) {
   $('meta').textContent = '';
   // No panel header - the page title above already says it, and saying it
   // twice makes people think there are two different sections.
@@ -366,11 +381,15 @@ async function settingsPage(title, intro, fields) {
     <div class="form" id="settingsForm"><div class="empty">memuat setelan…</div></div></div>`;
 
   let config = {};
+  let failure = null;
   try {
     const r = await get('/api/konfigurasi');
     if (!r.ok) throw new Error('refused');
     config = await r.json();
-  } catch (e) {
+  } catch (e) { failure = e; }
+
+  if (gen !== RENDER) return;   // the owner has already gone somewhere else
+  if (failure) {
     $('settingsForm').innerHTML = `<div class="note bad">Setelan tidak bisa dibaca.
       Kalau dashboard dibuka dari komputer lain, tekan salah satu tombol dulu supaya
       diminta token.</div>`;
@@ -477,11 +496,15 @@ function table() {
     </table></div></div>`;
 }
 
-async function logPage(kid) {
+async function logPage(kid, gen) {
   $('meta').textContent = kid ? kid : 'semua kontrol';
   const q = kid ? `?kontrol=${encodeURIComponent(kid)}` : '';
   let d;
-  try { d = await (await fetch('/api/log' + q)).json(); } catch (e) { d = {baris: []}; }
+  try {
+    const r = await get('/api/log' + q);
+    d = r.ok ? await r.json() : {baris: [], pesan: 'perlu token untuk membaca jejak tindakan'};
+  } catch (e) { d = {baris: []}; }
+  if (gen !== undefined && gen !== RENDER) return;
   const body = (d.baris || []).length
     ? d.baris.map(b => `<div><span class="w">${esc((b.waktu||'').replace('T',' ').slice(0,19))}</span>
         <span class="s ${esc(b.status)}">${esc(b.status)}</span>
@@ -492,14 +515,14 @@ async function logPage(kid) {
     <div class="head"><h2>Jejak tindakan${kid ? ' — ' + esc(kid) : ''}</h2>
     <div class="bulk">${kid ? '<button class="btn log" id="allLogs">Lihat semua</button>' : ''}</div></div>
     <div class="logbox">${body}</div></div>`;
-  const all = $('allLogs'); if (all) all.onclick = () => logPage();
+  const all = $('allLogs'); if (all) all.onclick = () => { LOG_KID = null; render(); };
 }
 
 function wireButtons() {
   document.querySelectorAll('tbody button[data-a]').forEach(b => {
     b.onclick = () => {
       const tr = b.closest('tr'), kid = tr.dataset.kid;
-      if (b.dataset.a === 'log') { PAGE = 'log'; render(); logPage(kid); return; }
+      if (b.dataset.a === 'log') { PAGE = 'log'; LOG_KID = kid; render(); return; }
       if (b.dataset.a === 'terapkan' && b.dataset.approval === '1') return confirmApply(kid, b);
       run(kid, b.dataset.a, b);
     };
@@ -596,7 +619,7 @@ function closeRun(kid, d) {
   $('runClose').textContent = 'Tutup';
   $('runLog').hidden = false;
   $('dlgRun').onclose = () => {
-    if ($('dlgRun').returnValue === 'log') { PAGE = 'log'; render(); logPage(kid); }
+    if ($('dlgRun').returnValue === 'log') { PAGE = 'log'; LOG_KID = kid; render(); }
   };
 }
 
@@ -633,7 +656,9 @@ async function run(kid, action, btn, quiet) {
 
 $('nav').onclick = e => {
   const a = e.target.closest('a[data-h]'); if (!a) return;
-  PAGE = a.dataset.h; render(); if (PAGE === 'log') logPage();
+  PAGE = a.dataset.h;
+  if (PAGE === 'log') LOG_KID = null;   // the menu means "all controls"
+  render();
 };
 
 load();

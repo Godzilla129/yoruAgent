@@ -74,8 +74,57 @@ STATUS_MAP = {
 }
 
 
+# The zone every timestamp in the report is written in. None means "whatever
+# this machine is set to", which is what we fall back to.
+REPORT_TZ = None
+
+
+def use_timezone(name):
+    """Honour ZONA_WAKTU from the config.
+
+    A VPS is almost always on UTC while its owner lives somewhere else, so
+    "changed at 03:17" meant a time the owner had to convert in their head -
+    on the one screen they open when something looks wrong. The setting has
+    been in yoru.conf since the first version and nothing ever read it.
+
+    A bad zone name falls back to the machine's own and says so. Refusing to
+    produce a report over a timezone string would be the wrong trade: the
+    timestamps are for reading, and a report an hour off still beats no report.
+    """
+    global REPORT_TZ
+    name = (name or "").strip()
+    if not name:
+        return
+    try:
+        from zoneinfo import ZoneInfo, available_timezones
+    except ImportError:
+        say("python di server ini tidak punya zoneinfo - memakai zona waktu server")
+        return
+    try:
+        REPORT_TZ = ZoneInfo(name)
+        return
+    except Exception:  # noqa: BLE001 - the reason is worked out below, not guessed
+        pass
+
+    # Two very different failures land in the same exception, and telling the
+    # owner the wrong one sends them off editing a name that was never wrong.
+    # An empty list means this machine has no timezone database at all.
+    REPORT_TZ = None
+    try:
+        has_db = bool(available_timezones())
+    except Exception:  # noqa: BLE001
+        has_db = False
+    if has_db:
+        say(f"ZONA_WAKTU '{name}' tidak dikenal - periksa ejaannya, "
+            f"contoh: Asia/Jakarta. Sementara memakai zona waktu server")
+    else:
+        say(f"server ini belum punya database zona waktu, jadi '{name}' tidak bisa "
+            f"dipakai - pasang dengan: apt-get install -y tzdata. "
+            f"Sementara memakai zona waktu server")
+
+
 def now_iso():
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).astimezone(REPORT_TZ).isoformat(timespec="seconds")
 
 
 def say(*a):
@@ -848,6 +897,7 @@ def main():
         return 2
 
     config = read_config(args.konfigurasi)
+    use_timezone(config.get("ZONA_WAKTU"))
 
     if args.tes_telegram:
         return 0 if test_telegram(config) else 1
