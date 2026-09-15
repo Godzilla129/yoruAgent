@@ -941,6 +941,79 @@ config_set_line() {  # config_set_line <file> <key> <value>
   rm -f "$tmp"
 }
 
+# The daily schedule is two settings in a config file AND a line in a systemd
+# timer. Writing only the file is how JAM_PENJAGAAN became a lie: the owner
+# changed the hour, the dashboard said "tersimpan", and the timer went on
+# firing at the old one forever. Nothing said so, because nothing was wrong -
+# the value really had been saved, just nowhere that mattered.
+#
+# Only the OnCalendar= line is rewritten, not the whole unit. The rest of that
+# file belongs to install.sh, and two writers with two copies of a template
+# drift apart the first time one of them is edited.
+TIMER_UNIT=/etc/systemd/system/yoru-watch.timer
+
+apply_schedule() {  # apply_schedule -> prints what happened, never fails the write
+  local at tz line tmp
+  at="$(config_get JAM_PENJAGAAN)"; [ -n "$at" ] || at="03:17"
+  tz="$(config_get ZONA_WAKTU)"
+  [ -n "$tz" ] || tz="$(timedatectl show -p Timezone --value 2>/dev/null)"
+  [ -n "$tz" ] || tz="UTC"
+
+  # Checked again here, even though set_config checked before writing. These
+  # two came back OUT of a file, and a file can be edited by hand between the
+  # write and this read - so what set_config approved is not necessarily what
+  # we are holding. Same rule the preconditions follow: "I already checked" is
+  # a promise, not a boundary.
+  #
+  # What it stops: a hand-edited ZONA_WAKTU carrying a backslash-n. awk -v
+  # expands escape sequences, so that value would arrive in the unit file as a
+  # real newline and whatever followed it would become another systemd
+  # directive. Only root can write yoru.conf, so this is not a way in - it is
+  # just not a trap worth leaving armed.
+  [[ "$at" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || {
+    printf 'nilai tersimpan, tapi JAM_PENJAGAAN di berkas ("%s") bukan bentuk HH:MM - timer dibiarkan' "$at"
+    return 0; }
+  [ "$tz" = "UTC" ] || [[ "$tz" =~ ^[A-Za-z]+/[A-Za-z_+-]+$ ]] || {
+    printf 'nilai tersimpan, tapi ZONA_WAKTU di berkas ("%s") tidak wajar - timer dibiarkan' "$tz"
+    return 0; }
+
+  [ -f "$TIMER_UNIT" ] || { printf 'nilai tersimpan, tapi timer belum terpasang di %s' "$TIMER_UNIT"; return 0; }
+
+  line="*-*-* $at:00 $tz"
+
+  # Checked before it is written. systemd does not shout at a timer it cannot
+  # parse - it just never runs it, which is the quietest way to lose the whole
+  # watch cycle. One typo in "Asia/Jakarta" is enough.
+  if command -v systemd-analyze >/dev/null 2>&1; then
+    systemd-analyze calendar "$line" >/dev/null 2>&1 || {
+      printf 'nilai tersimpan, TAPI systemd menolak jadwal "%s" - timer dibiarkan seperti semula' "$line"
+      return 0; }
+  fi
+
+  tmp=$(mktemp) || { printf 'nilai tersimpan, tapi timer gagal ditulis ulang'; return 0; }
+  YORU_CAL="$line" awk '
+    BEGIN { v = ENVIRON["YORU_CAL"] }
+    /^[[:space:]]*OnCalendar[[:space:]]*=/ { print "OnCalendar=" v; done = 1; next }
+    { print }
+    END { if (!done) print "OnCalendar=" v }
+  ' "$TIMER_UNIT" > "$tmp" || { rm -f "$tmp"; printf 'nilai tersimpan, tapi timer gagal ditulis ulang'; return 0; }
+  cat "$tmp" > "$TIMER_UNIT" || { rm -f "$tmp"; printf 'nilai tersimpan, tapi timer gagal ditulis ulang'; return 0; }
+  rm -f "$tmp"
+  chown root:root "$TIMER_UNIT" 2>/dev/null; chmod 644 "$TIMER_UNIT" 2>/dev/null
+
+  systemctl daemon-reload >/dev/null 2>&1 || {
+    printf 'timer ditulis ulang tapi daemon-reload gagal - jalankan sendiri: systemctl daemon-reload'
+    return 0; }
+
+  # restart, not reload: a timer picks up a new OnCalendar only when it is
+  # started again, and "enabled" says nothing about when it next fires.
+  systemctl restart yoru-watch.timer >/dev/null 2>&1 || {
+    printf 'timer ditulis ulang tapi gagal dinyalakan ulang - periksa: systemctl status yoru-watch.timer'
+    return 0; }
+
+  printf 'penjagaan harian sekarang jam %s %s' "$at" "$tz"
+}
+
 set_config() {  # set_config <KEY> <value>
   local key="$1" val="$2" file=/etc/yoru/yoru.conf
   [ -f "$file" ] || refuse "$file tidak ada - jalankan install.sh dulu"
@@ -981,6 +1054,12 @@ set_config() {  # set_config <KEY> <value>
 
   config_set_line "$file" "$key" "$val" || refuse "gagal menulis $file"
   chown root:yoru-agent "$file" 2>/dev/null; chmod 640 "$file" 2>/dev/null
+
+  # Two keys mean nothing until something outside this file changes too.
+  case "$key" in
+    JAM_PENJAGAAN|ZONA_WAKTU) finish DISIMPAN true "$key" "$(apply_schedule)" ;;
+  esac
+
   finish DISIMPAN true "$key" "tersimpan di $file"
 }
 

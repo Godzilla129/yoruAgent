@@ -21,6 +21,7 @@ purely for looking at the interface and rehearsing a presentation.
 
 import json
 import os
+import secrets
 import sqlite3
 import sys
 import time
@@ -101,6 +102,14 @@ def main():
         die("fastapi/uvicorn belum ada. Jalankan dulu:\n"
             "         python -m pip install fastapi uvicorn")
 
+    # Opened to the network, the dashboard needs a token - reading a report is
+    # guarded there exactly like pressing a button, because a report names every
+    # control that fails on the machine it came from. One is made up here and
+    # printed, so the demo still works from another laptop without anyone having
+    # to find out why every panel came back empty.
+    if external:
+        os.environ.setdefault("YORU_TOKEN", secrets.token_hex(12))
+
     if wipe:
         for suffix in ("", "-wal", "-shm"):
             Path(str(DB_FILE) + suffix).unlink(missing_ok=True)
@@ -114,6 +123,9 @@ def main():
     print(f"\n  Buka: {url}")
     if external:
         print("  (--luar aktif: bisa dibuka dari komputer lain di jaringan yang sama)")
+        print("\n  Dari komputer lain halaman ini minta token sekali. Tempel yang ini:\n")
+        print(f"      {os.environ['YORU_TOKEN']}\n")
+        print("  Dari 127.0.0.1 tidak pernah diminta.")
     print("\n  Tekan Ctrl-C untuk berhenti.\n")
 
     try:

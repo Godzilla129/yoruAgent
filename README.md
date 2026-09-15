@@ -199,6 +199,14 @@ membuatkan token, mencetaknya di akhir, dan dashboard akan memintanya sekali
 di browser. Dari `127.0.0.1` token tidak pernah diminta — yang sudah bisa
 membuka `127.0.0.1` memang sudah punya akses ke server itu.
 
+Tokennya dipakai untuk **membaca juga**, bukan cuma menekan tombol. Laporan
+menyebut kontrol mana yang gagal, kernelnya apa, dan port apa saja yang
+terbuka berikut nama prosesnya — dibagikan tanpa ditanya, itu laporan
+pengintaian gratis atas mesin yang titik lemahnya sudah didaftarkan. Menu
+Audit Logs lebih jauh lagi: isinya jejak milik root yang justru dibuat supaya
+agent tidak bisa menyuntingnya. Dua-duanya sekarang berada di balik aturan
+yang sama dengan tombol Hardening.
+
 Tidak mau dashboardnya sama sekali: `--tanpa-dashboard`.
 
 Pemasangnya cuma menanyakan dua hal: token bot Telegram dan alamat

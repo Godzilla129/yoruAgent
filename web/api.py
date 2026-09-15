@@ -81,6 +81,18 @@ STATUS_MAP = {"LULUS": "LULUS", "GAGAL": "GAGAL", "DILEWATI": "DILEWATI",
 app = FastAPI(title="Yoru Dashboard", version="0.2.0")
 
 
+def running_as_root() -> bool:
+    """True only where the question means anything.
+
+    os.geteuid is POSIX-only and demo.py is meant to run on Windows too, where
+    asking this used to raise AttributeError and hand the browser a stack trace
+    instead of a sentence. Off Linux there is no yoructl to call anyway, so the
+    answer that matters is "not root - go through sudo", and the missing sudo
+    is then reported as the ordinary, readable failure it is.
+    """
+    return getattr(os, "geteuid", lambda: -1)() == 0
+
+
 # -------------------------------------------------------------------- storage
 def db():
     conn = sqlite3.connect(DB_FILE, timeout=10)
@@ -136,13 +148,30 @@ def from_this_machine(req: Request) -> bool:
     return bool(req.client) and req.client.host in ("127.0.0.1", "::1")
 
 
-def require_write_access(req: Request, given: Optional[str]):
-    """Guards every endpoint that ends in a change on a real server.
+def require_access(req: Request, given: Optional[str]):
+    """The ONE rule guarding every endpoint that carries data or causes change.
 
     From the machine itself: open - anyone who can reach 127.0.0.1 already has
     access to that server. From the network: a token is required, and an empty
-    token means refused, not exempt. Without this rule anyone who can reach the
-    port could press Hardening on someone else's server.
+    token means refused, not exempt.
+
+    Reading is guarded exactly like writing, and that is the part that used to
+    be missing. A report says which controls FAIL, the server's IP and kernel,
+    and every open port with the name of the process holding it. Handed out
+    unauthenticated that is a free reconnaissance report on a machine whose
+    weak spots are listed for the attacker. The action log is worse: it is
+    root-owned precisely so the agent cannot edit it, and serving it to anyone
+    who can reach the port gives that protection away.
+
+    The same rule covers the two endpoints the agent uses, for a different
+    reason. POST /api/laporan with no check lets anyone submit a report saying
+    "skor 100, semua LULUS" - and for a watchdog, being silenced IS the attack.
+    GET /api/keputusan marks decisions taken; called by a stranger it makes the
+    owner's real approvals evaporate before the agent ever collects them.
+
+    Left open on purpose: "/" and "/sehat". The page holds no data - it has to
+    load before anyone can type a token into it - and the health check has to
+    answer while the dashboard is still being set up.
     """
     if from_this_machine(req):
         return
@@ -180,9 +209,9 @@ def local_server_name() -> str:
 
 # ------------------------------------------------------------------ endpoints
 @app.post("/api/laporan")
-async def receive_report(laporan: Dict[str, Any] = Body(...),
+async def receive_report(req: Request, laporan: Dict[str, Any] = Body(...),
                          authorization: Optional[str] = Header(None)):
-    check_token(authorization)
+    require_access(req, authorization)
 
     for field in ("versi_kontrak", "server", "waktu", "siklus", "ringkasan", "kontrol"):
         if field not in laporan:
@@ -204,7 +233,9 @@ async def receive_report(laporan: Dict[str, Any] = Body(...),
 
 
 @app.get("/api/laporan")
-async def latest_report(server: Optional[str] = None):
+async def latest_report(req: Request, server: Optional[str] = None,
+                        authorization: Optional[str] = Header(None)):
+    require_access(req, authorization)
     with closing(db()) as conn:
         if server:
             row = conn.execute("SELECT isi FROM laporan WHERE server=? ORDER BY diterima DESC LIMIT 1",
@@ -219,7 +250,8 @@ async def latest_report(server: Optional[str] = None):
 
 
 @app.get("/api/server")
-async def server_list():
+async def server_list(req: Request, authorization: Optional[str] = Header(None)):
+    require_access(req, authorization)
     with closing(db()) as conn:
         rows = conn.execute(
             "SELECT server, MAX(diterima) d, COUNT(*) n FROM laporan GROUP BY server ORDER BY d DESC"
@@ -228,7 +260,9 @@ async def server_list():
 
 
 @app.get("/api/riwayat")
-async def history(server: Optional[str] = None, batas: int = 30):
+async def history(req: Request, server: Optional[str] = None, batas: int = 30,
+                  authorization: Optional[str] = Header(None)):
+    require_access(req, authorization)
     batas = max(1, min(batas, 200))
     with closing(db()) as conn:
         if server:
@@ -250,7 +284,7 @@ async def store_decision(req: Request, badan: Dict[str, Any] = Body(...),
     Stored, not executed. The agent on the server is still what carries it out,
     through yoructl - the dashboard never touches anyone's server.
     """
-    require_write_access(req, authorization)
+    require_access(req, authorization)
     server = str(badan.get("server") or "").strip()[:100]
     control = str(badan.get("kontrol") or "").strip().upper()
     value = str(badan.get("nilai") or "").strip().lower()
@@ -277,7 +311,7 @@ async def store_decision(req: Request, badan: Dict[str, Any] = Body(...),
 async def store_ports(req: Request, badan: Dict[str, Any] = Body(...),
                       authorization: Optional[str] = Header(None)):
     """The owner answering "yes, that port is mine"."""
-    require_write_access(req, authorization)
+    require_access(req, authorization)
     server = str(badan.get("server") or "").strip()[:100]
     if not server:
         raise HTTPException(status_code=422, detail="server tidak disebut")
@@ -300,7 +334,7 @@ async def store_ports(req: Request, badan: Dict[str, Any] = Body(...),
 
 
 @app.get("/api/keputusan")
-async def decisions_for_agent(server: Optional[str] = None,
+async def decisions_for_agent(req: Request, server: Optional[str] = None,
                               authorization: Optional[str] = Header(None)):
     """Collected by the agent each cycle. Marks them taken; does not delete.
 
@@ -309,19 +343,22 @@ async def decisions_for_agent(server: Optional[str] = None,
     evaporated. Deletion happens when the next report arrives, which means the
     agent did finish.
     """
-    check_token(authorization)
+    require_access(req, authorization)
+
+    # The server name is mandatory, not a filter you may leave off. Without it
+    # this used to answer with EVERY server's decisions and mark all of them
+    # taken - so one agent checking in would swallow the answers meant for the
+    # other nine, and those owners would never learn their approval vanished.
+    server = (server or "").strip()
+    if not server:
+        raise HTTPException(status_code=422, detail="sebutkan ?server=<nama>")
+
     with closing(db()) as conn, conn:
-        if server:
-            decisions = conn.execute("SELECT kontrol, nilai FROM keputusan WHERE server=?",
-                                     (server,)).fetchall()
-            ports = conn.execute("SELECT port FROM port WHERE server=?", (server,)).fetchall()
-            conn.execute("UPDATE keputusan SET diambil=1 WHERE server=?", (server,))
-            conn.execute("UPDATE port SET diambil=1 WHERE server=?", (server,))
-        else:
-            decisions = conn.execute("SELECT kontrol, nilai FROM keputusan").fetchall()
-            ports = conn.execute("SELECT port FROM port").fetchall()
-            conn.execute("UPDATE keputusan SET diambil=1")
-            conn.execute("UPDATE port SET diambil=1")
+        decisions = conn.execute("SELECT kontrol, nilai FROM keputusan WHERE server=?",
+                                 (server,)).fetchall()
+        ports = conn.execute("SELECT port FROM port WHERE server=?", (server,)).fetchall()
+        conn.execute("UPDATE keputusan SET diambil=1 WHERE server=?", (server,))
+        conn.execute("UPDATE port SET diambil=1 WHERE server=?", (server,))
     return {"keputusan": {r["kontrol"]: r["nilai"] for r in decisions},
             "port_disetujui": [r["port"] for r in ports]}
 
@@ -330,7 +367,7 @@ async def decisions_for_agent(server: Optional[str] = None,
 async def run_yoructl(kid: str, action: str) -> Dict[str, Any]:
     """One call to yoructl. One program, fixed arguments - no shell."""
     cmd = ["sudo", "-n", YORUCTL, kid, action]
-    if os.geteuid() == 0:
+    if running_as_root():
         cmd = [YORUCTL, kid, action]
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -369,7 +406,7 @@ async def run_yoructl(kid: str, action: str) -> Dict[str, Any]:
 @app.post("/api/jalankan")
 async def run_action(req: Request, badan: Dict[str, Any] = Body(...),
                      authorization: Optional[str] = Header(None)):
-    require_write_access(req, authorization)
+    require_access(req, authorization)
     kid = str(badan.get("kontrol") or "").strip().upper()
     action = ACTIONS.get(str(badan.get("aksi") or "").strip().lower())
     if not CONTROL_RE.match(kid):
@@ -446,7 +483,7 @@ def refresh_stored_report(kid: str, result: Dict[str, Any]):
 # ------------------------------------------------------------------- settings
 @app.get("/api/konfigurasi")
 async def read_settings(req: Request, authorization: Optional[str] = Header(None)):
-    require_write_access(req, authorization)
+    require_access(req, authorization)
     config = read_config()
     out: Dict[str, Any] = {}
     for key in SETTABLE_KEYS:
@@ -467,14 +504,14 @@ async def write_setting(req: Request, badan: Dict[str, Any] = Body(...),
     /etc/yoru/yoru.conf. The only way in is yoructl - the same program the
     agent uses, with the key list and value checks inside it.
     """
-    require_write_access(req, authorization)
+    require_access(req, authorization)
     key = str(badan.get("kunci") or "").strip()
     val = str(badan.get("nilai") or "").strip()
     if key not in SETTABLE_KEYS:
         raise HTTPException(status_code=422, detail=f"kunci '{key}' tidak bisa disetel dari sini")
 
     cmd = ["sudo", "-n", YORUCTL, "konfigurasi", key, val]
-    if os.geteuid() == 0:
+    if running_as_root():
         cmd = [YORUCTL, "konfigurasi", key, val]
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -494,8 +531,10 @@ async def write_setting(req: Request, badan: Dict[str, Any] = Body(...),
 
 
 @app.get("/api/log")
-async def read_log(kontrol: Optional[str] = None, batas: int = 60):
+async def read_log(req: Request, kontrol: Optional[str] = None, batas: int = 60,
+                   authorization: Optional[str] = Header(None)):
     """The action trail from /var/log/yoru. Root-owned; the agent cannot write it."""
+    require_access(req, authorization)
     batas = max(1, min(batas, 500))
     name = "tindakan.log"
     if kontrol and CONTROL_RE.match(kontrol.upper()):
@@ -524,5 +563,13 @@ async def page():
 
 
 @app.get("/sehat")
-async def health():
-    return {"ok": True, "versi": app.version, "db": str(DB_FILE), "token_aktif": bool(TOKEN)}
+async def health(req: Request):
+    """Open on purpose - the installer polls it before any token exists.
+
+    From the network it answers only "alive". Where the database sits is of no
+    use to the owner and of some use to everyone else.
+    """
+    out = {"ok": True, "versi": app.version, "token_aktif": bool(TOKEN)}
+    if from_this_machine(req):
+        out["db"] = str(DB_FILE)
+    return out
