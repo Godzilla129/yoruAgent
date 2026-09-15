@@ -4,196 +4,358 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Yoru — CIS Agent</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f172a'/%3E%3Ctext x='16' y='23' font-family='Georgia,serif' font-size='20' fill='%2334d399' text-anchor='middle'%3EY%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b1220'/%3E%3Cpath d='M16 6l7 3v5.5c0 4.2-2.8 7.6-7 8.9-4.2-1.3-7-4.7-7-8.9V9z' fill='none' stroke='%2334d399' stroke-width='1.8'/%3E%3C/svg%3E">
 <style>
+/* ---------------------------------------------------------------- theme
+   Every colour is a token defined on bare :root, so the light palette is the
+   complete one. Dark only REDEFINES tokens - it never introduces a colour that
+   light does not have, which is what keeps a control from going invisible in
+   one theme after somebody edits the other.
+
+   Three states, not two: an explicit choice stamps data-theme, and "ikut
+   sistem" stamps nothing at all and lets prefers-color-scheme decide. */
 :root{
-  --sidebar:#0f172a; --sidebar-2:#1e293b; --sidebar-text:#cbd5e1;
-  --bg:#f1f5f9; --card:#ffffff; --line:#e2e8f0;
-  --text:#0f172a; --muted:#64748b;
-  --green:#16a34a; --green-bg:#dcfce7;
-  --red:#dc2626; --red-bg:#fee2e2;
-  --amber:#ca8a04; --amber-bg:#fef9c3;
-  --blue:#0891b2;
+  color-scheme: light;
+  --bg:#f4f6fb;        --surface:#ffffff;   --surface-2:#f8fafc;
+  --line:#e4e9f2;      --line-soft:#eef2f8;
+  --text:#0b1220;      --muted:#5b6880;     --faint:#8a95a8;
+  --side:#0b1220;      --side-2:#18233a;    --side-text:#aab6cc;  --side-on:#ffffff;
+  --brand:#059669;     --brand-soft:#d1fae5;
+  --pass:#047857;      --pass-bg:#d1fae5;
+  --fail:#b91c1c;      --fail-bg:#fee2e2;
+  --warn:#a16207;      --warn-bg:#fef3c7;
+  --info:#0369a1;      --info-bg:#e0f2fe;
+  --shadow:0 1px 2px rgba(11,18,32,.06), 0 8px 24px -12px rgba(11,18,32,.18);
+  --radius:12px;
 }
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#070b14;       --surface:#101828;   --surface-2:#0c1422;
+    --line:#1f2a3d;     --line-soft:#18222f;
+    --text:#e8edf7;     --muted:#93a1b8;     --faint:#6b7a90;
+    --side:#0a101c;     --side-2:#18233a;    --side-text:#93a1b8;  --side-on:#ffffff;
+    --brand:#34d399;    --brand-soft:#053a2c;
+    --pass:#34d399;     --pass-bg:#06301f;
+    --fail:#f87171;     --fail-bg:#3a1414;
+    --warn:#fbbf24;     --warn-bg:#392a06;
+    --info:#38bdf8;     --info-bg:#082f42;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#070b14;       --surface:#101828;   --surface-2:#0c1422;
+  --line:#1f2a3d;     --line-soft:#18222f;
+  --text:#e8edf7;     --muted:#93a1b8;     --faint:#6b7a90;
+  --side:#0a101c;     --side-2:#18233a;    --side-text:#93a1b8;  --side-on:#ffffff;
+  --brand:#34d399;    --brand-soft:#053a2c;
+  --pass:#34d399;     --pass-bg:#06301f;
+  --fail:#f87171;     --fail-bg:#3a1414;
+  --warn:#fbbf24;     --warn-bg:#392a06;
+  --info:#38bdf8;     --info-bg:#082f42;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.8);
+}
+
 *{box-sizing:border-box}
+html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--text);
-  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,sans-serif}
-:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+  font:14.5px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,sans-serif;
+  -webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
+button{font:inherit;color:inherit}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
 
-/* ---------- sidebar ---------- */
+/* ---------------------------------------------------------------- shell */
 .wrap{display:flex;min-height:100vh}
-.sidebar{width:208px;flex:none;background:var(--sidebar);color:var(--sidebar-text);
-  display:flex;flex-direction:column}
-.brand{display:flex;align-items:center;gap:9px;padding:18px 18px;
-  border-bottom:1px solid var(--sidebar-2);color:#fff;font-weight:700;font-size:15px}
-.brand svg{flex:none}
-.sidebar nav{padding:10px 0;flex:1}
-.sidebar nav a{display:flex;align-items:center;gap:10px;padding:10px 18px;
-  color:var(--sidebar-text);text-decoration:none;font-size:13.5px;cursor:pointer}
-.sidebar nav a:hover{background:var(--sidebar-2);color:#fff}
-.sidebar nav a.on{background:var(--sidebar-2);color:#fff;font-weight:600;
-  box-shadow:inset 3px 0 0 #34d399}
-.sidebar .foot{padding:14px 18px;border-top:1px solid var(--sidebar-2);
-  font-size:11.5px;color:#64748b;line-height:1.5}
 
-/* ---------- content ---------- */
-.main{flex:1;min-width:0;padding:20px 24px 48px}
-.page-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-.page-head h1{font-size:19px;margin:0}
-.page-head .meta{font-size:12.5px;color:var(--muted);
-  font-family:ui-monospace,Menlo,monospace}
+.sidebar{width:224px;flex:none;background:var(--side);color:var(--side-text);
+  display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:10px;padding:18px 18px 16px;
+  color:#fff;font-weight:650;font-size:15.5px;letter-spacing:-.01em}
+.brand .dot{width:26px;height:26px;border-radius:8px;flex:none;
+  background:linear-gradient(140deg,#34d399,#0ea5e9);display:grid;place-items:center}
+.brand small{display:block;font-weight:400;font-size:11px;color:var(--side-text);letter-spacing:0}
+.sidebar nav{padding:6px 10px;flex:1;overflow-y:auto}
+.sidebar nav a{display:flex;align-items:center;gap:10px;padding:9px 11px;margin-bottom:2px;
+  color:var(--side-text);text-decoration:none;font-size:13.5px;cursor:pointer;
+  border-radius:9px;transition:background .12s,color .12s}
+.sidebar nav a:hover{background:var(--side-2);color:#fff}
+.sidebar nav a.on{background:var(--side-2);color:var(--side-on);font-weight:600}
+.sidebar nav a .ic{width:17px;text-align:center;flex:none;opacity:.85}
+.sidebar nav a .pill{margin-left:auto;background:var(--fail);color:#fff;font-size:10.5px;
+  font-weight:700;min-width:18px;height:18px;border-radius:9px;display:grid;place-items:center;padding:0 5px}
+.sidebar .foot{padding:13px 18px;border-top:1px solid var(--side-2);
+  font-size:11px;color:var(--faint);line-height:1.5}
 
-/* ---------- stat cards ---------- */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:16px}
-.stat{background:var(--card);border:1px solid var(--line);border-radius:8px;
-  padding:15px 17px;border-left:4px solid var(--line)}
-.stat.warn{border-left-color:var(--amber)} .stat.pass{border-left-color:var(--green)}
-.stat.fail{border-left-color:var(--red)}   .stat.info{border-left-color:var(--blue)}
-.stat .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-.stat .lbl{font-size:12.5px;color:var(--muted)}
-.stat .val{font-size:28px;font-weight:700;line-height:1.15;margin-top:4px}
-.stat.warn .val{color:var(--amber)} .stat.pass .val{color:var(--green)}
-.stat.fail .val{color:var(--red)}   .stat.info .val{color:var(--blue)}
-.stat .sub{font-size:11.5px;color:var(--muted);margin-top:5px}
-.stat .bar{height:6px;border-radius:99px;background:var(--line);margin-top:9px;overflow:hidden}
-.stat .bar i{display:block;height:100%;background:var(--amber);transition:width .4s}
+.main{flex:1;min-width:0;padding:18px 24px 56px}
+.page-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.page-head h1{font-size:21px;margin:0;font-weight:650;letter-spacing:-.02em}
+.page-head .meta{color:var(--muted);font-size:12.5px}
+.head-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 
-/* ---------- table panel ---------- */
-.panel{background:var(--card);border:1px solid var(--line);border-radius:8px;
-  margin-top:18px;overflow:hidden}
-.panel .head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
-  padding:13px 17px;border-bottom:1px solid var(--line)}
-.panel .head h2{font-size:14.5px;margin:0;flex:1}
-.bulk{display:flex;gap:8px;flex-wrap:wrap}
-.btn{font:600 12px/1 inherit;padding:7px 11px;border-radius:5px;cursor:pointer;
-  border:1px solid var(--line);background:var(--card);color:var(--muted);white-space:nowrap}
-.btn:hover:not(:disabled){background:var(--bg)}
-.btn:disabled{opacity:.45;cursor:default}
-.btn.audit{border-color:#bae6fd;color:#0369a1}
-.btn.harden{border-color:#fde68a;color:var(--amber)}
-.btn.rollback{border-color:#fecaca;color:var(--red)}
-.btn.log{border-color:var(--line);color:var(--muted)}
+/* server switcher + theme toggle */
+.picker{display:flex;align-items:center;gap:7px;background:var(--surface);
+  border:1px solid var(--line);border-radius:10px;padding:5px 9px;font-size:13px;
+  box-shadow:var(--shadow)}
+.picker select{border:0;background:transparent;color:inherit;font:inherit;
+  max-width:190px;cursor:pointer;padding:1px 2px}
+.picker .tag-local{font-size:10.5px;font-weight:700;letter-spacing:.03em;
+  background:var(--brand-soft);color:var(--brand);padding:2px 6px;border-radius:5px}
+.icon-btn{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+  width:34px;height:34px;display:grid;place-items:center;cursor:pointer;
+  box-shadow:var(--shadow);font-size:15px;line-height:1}
+.icon-btn:hover{border-color:var(--brand)}
 
-table{width:100%;border-collapse:collapse}
-thead th{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);
-  text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);
-  background:#f8fafc;white-space:nowrap;font-weight:600}
-tbody td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+/* ---------------------------------------------------------------- cards */
+.stats{display:grid;gap:13px;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));
+  margin-bottom:16px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:15px 16px;box-shadow:var(--shadow);display:flex;gap:13px;align-items:center}
+.stat .lbl{font-size:11.5px;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.055em;font-weight:650}
+.stat .val{font-size:26px;font-weight:680;letter-spacing:-.025em;margin-top:3px;line-height:1.15}
+.stat .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.stat .grow{min-width:0;flex:1}
+.ring{flex:none}
+.ring .track{stroke:var(--line);}
+.ring .fill{stroke:var(--brand);stroke-linecap:round;
+  transition:stroke-dasharray .5s ease}
+.chip-ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+  font-size:17px;flex:none}
+.chip-ic.pass{background:var(--pass-bg);color:var(--pass)}
+.chip-ic.fail{background:var(--fail-bg);color:var(--fail)}
+.chip-ic.info{background:var(--info-bg);color:var(--info)}
+
+/* ---------------------------------------------------------------- panels */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
+.panel > .head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:13px 16px;border-bottom:1px solid var(--line-soft)}
+.panel > .head h2{font-size:14.5px;margin:0;font-weight:650;letter-spacing:-.01em}
+.panel > .head .note{font-size:12px;color:var(--muted);font-weight:400}
+.panel > .head .bulk{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.panel.urgent{border-color:color-mix(in srgb, var(--fail) 40%, var(--line))}
+.panel.urgent > .head{background:var(--fail-bg)}
+.panel.urgent > .head h2{color:var(--fail)}
+.panel-body{padding:14px 16px}
+.empty{padding:34px 18px;text-align:center;color:var(--muted);font-size:13.5px}
+.empty b{color:var(--text);display:block;margin-bottom:5px;font-size:14.5px}
+.empty code{background:var(--surface-2);border:1px solid var(--line);
+  padding:3px 7px;border-radius:6px;display:inline-block;margin-top:9px}
+
+/* ---------------------------------------------------------------- buttons */
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;
+  padding:5px 11px;font-size:12.5px;font-weight:550;cursor:pointer;
+  transition:border-color .12s,background .12s,color .12s;white-space:nowrap}
+.btn:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#04231a;font-weight:650}
+.btn.primary:hover:not(:disabled){filter:brightness(1.08);color:#04231a}
+.btn.danger{color:var(--fail);border-color:color-mix(in srgb,var(--fail) 35%,var(--line))}
+.btn.danger:hover:not(:disabled){background:var(--fail-bg);border-color:var(--fail);color:var(--fail)}
+.btn.ghost{background:transparent}
+
+/* ---------------------------------------------------------------- table */
+.scroll-x{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+thead th{text-align:left;font-size:11px;letter-spacing:.055em;text-transform:uppercase;
+  color:var(--muted);font-weight:650;padding:9px 12px;background:var(--surface-2);
+  border-bottom:1px solid var(--line-soft);white-space:nowrap}
+tbody td{padding:11px 12px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
 tbody tr:last-child td{border-bottom:0}
-tbody tr:hover{background:#f8fafc}
-td.num{color:var(--muted);font-family:ui-monospace,Menlo,monospace;font-size:12.5px;width:44px}
-td.point{font-weight:500;min-width:230px}
-/* Kalimat dari Hermes. Sengaja dibedakan dari teks lain di tabel: yang ini
-   satu-satunya yang ditulis model, bukan manusia. */
-td.point .ai{display:block;font-weight:400;font-size:11.5px;color:var(--blue);
-  margin-top:4px;line-height:1.45;max-width:340px}
-td.point .ai::before{content:'AI  ';font-weight:700;font-size:9.5px;letter-spacing:.06em}
-.cis{font:11.5px ui-monospace,Menlo,monospace;background:#f1f5f9;color:var(--muted);
-  padding:2px 6px;border-radius:4px;white-space:nowrap}
-.tag{font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:99px;white-space:nowrap}
-.tag.p{background:var(--green-bg);color:var(--green)}
-.tag.f{background:var(--red-bg);color:var(--red)}
-.tag.n{background:var(--amber-bg);color:var(--amber)}
-.tag.x{background:#f1f5f9;color:var(--muted)}
-td.when{font:12px ui-monospace,Menlo,monospace;color:var(--muted);white-space:nowrap}
+tbody tr:hover{background:var(--surface-2)}
+td.num{color:var(--faint);font-size:12px;width:38px}
+td.point{min-width:230px}
+td.point .nm{font-weight:550}
+td.point .ai{display:block;margin-top:4px;font-size:12px;color:var(--info);
+  background:var(--info-bg);border-radius:7px;padding:5px 8px;line-height:1.45}
+td.point .blocked{display:block;margin-top:4px;font-size:12px;color:var(--warn);line-height:1.45}
+.cis{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;color:var(--muted);
+  background:var(--surface-2);border:1px solid var(--line-soft);padding:2px 6px;border-radius:5px;
+  white-space:nowrap}
+.tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;
+  padding:3px 8px;border-radius:20px;white-space:nowrap}
+.tag.p{background:var(--pass-bg);color:var(--pass)}
+.tag.f{background:var(--fail-bg);color:var(--fail)}
+.tag.n{background:var(--warn-bg);color:var(--warn)}
+.tag.x{background:var(--surface-2);color:var(--muted)}
 td.actions{white-space:nowrap}
 td.actions .btn{margin-right:4px}
-/* td.actions is nowrap so the buttons never break, but the result message has
-   to wrap - otherwise a long sentence is cut at the table edge, and the part
-   that says what to do next is exactly the part that disappears. */
-.result{display:block;font-size:11.5px;margin-top:6px;line-height:1.45;
-  white-space:normal;max-width:430px}
-.result.ok{color:var(--green)} .result.bad{color:var(--red)}
-.result.wait{color:var(--amber)} .result.busy{color:var(--muted)}
+.result{display:block;margin-top:5px;font-size:11.5px;line-height:1.45;white-space:normal;
+  max-width:340px}
+.result.ok{color:var(--pass)} .result.bad{color:var(--fail)}
+.result.wait{color:var(--warn)} .result.busy{color:var(--muted)}
 
-/* ---------- settings form ---------- */
-.form{padding:16px 17px;max-width:620px}
-.form .field{margin-bottom:16px}
-.form label{display:block;font-size:12.5px;font-weight:600;margin-bottom:5px}
-.form input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;
-  font:13px/1.4 inherit;background:#fff;color:inherit}
-.form .hint{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.5}
-.form .save{font:600 13px/1 inherit;padding:9px 16px;border-radius:6px;cursor:pointer;
-  border:1px solid var(--amber);background:var(--amber);color:#fff}
-.form .save:disabled{opacity:.5;cursor:default}
-.form .note{font-size:12.5px;margin-top:10px}
-.form .note.ok{color:var(--green)} .form .note.bad{color:var(--red)}
-.footnote{padding:0 17px 16px;color:var(--muted);font-size:12.5px;max-width:66ch;line-height:1.6}
+/* ---------------------------------------------------------------- drift */
+.drift{display:flex;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line-soft);
+  flex-wrap:wrap;align-items:flex-start}
+.drift:last-child{border-bottom:0}
+.drift .who{width:34px;height:34px;border-radius:10px;background:var(--warn-bg);color:var(--warn);
+  display:grid;place-items:center;font-size:16px;flex:none}
+.drift .body{flex:1;min-width:210px}
+.drift .t{font-weight:600;margin-bottom:3px}
+.drift .change{font-size:12.5px;color:var(--muted);line-height:1.6}
+.drift .change b{color:var(--text);font-weight:600}
+.was{background:var(--pass-bg);color:var(--pass);padding:1px 6px;border-radius:5px;
+  font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px}
+.now{background:var(--fail-bg);color:var(--fail);padding:1px 6px;border-radius:5px;
+  font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px}
+.evidence{margin-top:7px;font-size:11.5px;color:var(--faint);line-height:1.6;
+  border-left:2px solid var(--line);padding-left:9px}
+.drift .acts{display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap}
 
-/* ---------- dialogs ---------- */
-dialog{border:0;border-radius:10px;padding:0;max-width:540px;width:calc(100% - 32px);
-  box-shadow:0 18px 50px rgba(15,23,42,.28)}
-dialog::backdrop{background:rgba(15,23,42,.45)}
-.dlg{padding:20px 22px}
-.dlg h3{margin:0 0 4px;font-size:16px}
-.dlg .kid{font:12px ui-monospace,Menlo,monospace;color:var(--muted)}
-.dlg .risk{border-left:4px solid var(--amber);background:var(--amber-bg);
-  padding:11px 13px;border-radius:0 6px 6px 0;margin-top:14px}
-.dlg .risk b{display:block;font-size:11.5px;text-transform:uppercase;
-  letter-spacing:.03em;color:var(--amber);margin-bottom:3px}
-.dlg .risk p{margin:0;font-size:13.5px}
-.dlg .buttons{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
-.dlg .buttons button{font:600 13px/1 inherit;padding:9px 15px;border-radius:6px;cursor:pointer;
-  border:1px solid var(--line);background:var(--card)}
-.dlg .buttons .go{background:var(--amber);border-color:var(--amber);color:#fff}
+/* ---------------------------------------------------------------- ports */
+.ports{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
+.port{display:flex;align-items:center;gap:8px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:10px;padding:7px 9px 7px 11px}
+.port .n{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:650}
+.port .proc{font-size:12px;color:var(--muted)}
+.said{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.6}
 
-.run .steps{margin:12px 0 0;padding:0;list-style:none;font-size:13px}
-.run .steps li{padding:4px 0 4px 20px;position:relative;color:var(--muted)}
-.run .steps li::before{content:'·';position:absolute;left:6px;font-weight:700}
-.run .steps li.on{color:var(--text)}
-.run .steps li.on::before{content:'▸';color:var(--amber)}
-.run .cmd{font:12px ui-monospace,Menlo,monospace;background:var(--sidebar);
-  color:#a7f3d0;padding:9px 11px;border-radius:6px;margin-top:12px;overflow-x:auto;
-  white-space:pre}
-.run .clock{font-size:12px;color:var(--muted);margin-top:10px}
-.run .reply{margin-top:12px;padding:11px 13px;border-radius:6px;font-size:13px;
-  line-height:1.55;border-left:4px solid var(--line);background:var(--bg)}
-.run .reply.ok{border-left-color:var(--green);background:var(--green-bg)}
-.run .reply.bad{border-left-color:var(--red);background:var(--red-bg)}
-.run .reply.wait{border-left-color:var(--amber);background:var(--amber-bg)}
+/* ---------------------------------------------------------------- history */
+.chart{width:100%;height:190px;display:block}
+.chart .bar{fill:var(--brand);opacity:.85}
+.chart .bar:hover{opacity:1}
+.chart .grid{stroke:var(--line-soft)}
+.chart .lbl{fill:var(--faint);font-size:9.5px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);
+  padding:0 16px 14px}
 
-/* ---------- log ---------- */
-.logbox{font:12px/1.65 ui-monospace,Menlo,monospace;padding:14px 17px;
-  max-height:60vh;overflow:auto}
-.logbox div{border-bottom:1px solid var(--line);padding:5px 0;display:flex;gap:10px;flex-wrap:wrap}
-.logbox div:last-child{border-bottom:0}
-.logbox .w{color:var(--muted);flex:none}
-.logbox .s{font-weight:700;flex:none;width:104px}
-.logbox .s.LULUS,.logbox .s.DIKEMBALIKAN{color:var(--green)}
-.logbox .s.GAGAL,.logbox .s.ERROR{color:var(--red)}
-.logbox .s.DITOLAK,.logbox .s.DILEWATI,.logbox .s.PERINGATAN{color:var(--amber)}
-.empty{padding:34px 18px;text-align:center;color:var(--muted)}
-.empty code{background:var(--bg);padding:2px 6px;border-radius:4px;
-  font:12.5px ui-monospace,Menlo,monospace}
-@media (max-width:820px){
-  .sidebar{width:60px}.sidebar .brand span,.sidebar nav a span,.sidebar .foot{display:none}
-  .sidebar nav a{justify-content:center;padding:12px 0}
+/* ---------------------------------------------------------------- logs */
+.logbox{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:12px;line-height:1.75;max-height:65vh;overflow:auto;padding:10px 4px}
+.logbox > div{padding:5px 12px;border-bottom:1px solid var(--line-soft);
+  display:flex;gap:9px;flex-wrap:wrap;align-items:baseline}
+.logbox > div:last-child{border-bottom:0}
+.logbox .w{color:var(--faint);white-space:nowrap}
+.logbox .s{font-weight:700;font-size:10.5px;letter-spacing:.04em;padding:1px 6px;
+  border-radius:5px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.logbox .s.LULUS,.logbox .s.DIKEMBALIKAN,.logbox .s.DISIMPAN{background:var(--pass-bg);color:var(--pass)}
+.logbox .s.GAGAL,.logbox .s.ERROR{background:var(--fail-bg);color:var(--fail)}
+.logbox .s.DITOLAK,.logbox .s.PERINGATAN{background:var(--warn-bg);color:var(--warn)}
+.logbox .msg{color:var(--muted);flex:1;min-width:180px}
+
+/* ---------------------------------------------------------------- forms */
+.form{padding:16px;max-width:660px}
+.form .intro{margin:0 0 18px;color:var(--muted);font-size:13px;line-height:1.65}
+.field{margin-bottom:15px}
+.field label{display:block;font-size:12.5px;font-weight:620;margin-bottom:5px}
+.field label .mark{font-weight:400;color:var(--muted)}
+.field input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;
+  font:inherit;background:var(--surface-2);color:inherit}
+.field input:focus{background:var(--surface)}
+.field .hint{font-size:12px;color:var(--muted);margin-top:5px;line-height:1.55}
+.form-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.note{margin-top:12px;font-size:12.5px;line-height:1.6}
+.note.ok{color:var(--pass)} .note.bad{color:var(--fail)} .note.busy{color:var(--muted)}
+.footnote{padding-top:16px;margin-top:16px;border-top:1px solid var(--line-soft);
+  font-size:11.5px;color:var(--faint);line-height:1.6}
+
+/* ---------------------------------------------------------------- dialogs */
+dialog{border:0;padding:0;background:transparent;max-width:min(560px,92vw)}
+dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
+.dlg{background:var(--surface);color:var(--text);border:1px solid var(--line);
+  border-radius:15px;padding:20px 21px;box-shadow:0 24px 60px -16px rgba(0,0,0,.5)}
+.dlg h3{margin:0;font-size:16.5px;font-weight:650;letter-spacing:-.01em}
+.dlg .kid{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;
+  color:var(--muted);margin-top:5px}
+.dlg p{color:var(--muted);font-size:13.5px;line-height:1.65}
+.risk{background:var(--warn-bg);border-radius:10px;padding:11px 13px;margin-top:13px}
+.risk b{font-size:12px;color:var(--warn);text-transform:uppercase;letter-spacing:.04em}
+.risk p{margin:5px 0 0;color:var(--text);font-size:13px}
+.dlg .buttons{display:flex;gap:8px;justify-content:flex-end;margin-top:17px;flex-wrap:wrap}
+.dlg input{width:100%;margin-top:12px;padding:10px 12px;border:1px solid var(--line);
+  border-radius:9px;font:inherit;background:var(--surface-2);color:inherit}
+.steps{list-style:none;padding:0;margin:14px 0 0;font-size:13px}
+.steps li{padding:5px 0 5px 24px;position:relative;color:var(--muted)}
+.steps li::before{content:"○";position:absolute;left:4px;color:var(--faint)}
+.steps li.on{color:var(--text)}
+.steps li.on::before{content:"◉";color:var(--brand)}
+.cmd{margin-top:13px;background:var(--side);color:#9ff5d3;border-radius:9px;
+  padding:9px 12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;
+  overflow-x:auto;white-space:nowrap}
+.clock{margin-top:9px;font-size:12px;color:var(--muted)}
+.reply{margin-top:13px;border-radius:10px;padding:11px 13px;font-size:13px;line-height:1.6}
+.reply.ok{background:var(--pass-bg);color:var(--pass)}
+.reply.bad{background:var(--fail-bg);color:var(--fail)}
+.reply.wait{background:var(--warn-bg);color:var(--warn)}
+
+/* ---------------------------------------------------------------- narrow
+   Below 900px the sidebar becomes a top bar, and below 760px the control
+   table stops being a table: each row turns into a card with its own labels.
+   A ten-column grid on a phone is unreadable no matter how much it scrolls. */
+@media (max-width: 900px){
+  .wrap{flex-direction:column}
+  .sidebar{width:auto;height:auto;position:static;flex-direction:row;align-items:center;
+    gap:6px;padding:0 10px;overflow-x:auto}
+  .brand{padding:12px 8px 12px 4px;font-size:14px;white-space:nowrap}
+  .brand small{display:none}
+  .sidebar nav{display:flex;padding:6px 0;gap:4px;flex:1}
+  .sidebar nav a{margin:0;white-space:nowrap;padding:8px 10px}
+  .sidebar nav a .ic{display:none}
+  .sidebar .foot{display:none}
+  .main{padding:16px 14px 48px}
+}
+@media (max-width: 760px){
+  thead{display:none}
+  tbody tr{display:block;border:1px solid var(--line);border-radius:11px;
+    padding:11px 13px;margin:11px 12px;background:var(--surface-2)}
+  tbody tr:hover{background:var(--surface-2)}
+  tbody td{display:block;border:0;padding:3px 0}
+  tbody td[data-l]::before{content:attr(data-l);display:block;font-size:10.5px;
+    text-transform:uppercase;letter-spacing:.05em;color:var(--faint);
+    font-weight:650;margin-bottom:2px}
+  td.num{display:none}
+  td.actions{margin-top:9px}
+  td.actions .btn{margin:0 5px 5px 0}
+  .result{max-width:none}
+  .page-head h1{font-size:19px}
+  .head-right{width:100%;margin-left:0}
+  .picker select{max-width:none;flex:1}
+}
+@media (prefers-reduced-motion: reduce){
+  *{transition:none !important; animation:none !important}
 }
 </style>
 </head>
 <body>
+
 <div class="wrap">
   <aside class="sidebar">
     <div class="brand">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2">
-        <path d="M12 2 4 6v6c0 5 3.4 9 8 10 4.6-1 8-5 8-10V6l-8-4z"/></svg>
-      <span>Yoru CIS Agent</span>
+      <span class="dot">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#04231a"
+             stroke-width="2.4" stroke-linejoin="round"><path d="M12 3l8 3.5V12c0 4.8-3.3 8.7-8 10-4.7-1.3-8-5.2-8-10V6.5z"/></svg>
+      </span>
+      <span>Yoru<small>penjaga server</small></span>
     </div>
     <nav id="nav">
-      <a data-h="dashboard" class="on">▦ <span>Dashboard</span></a>
-      <a data-h="checklist">☰ <span>CIS Checklist</span></a>
-      <a data-h="log">◷ <span>Audit Logs</span></a>
-      <a data-h="telegram">✈ <span>Telegram Bot</span></a>
-      <a data-h="llm">✦ <span>LLM Settings</span></a>
-      <a data-h="system">⚙ <span>System Settings</span></a>
+      <a data-h="dashboard" class="on"><span class="ic">▦</span>Dashboard</a>
+      <a data-h="checklist"><span class="ic">☰</span>CIS Checklist</a>
+      <a data-h="riwayat"><span class="ic">▤</span>Riwayat Skor</a>
+      <a data-h="log"><span class="ic">◷</span>Audit Logs</a>
+      <a data-h="telegram"><span class="ic">✈</span>Telegram Bot</a>
+      <a data-h="llm"><span class="ic">✦</span>LLM Settings</a>
+      <a data-h="system"><span class="ic">⚙</span>System Settings</a>
     </nav>
     <div class="foot">Semua tindakan lewat <b>yoructl</b>.<br>Agent tidak punya akses shell.</div>
   </aside>
 
   <main class="main">
     <div class="page-head">
-      <h1 id="pageTitle">Dashboard</h1>
-      <span class="meta" id="meta"></span>
+      <div>
+        <h1 id="pageTitle">Dashboard</h1>
+        <span class="meta" id="meta"></span>
+      </div>
+      <div class="head-right">
+        <div class="picker" id="serverPicker" hidden>
+          <span style="color:var(--muted)">Server</span>
+          <select id="serverSelect" aria-label="Pilih server"></select>
+          <span class="tag-local" id="localTag" hidden>MESIN INI</span>
+        </div>
+        <button class="icon-btn" id="themeBtn" title="Ganti tema" aria-label="Ganti tema">◐</button>
+      </div>
     </div>
     <div id="content"></div>
   </main>
@@ -202,15 +364,15 @@ dialog::backdrop{background:rgba(15,23,42,.45)}
 <dialog id="dlgConfirm"><form method="dialog" class="dlg">
   <h3 id="confirmTitle"></h3>
   <div class="kid" id="confirmKid"></div>
-  <p id="confirmWhy" style="color:var(--muted);font-size:13.5px;margin:10px 0 0"></p>
+  <p id="confirmWhy"></p>
   <div class="risk"><b>Kalau disetujui, ini yang ikut berubah</b><p id="confirmRisk"></p></div>
   <div class="buttons">
-    <button value="batal">Batal</button>
-    <button value="ya" class="go" id="confirmGo">Ya, jalankan</button>
+    <button class="btn" value="batal">Batal</button>
+    <button class="btn primary" value="ya" id="confirmGo">Ya, jalankan</button>
   </div>
 </form></dialog>
 
-<dialog id="dlgRun"><form method="dialog" class="dlg run">
+<dialog id="dlgRun"><form method="dialog" class="dlg">
   <h3 id="runTitle"></h3>
   <div class="kid" id="runKid"></div>
   <ul class="steps" id="runSteps"></ul>
@@ -218,23 +380,20 @@ dialog::backdrop{background:rgba(15,23,42,.45)}
   <div class="clock" id="runClock"></div>
   <div class="reply" id="runReply" hidden></div>
   <div class="buttons">
-    <button value="log" id="runLog" hidden>Lihat log</button>
-    <button value="tutup" class="go" id="runClose">Tutup</button>
+    <button class="btn" value="log" id="runLog" hidden>Lihat log</button>
+    <button class="btn primary" value="tutup" id="runClose">Tutup</button>
   </div>
 </form></dialog>
 
 <dialog id="dlgToken"><form method="dialog" class="dlg">
   <h3>Server ini minta token</h3>
-  <p style="color:var(--muted);font-size:13.5px;margin:10px 0 0">
-    Dashboard dibuka dari komputer lain, jadi tombolnya perlu token. Isinya sama
-    dengan <b>DASHBOARD_TOKEN</b> di <code>/etc/yoru/yoru.conf</code> pada server itu.
-  </p>
-  <input id="tokenInput" type="password" autocomplete="off" placeholder="tempel token di sini"
-         style="width:100%;margin-top:12px;padding:9px 11px;border:1px solid var(--line);
-                border-radius:7px;font:inherit;background:#fff;color:inherit">
+  <p>Dashboard dibuka dari komputer lain, jadi halaman ini perlu token — untuk
+     membaca laporan maupun untuk menekan tombolnya. Isinya sama dengan
+     <b>DASHBOARD_TOKEN</b> di <code>/etc/yoru/yoru.conf</code> pada server itu.</p>
+  <input id="tokenInput" type="password" autocomplete="off" placeholder="tempel token di sini">
   <div class="buttons">
-    <button value="batal">Batal</button>
-    <button value="ya" class="go">Simpan</button>
+    <button class="btn" value="batal">Batal</button>
+    <button class="btn primary" value="ya">Simpan</button>
   </div>
 </form></dialog>
 
@@ -245,25 +404,48 @@ dialog::backdrop{background:rgba(15,23,42,.45)}
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let DATA = null, PAGE = 'dashboard';
 
-// Which control's log to show. It lives here rather than being passed around
-// because render() is the only thing allowed to draw a page, and it needs to
-// know - otherwise every caller has to call render() AND logPage(), which is
-// how one click ended up fetching /api/log twice.
-let LOG_KID = null;
+let DATA = null;            // the report currently on screen
+let PAGE = 'dashboard';
+let LOG_KID = null;         // which control's log to show, null = all of them
+let SERVERS = [];           // every server that has reported to this dashboard
+let PICKED = null;          // the one being looked at; null = whatever is newest
+let LOCAL = null;           // the server name of THIS machine, from /api/server
 
 // Bumped by every render. A page function that awaits a fetch checks it again
 // afterwards and gives up if the number moved: while it was waiting, the owner
 // clicked something else, and the screen is no longer theirs to write to.
-// Without this, a slow settings page would land on top of the page that
-// replaced it - and when its own container was already gone it threw
-// "Cannot set properties of null" into a console nobody has open.
 let RENDER = 0;
 
-// From 127.0.0.1 a token is never requested, so on the server itself this box
-// never appears. Anyone opening it from another machine is asked once, and the
-// answer is gone when the tab closes.
+/* ------------------------------------------------------------------ theme
+   Three states, and "ikut sistem" is one of them - it stores nothing and lets
+   the OS decide, which is what most people actually want. */
+const THEMES = ['sistem', 'terang', 'gelap'];
+const THEME_ICON = {sistem: '◐', terang: '☀', gelap: '☾'};
+const THEME_NAME = {sistem: 'ikut sistem', terang: 'terang', gelap: 'gelap'};
+
+function readTheme() {
+  try { return THEMES.includes(localStorage.getItem('yoru-tema'))
+    ? localStorage.getItem('yoru-tema') : 'sistem'; } catch (e) { return 'sistem'; }
+}
+function applyTheme(t) {
+  if (t === 'sistem') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t === 'gelap' ? 'dark' : 'light');
+  $('themeBtn').textContent = THEME_ICON[t];
+  $('themeBtn').title = `Tema: ${THEME_NAME[t]} — klik untuk ganti`;
+}
+applyTheme(readTheme());
+$('themeBtn').onclick = () => {
+  const next = THEMES[(THEMES.indexOf(readTheme()) + 1) % THEMES.length];
+  try { localStorage.setItem('yoru-tema', next); } catch (e) {}
+  applyTheme(next);
+  if (PAGE === 'riwayat') render();   // the chart is drawn with theme colours
+};
+
+/* ------------------------------------------------------------------ token
+   From 127.0.0.1 a token is never requested, so on the server itself this box
+   never appears. Anyone opening it from another machine is asked once, and the
+   answer is gone when the tab closes. */
 let TOKEN = (() => { try { return sessionStorage.getItem('yoru-token') || ''; } catch (e) { return ''; } })();
 
 function askToken() {
@@ -280,6 +462,8 @@ function askToken() {
   });
 }
 
+// Every call to the API goes through one of these two, so there is exactly one
+// place that knows how to answer a 401/403 by asking for the token and retrying.
 async function post(url, body) {
   const opts = () => ({
     method: 'POST',
@@ -291,9 +475,6 @@ async function post(url, body) {
   if ((r.status === 401 || r.status === 403) && await askToken()) r = await fetch(url, opts());
   return r;
 }
-
-// A GET that carries the token when there is one. The settings endpoint is
-// guarded exactly like the buttons: free from 127.0.0.1, token from anywhere else.
 async function get(url) {
   const opts = () => ({headers: TOKEN ? {Authorization: 'Bearer ' + TOKEN} : {}});
   let r = await fetch(url, opts());
@@ -301,35 +482,66 @@ async function get(url) {
   return r;
 }
 
+/* ------------------------------------------------------------- small stuff */
+const TAG = {LULUS:['LULUS','p'], GAGAL:['GAGAL','f'], SEBAGIAN:['SEBAGIAN','n'],
+             DILEWATI:['DILEWATI','x'], ERROR:['ERROR','x']};
+
+const PAGE_TITLE = {dashboard:'Dashboard', checklist:'CIS Checklist',
+                    riwayat:'Riwayat Skor', log:'Audit Logs',
+                    telegram:'Telegram Bot', llm:'LLM Settings', system:'System Settings'};
+
 const shorten = t => {
   const s = String(t || '');
   if (s.startsWith('TIDAK_ADA')) return 'di luar CIS L1';
   return s.length > 22 ? s.slice(0, 21) + '…' : s;
 };
+const when = t => String(t || '').replace('T', ' ').slice(0, 16);
 
-const TAG = {LULUS:['PASSED','p'], GAGAL:['FAILED','f'], SEBAGIAN:['PARTIAL','n'],
-             DILEWATI:['SKIPPED','x'], ERROR:['ERROR','x']};
+// Is the report on screen from this very machine? Only then do the
+// Audit/Hardening/Rollback buttons mean anything - they run yoructl HERE.
+const isLocal = () => !LOCAL || !DATA || (DATA.server && DATA.server.nama === LOCAL);
 
-const PAGE_TITLE = {dashboard:'Dashboard', checklist:'CIS Checklist', log:'Audit Logs',
-                    telegram:'Telegram Bot', llm:'LLM Settings', system:'System Settings'};
+/* --------------------------------------------------------------- loading */
+async function loadServers() {
+  try {
+    const r = await get('/api/server');
+    if (!r.ok) return;
+    const j = await r.json();
+    SERVERS = j.server || [];
+    LOCAL = j.lokal || null;
+  } catch (e) { /* the picker simply does not appear */ }
+}
 
 async function load() {
-  // Through get(), not a bare fetch. Reading the report is guarded exactly like
-  // pressing a button now - it names every control that FAILS on this server -
-  // so from another machine this is where the token gets asked for, before the
-  // page has drawn anything.
+  const q = PICKED ? `?server=${encodeURIComponent(PICKED)}` : '';
   try {
-    const r = await get('/api/laporan');
+    const r = await get('/api/laporan' + q);
     DATA = (r.status === 404 || !r.ok) ? null : await r.json();
   } catch (e) { DATA = null; }
   render();
 }
 
+function drawPicker() {
+  // One server is the ordinary case - a picker offering a single choice is
+  // furniture, not a control. It appears when there is something to pick.
+  if (SERVERS.length < 2) { $('serverPicker').hidden = true; return; }
+  $('serverPicker').hidden = false;
+  const current = (DATA && DATA.server && DATA.server.nama) || PICKED || '';
+  $('serverSelect').innerHTML = SERVERS.map(s =>
+    `<option value="${esc(s.nama)}" ${s.nama === current ? 'selected' : ''}>${esc(s.nama)}</option>`
+  ).join('');
+  $('localTag').hidden = !(current && current === LOCAL);
+}
+$('serverSelect').onchange = e => { PICKED = e.target.value; load(); };
+
+/* ---------------------------------------------------------------- render */
 function render() {
   const gen = ++RENDER;
   $('pageTitle').textContent = PAGE_TITLE[PAGE];
   document.querySelectorAll('#nav a').forEach(a =>
     a.classList.toggle('on', a.dataset.h === PAGE));
+  drawPicker();
+  markBadge();
 
   if (PAGE === 'log')      return logPage(LOG_KID, gen);
   if (PAGE === 'telegram') return settingsPage(gen, 'Telegram Bot',
@@ -358,144 +570,296 @@ function render() {
       hint:'Bentuk HH:MM. Timer systemd langsung ikut diganti begitu disimpan — pilih jam sepi.'},
      {key:'ZONA_WAKTU', label:'Zona waktu',
       hint:'Contoh: Asia/Jakarta. Dipakai untuk jam penjagaan dan semua jam di laporan.'}]);
+  if (PAGE === 'riwayat')  return historyPage(gen);
 
   if (!DATA) return emptyState();
-  $('meta').textContent = `${DATA.server?.nama || '-'} · ${DATA.server?.os || '-'} · ${(DATA.waktu||'').replace('T',' ').slice(0,16)}`;
-  $('content').innerHTML = (PAGE === 'dashboard' ? statCards() : '') + table();
+
+  const s = DATA.server || {};
+  $('meta').textContent = [s.nama, s.os, s.ip_utama, when(DATA.waktu)].filter(Boolean).join(' · ');
+
+  $('content').innerHTML =
+    (PAGE === 'dashboard' ? statCards() + remoteNotice() + driftPanel() + attentionPanel() : '') +
+    table();
   wireButtons();
+}
+
+// The red number next to "Dashboard" in the menu: how many things are actually
+// waiting on the owner. Shown in the menu because the whole point of this tool
+// is that nobody has to remember to come and look.
+function markBadge() {
+  const waiting = DATA ? (DATA.butuh_keputusan || []).length + (DATA.drift || []).length : 0;
+  const a = document.querySelector('#nav a[data-h="dashboard"]');
+  const old = a.querySelector('.pill');
+  if (old) old.remove();
+  if (waiting > 0) {
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.textContent = waiting;
+    a.appendChild(pill);
+  }
 }
 
 function emptyState() {
   $('meta').textContent = '';
   $('content').innerHTML = `<div class="panel"><div class="empty">
-    <p><b>Belum ada laporan yang masuk.</b></p>
-    <p>Jalankan agent di server yang mau dijaga:</p>
-    <p><code>sudo yoru-agent --siklus perbaikan</code></p></div></div>`;
+    <b>Belum ada laporan yang masuk.</b>
+    Jalankan agent di server yang mau dijaga:
+    <code>sudo -u yoru-agent /opt/yoru/bin/yoru-agent --siklus perbaikan</code></div></div>`;
 }
 
-async function settingsPage(gen, title, intro, fields) {
-  $('meta').textContent = '';
-  // No panel header - the page title above already says it, and saying it
-  // twice makes people think there are two different sections.
-  $('content').innerHTML = `<div class="panel">
-    <div class="form" id="settingsForm"><div class="empty">memuat setelan…</div></div></div>`;
-
-  let config = {};
-  let failure = null;
-  try {
-    const r = await get('/api/konfigurasi');
-    if (!r.ok) throw new Error('refused');
-    config = await r.json();
-  } catch (e) { failure = e; }
-
-  if (gen !== RENDER) return;   // the owner has already gone somewhere else
-  if (failure) {
-    $('settingsForm').innerHTML = `<div class="note bad">Setelan tidak bisa dibaca.
-      Kalau dashboard dibuka dari komputer lain, tekan salah satu tombol dulu supaya
-      diminta token.</div>`;
-    return;
-  }
-
-  $('settingsForm').innerHTML =
-    `<p style="margin:0 0 16px;color:var(--muted);font-size:13px;line-height:1.6">${esc(intro)}</p>` +
-    fields.map(f => {
-      const cur = config[f.key] || {};
-      const val = f.secret ? '' : (cur.nilai || '');
-      const mark = f.secret && cur.terisi ? ' — sudah terisi, kosongkan kalau tidak mau diganti' : '';
-      return `<div class="field">
-        <label for="f_${f.key}">${esc(f.label)}${esc(mark)}</label>
-        <input id="f_${f.key}" ${f.secret ? 'type="password" autocomplete="off"' : 'type="text"'}
-               value="${esc(val)}" placeholder="${f.secret && cur.terisi ? '••••••••••••' : ''}">
-        <div class="hint">${esc(f.hint)}</div>
-      </div>`;
-    }).join('') +
-    `<button class="save" id="saveSettings">Simpan</button>
-     <div class="note" id="settingsNote"></div>` +
-    `<div class="footnote" style="padding:16px 0 0">Berkasnya: <code>${esc(config._berkas || '')}</code>
-      (root:yoru-agent 640). Kunci dashboard dan kunci model sengaja tidak bisa diubah dari sini.</div>`;
-
-  $('saveSettings').onclick = async () => {
-    const btn = $('saveSettings'), note = $('settingsNote');
-    btn.disabled = true; note.className = 'note'; note.textContent = 'menyimpan…';
-    const failed = [];
-    let saved = 0;
-    for (const f of fields) {
-      const el = $('f_' + f.key);
-      const val = el.value.trim();
-      // A secret field left empty means "do not change", not "clear it".
-      // Otherwise opening this page and pressing Save would wipe an existing
-      // token without being asked to.
-      if (f.secret && val === '') continue;
-      const r = await post('/api/konfigurasi', {kunci: f.key, nilai: val});
-      let d; try { d = await r.json(); } catch (e) { d = {}; }
-      if (r.ok && d.berhasil === true) { saved++; if (f.secret) el.value = ''; }
-      else failed.push(`${f.label}: ${d.pesan || d.detail || 'ditolak'}`);
-    }
-    btn.disabled = false;
-    if (failed.length) { note.className = 'note bad'; note.textContent = failed.join(' · '); }
-    else { note.className = 'note ok'; note.textContent = `${saved} setelan tersimpan.`; }
-  };
+/* ------------------------------------------------------------ stat cards */
+function ring(pct) {
+  const r = 20, c = 2 * Math.PI * r;
+  return `<svg class="ring" width="52" height="52" viewBox="0 0 52 52">
+    <circle class="track" cx="26" cy="26" r="${r}" fill="none" stroke-width="5"/>
+    <circle class="fill" cx="26" cy="26" r="${r}" fill="none" stroke-width="5"
+      stroke-dasharray="${(c * pct / 100).toFixed(1)} ${c.toFixed(1)}"
+      transform="rotate(-90 26 26)"/>
+  </svg>`;
 }
 
 function statCards() {
   const s = DATA.ringkasan || {}, total = s.total || 10;
   const waiting = (DATA.butuh_keputusan || []).length + (DATA.drift || []).length;
   return `<div class="stats">
-    <div class="stat warn"><div class="top"><div><div class="lbl">Skor Kepatuhan CIS</div>
-      <div class="val">${s.skor ?? 0}%</div></div><span style="font-size:19px">◔</span></div>
-      <div class="bar"><i style="width:${s.skor ?? 0}%"></i></div></div>
-    <div class="stat pass"><div class="top"><div><div class="lbl">Lolos Audit (Passed)</div>
-      <div class="val">${s.lulus ?? 0} / ${total}</div></div><span style="font-size:19px">✓</span></div>
-      <div class="sub">Sudah sesuai target</div></div>
-    <div class="stat fail"><div class="top"><div><div class="lbl">Perlu Hardening (Failed)</div>
-      <div class="val">${s.gagal ?? 0} / ${total}</div></div><span style="font-size:19px">⚠</span></div>
-      <div class="sub">${waiting ? waiting + ' butuh persetujuan kamu' : 'Tidak ada yang menunggu'}</div></div>
-    <div class="stat info"><div class="top"><div><div class="lbl">Siklus</div>
-      <div class="val" style="font-size:22px">${esc(DATA.siklus || '-')}</div></div>
-      <span style="font-size:19px">◷</span></div>
-      <div class="sub">Human-in-the-Loop aktif</div></div>
+    <div class="stat">${ring(s.skor ?? 0)}
+      <div class="grow"><div class="lbl">Skor kepatuhan</div>
+        <div class="val">${s.skor ?? 0}<span style="font-size:15px;color:var(--muted)">/100</span></div>
+        <div class="sub">${esc(DATA.siklus || '-')}</div></div></div>
+    <div class="stat"><div class="chip-ic pass">✓</div>
+      <div class="grow"><div class="lbl">Sudah aman</div>
+        <div class="val">${s.lulus ?? 0} <span style="font-size:15px;color:var(--muted)">/ ${total}</span></div>
+        <div class="sub">sesuai target katalog</div></div></div>
+    <div class="stat"><div class="chip-ic fail">!</div>
+      <div class="grow"><div class="lbl">Perlu hardening</div>
+        <div class="val">${s.gagal ?? 0} <span style="font-size:15px;color:var(--muted)">/ ${total}</span></div>
+        <div class="sub">${s.sebagian ? s.sebagian + ' sebagian · ' : ''}${s.dilewati ?? 0} dilewati</div></div></div>
+    <div class="stat"><div class="chip-ic ${waiting ? 'fail' : 'info'}">${waiting ? '◔' : '✓'}</div>
+      <div class="grow"><div class="lbl">Nunggu jawabanmu</div>
+        <div class="val">${waiting}</div>
+        <div class="sub">${waiting ? 'Yoru berhenti sampai kamu jawab' : 'tidak ada yang tertahan'}</div></div></div>
   </div>`;
 }
 
+// Said plainly rather than by greying buttons out with no explanation: this
+// report came from somewhere else, so the buttons that run yoructl here cannot
+// touch it. Approving and vouching for ports still work, because those are
+// written down and collected by the agent on that server.
+function remoteNotice() {
+  if (isLocal()) return '';
+  return `<div class="panel"><div class="panel-body" style="display:flex;gap:11px;align-items:flex-start">
+    <div class="chip-ic info">⇄</div>
+    <div><b>Laporan ini datang dari ${esc((DATA.server || {}).nama || 'server lain')}</b>
+    <div style="color:var(--muted);font-size:13px;margin-top:3px;line-height:1.6">
+      Tombol Audit, Hardening dan Rollback menjalankan <code>yoructl</code> di mesin tempat
+      dashboard ini dipasang, jadi untuk server lain tombolnya dimatikan — kalau tidak, menekannya
+      akan mengeraskan server yang salah. Yang tetap jalan: menyetujui kontrol dan menjawab port.
+      Dua-duanya dicatat di sini lalu diambil agent di server itu pada siklus berikutnya.
+    </div></div></div></div>`;
+}
+
+/* ----------------------------------------------------------------- drift
+   The heart of the watch cycle, and until now it was computed, stored, sent to
+   Telegram - and never shown on the one screen built for looking at it. */
+function driftPanel() {
+  const drift = DATA.drift || [];
+  if (!drift.length) return '';
+  const rows = drift.map(d => {
+    const bits = [];
+    if (d.siapa)        bits.push(`diubah oleh <b>${esc(d.siapa)}</b>`);
+    if (d.kapan_diubah) bits.push(`pada ${esc(when(d.kapan_diubah))}`);
+    if (d.perintah)     bits.push(`lewat <code>${esc(d.perintah)}</code>`);
+    const evidence = bits.length
+      ? `<div class="evidence">${bits.join(' · ')}${
+           d.sumber_bukti ? ` <span style="opacity:.75">(sumber: ${esc(d.sumber_bukti)})</span>` : ''}</div>`
+      : `<div class="evidence">Tidak ada jejak siapa yang mengubah — auditd (K08) belum aktif
+         di server ini, jadi memang tidak ada catatannya. Yoru tidak menebak.</div>`;
+    return `<div class="drift" data-kid="${esc(d.id)}">
+      <div class="who">⚠</div>
+      <div class="body">
+        <div class="t">${esc(d.nama)} <span class="cis">${esc(d.id)}</span></div>
+        <div class="change">Dulu <span class="was">${esc(d.berubah_dari)}</span>
+          sekarang <span class="now">${esc(d.berubah_jadi)}</span></div>
+        ${evidence}
+        <span class="result" data-slot></span>
+      </div>
+      <div class="acts">
+        <button class="btn" data-drift="sah">Ini memang saya</button>
+        <button class="btn danger" data-drift="kembalikan">Kembalikan</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="panel urgent">
+    <div class="head"><h2>Ada ${drift.length} setelan yang berubah sejak pemeriksaan terakhir</h2>
+      <span class="note">jawabanmu diambil agent di server itu</span></div>
+    ${rows}</div>`;
+}
+
+/* ----------------------------------------------------------------- ports
+   K05 refuses to switch the firewall on while any open port is unanswered, and
+   the list of those ports rides along in prasyarat_gagal. There was no way to
+   answer from this page at all: POST /api/port existed and nothing called it,
+   so the only route was editing PORT_DIIZINKAN by hand. */
+function pendingPorts() {
+  const k05 = (DATA.kontrol || []).find(k => k.id === 'K05');
+  const raw = (k05 && (k05.prasyarat_gagal || [])[0]) || '';
+  const out = [];
+  // Shape written by yoructl: "port terbuka belum dijawab pemilik: 8888(python3) 3306(mariadbd)"
+  for (const m of raw.matchAll(/(\d{1,5})\(([^)]*)\)/g)) out.push({port: m[1], proc: m[2]});
+  return {ports: out, catatan: (k05 && k05.catatan_ai) || ''};
+}
+
+function attentionPanel() {
+  const {ports, catatan} = pendingPorts();
+  const asking = DATA.butuh_keputusan || [];
+  if (!ports.length && !asking.length) return '';
+
+  let body = '';
+  if (ports.length) {
+    body += `<div class="panel-body" style="border-bottom:${asking.length ? '1px solid var(--line-soft)' : '0'}">
+      <b>Port ini terbuka ke internet dan belum kamu jawab</b>
+      <div style="color:var(--muted);font-size:13px;margin-top:4px;line-height:1.6">
+        Selama masih ada yang belum dijawab, K05 menolak menyalakan firewall — Yoru tidak
+        pernah menebak port mana yang boleh terbuka. Port SSH tidak ikut ditanya, itu dicari sendiri.</div>
+      ${catatan ? `<div class="said">${esc(catatan)}</div>` : ''}
+      <div class="ports">${ports.map(p => `
+        <div class="port" data-port="${esc(p.port)}">
+          <span><span class="n">${esc(p.port)}</span>
+            <span class="proc">${esc(p.proc || 'proses tak dikenal')}</span></span>
+          <button class="btn" data-portok="${esc(p.port)}">Punya saya</button>
+        </div>`).join('')}</div>
+      <span class="result" data-slot-port></span></div>`;
+  }
+  if (asking.length) {
+    const byId = {};
+    (DATA.kontrol || []).forEach(k => byId[k.id] = k);
+    body += `<div class="panel-body">
+      <b>${asking.length} kontrol menunggu persetujuanmu</b>
+      <div style="color:var(--muted);font-size:13px;margin-top:4px;line-height:1.6">
+        Yang berisiko tidak pernah dijalankan Yoru sendiri. Jawabanmu dicatat di sini lalu
+        dikerjakan agent di server itu pada siklus berikutnya${isLocal()
+          ? ' — atau tekan Hardening di tabel bawah kalau mau sekarang juga' : ''}.</div>
+      <div style="margin-top:11px">${asking.map(kid => {
+        const k = byId[kid] || {id: kid, nama: kid};
+        return `<div class="drift" data-kid="${esc(kid)}" style="padding-left:0;padding-right:0">
+          <div class="body">
+            <div class="t">${esc(k.nama || kid)} <span class="cis">${esc(kid)}</span></div>
+            <div class="change">${esc(k.kenapa || '')}</div>
+            <span class="result" data-slot></span>
+          </div>
+          <div class="acts">
+            <button class="btn primary" data-decide="setuju">Setujui</button>
+            <button class="btn ghost" data-decide="tolak">Jangan</button>
+          </div></div>`;
+      }).join('')}</div></div>`;
+  }
+  return `<div class="panel"><div class="head"><h2>Butuh jawaban kamu</h2>
+    <span class="note">Yoru berhenti di sini sampai dijawab</span></div>${body}</div>`;
+}
+
+/* ----------------------------------------------------------------- table */
 function table() {
   const needsApproval = new Set(DATA.butuh_keputusan || []);
+  const local = isLocal();
   const rows = (DATA.kontrol || []).map((k, i) => {
     const [label, cls] = TAG[k.status] || ['?', 'x'];
     const blocked = (k.prasyarat_gagal || []).length > 0;
+    const off = !local ? ' disabled' : '';
     return `<tr data-kid="${esc(k.id)}">
       <td class="num">#${i + 1}</td>
-      <td class="point" title="${esc(k.kenapa)}">${esc(k.nama)}
-        ${k.catatan_ai ? `<span class="ai">${esc(k.catatan_ai)}</span>` : ''}</td>
-      <td><span class="cis" title="${esc(k.kode_cis || '')}">${esc(shorten(k.kode_cis || k.id))}</span></td>
-      <td><span class="tag ${cls}">${label}</span></td>
-      <td class="when">${esc((DATA.waktu || '').replace('T', ' ').slice(0, 16))}</td>
-      <td class="actions">
-        <button class="btn audit" data-a="periksa">Audit</button>
-        <button class="btn harden" data-a="terapkan" ${blocked ? 'disabled title="prasyarat belum terpenuhi"' : ''}
+      <td class="point" data-l="Poin CIS"><span class="nm">${esc(k.nama)}</span>
+        ${k.catatan_ai ? `<span class="ai">${esc(k.catatan_ai)}</span>` : ''}
+        ${blocked ? `<span class="blocked">${esc(k.prasyarat_gagal[0])}</span>` : ''}</td>
+      <td data-l="Kode CIS"><span class="cis" title="${esc(k.kode_cis || '')}">${esc(shorten(k.kode_cis || k.id))}</span></td>
+      <td data-l="Status"><span class="tag ${cls}">${label}</span></td>
+      <td data-l="Terbaca" style="color:var(--muted);font-size:12.5px">${esc(k.nilai_terbaca || '-')}</td>
+      <td class="actions" data-l="Aksi">
+        <button class="btn" data-a="periksa"${off}>Audit</button>
+        <button class="btn" data-a="terapkan"${off || (blocked ? ' disabled' : '')}
+          ${blocked ? 'title="prasyarat belum terpenuhi"' : ''}
           data-approval="${needsApproval.has(k.id) ? 1 : 0}">Hardening</button>
-        <button class="btn rollback" data-a="kembalikan">Rollback</button>
+        <button class="btn danger" data-a="kembalikan"${off}>Rollback</button>
+        <button class="btn ghost" data-a="log">Log</button>
         <span class="result" data-slot></span>
       </td>
-      <td><button class="btn log" data-a="log">Log / AI</button></td>
     </tr>`;
   }).join('');
 
   return `<div class="panel">
     <div class="head">
-      <h2>Daftar 10 Poin CIS Benchmark Ubuntu 24.04</h2>
+      <h2>Sepuluh kontrol CIS Ubuntu 24.04</h2>
+      <span class="note">${local ? 'tombol menjalankan yoructl di mesin ini'
+                                 : 'tombol dimatikan — laporan dari server lain'}</span>
       <div class="bulk">
-        <button class="btn audit" data-bulk="periksa">Audit Semua</button>
-        <button class="btn harden" data-bulk="terapkan">Hardening Semua</button>
-        <button class="btn rollback" data-bulk="kembalikan">Rollback Semua</button>
+        <button class="btn" data-bulk="periksa"${local ? '' : ' disabled'}>Audit semua</button>
+        <button class="btn" data-bulk="terapkan"${local ? '' : ' disabled'}>Hardening semua</button>
+        <button class="btn danger" data-bulk="kembalikan"${local ? '' : ' disabled'}>Rollback semua</button>
       </div>
     </div>
-    <div style="overflow-x:auto"><table>
-      <thead><tr><th>No</th><th>Poin CIS Hardening</th><th>Kode CIS</th><th>Status</th>
-        <th>Terakhir Dijalankan</th><th>Aksi Eksekusi</th><th>Log &amp; AI</th></tr></thead>
+    <div class="scroll-x"><table>
+      <thead><tr><th>No</th><th>Poin CIS hardening</th><th>Kode CIS</th><th>Status</th>
+        <th>Nilai terbaca</th><th>Aksi</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div></div>`;
 }
 
+/* --------------------------------------------------------------- history */
+async function historyPage(gen) {
+  $('meta').textContent = PICKED || (DATA && DATA.server && DATA.server.nama) || '';
+  $('content').innerHTML = `<div class="panel"><div class="empty">memuat riwayat…</div></div>`;
+  const q = PICKED ? `?server=${encodeURIComponent(PICKED)}&batas=60` : '?batas=60';
+  let rows = [];
+  try {
+    const r = await get('/api/riwayat' + q);
+    if (r.ok) rows = (await r.json()).riwayat || [];
+  } catch (e) { /* drawn as empty below */ }
+  if (gen !== RENDER) return;
+
+  if (!rows.length) {
+    $('content').innerHTML = `<div class="panel"><div class="empty">
+      <b>Belum ada riwayat.</b>Riwayat terisi sendiri setiap siklus penjagaan berjalan.</div></div>`;
+    return;
+  }
+
+  // Oldest on the left, so the line reads the way time does.
+  const data = rows.slice().reverse();
+  const W = 780, H = 170, pad = 26, n = data.length;
+  const bw = Math.max(3, Math.min(34, (W - pad * 2) / n - 5));
+  const step = (W - pad * 2) / n;
+  const bars = data.map((r, i) => {
+    const h = Math.max(2, (r.skor / 100) * (H - pad - 12));
+    const x = pad + i * step + (step - bw) / 2;
+    return `<rect class="bar" x="${x.toFixed(1)}" y="${(H - pad - h).toFixed(1)}"
+      width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2"><title>${esc(when(r.waktu))} — skor ${r.skor} (${esc(r.siklus)})</title></rect>`;
+  }).join('');
+  const gridlines = [0, 25, 50, 75, 100].map(v => {
+    const y = H - pad - (v / 100) * (H - pad - 12);
+    return `<line class="grid" x1="${pad}" y1="${y.toFixed(1)}" x2="${W - 6}" y2="${y.toFixed(1)}"/>
+            <text class="lbl" x="2" y="${(y + 3).toFixed(1)}">${v}</text>`;
+  }).join('');
+
+  const first = data[0], last = data[n - 1];
+  const delta = last.skor - first.skor;
+  const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '=';
+  const colour = delta > 0 ? 'var(--pass)' : delta < 0 ? 'var(--fail)' : 'var(--muted)';
+
+  $('content').innerHTML = `<div class="panel">
+    <div class="head"><h2>Skor ${n} laporan terakhir</h2>
+      <span class="note">arahkan kursor ke batang untuk melihat tanggalnya</span></div>
+    <div class="panel-body">
+      <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+           aria-label="Grafik batang skor kepatuhan dari waktu ke waktu">
+        ${gridlines}${bars}
+      </svg>
+    </div>
+    <div class="legend">
+      <span>Paling lama: <b>${esc(when(first.waktu))}</b> — skor ${first.skor}</span>
+      <span>Terbaru: <b>${esc(when(last.waktu))}</b> — skor ${last.skor}</span>
+      <span style="color:${colour}">${arrow} ${delta > 0 ? '+' : ''}${delta} poin</span>
+    </div></div>`;
+}
+
+/* ------------------------------------------------------------------ logs */
 async function logPage(kid, gen) {
   $('meta').textContent = kid ? kid : 'semua kontrol';
   const q = kid ? `?kontrol=${encodeURIComponent(kid)}` : '';
@@ -505,20 +869,151 @@ async function logPage(kid, gen) {
     d = r.ok ? await r.json() : {baris: [], pesan: 'perlu token untuk membaca jejak tindakan'};
   } catch (e) { d = {baris: []}; }
   if (gen !== undefined && gen !== RENDER) return;
+
   const body = (d.baris || []).length
-    ? d.baris.map(b => `<div><span class="w">${esc((b.waktu||'').replace('T',' ').slice(0,19))}</span>
+    ? d.baris.map(b => `<div>
+        <span class="w">${esc((b.waktu||'').replace('T',' ').slice(0,19))}</span>
         <span class="s ${esc(b.status)}">${esc(b.status)}</span>
         <span class="w">${esc(b.id)} ${esc(b.tindakan)}</span>
-        <span>${esc(b.nilai ?? '')}${b.pesan ? ' — ' + esc(b.pesan) : ''}</span></div>`).join('')
-    : `<div class="empty">Belum ada catatan di /var/log/yoru/. ${esc(d.pesan || '')}</div>`;
+        <span class="msg">${esc(b.nilai ?? '')}${b.pesan ? ' — ' + esc(b.pesan) : ''}</span></div>`).join('')
+    : `<div class="empty"><b>Belum ada catatan.</b>${esc(d.pesan || 'Jejak tindakan ditulis ke /var/log/yoru/ setiap kali sebuah kontrol dijalankan.')}</div>`;
+
   $('content').innerHTML = `<div class="panel">
     <div class="head"><h2>Jejak tindakan${kid ? ' — ' + esc(kid) : ''}</h2>
-    <div class="bulk">${kid ? '<button class="btn log" id="allLogs">Lihat semua</button>' : ''}</div></div>
+      <span class="note">milik root · agent tidak bisa menyuntingnya</span>
+      <div class="bulk">${kid ? '<button class="btn" id="allLogs">Lihat semua</button>' : ''}</div></div>
     <div class="logbox">${body}</div></div>`;
   const all = $('allLogs'); if (all) all.onclick = () => { LOG_KID = null; render(); };
 }
 
+/* -------------------------------------------------------------- settings */
+async function settingsPage(gen, title, intro, fields) {
+  $('meta').textContent = '';
+  $('content').innerHTML = `<div class="panel">
+    <div class="form" id="settingsForm"><div class="empty">memuat setelan…</div></div></div>`;
+
+  let config = {}, failure = null;
+  try {
+    const r = await get('/api/konfigurasi');
+    if (!r.ok) throw new Error('refused');
+    config = await r.json();
+  } catch (e) { failure = e; }
+
+  if (gen !== RENDER) return;   // the owner has already gone somewhere else
+  if (failure) {
+    $('settingsForm').innerHTML = `<div class="note bad">Setelan tidak bisa dibaca.
+      Kalau dashboard dibuka dari komputer lain, muat ulang halaman ini supaya
+      tokennya diminta.</div>`;
+    return;
+  }
+
+  $('settingsForm').innerHTML =
+    `<p class="intro">${esc(intro)}</p>` +
+    fields.map(f => {
+      const cur = config[f.key] || {};
+      const val = f.secret ? '' : (cur.nilai || '');
+      const mark = f.secret && cur.terisi ? ' — sudah terisi, kosongkan kalau tidak mau diganti' : '';
+      return `<div class="field">
+        <label for="f_${f.key}">${esc(f.label)}<span class="mark">${esc(mark)}</span></label>
+        <input id="f_${f.key}" ${f.secret ? 'type="password" autocomplete="off"' : 'type="text"'}
+               value="${esc(val)}" placeholder="${f.secret && cur.terisi ? '••••••••••••' : ''}">
+        <div class="hint">${esc(f.hint)}</div>
+      </div>`;
+    }).join('') +
+    `<div class="form-actions"><button class="btn primary" id="saveSettings">Simpan</button></div>
+     <div class="note" id="settingsNote"></div>
+     <div class="footnote">Berkasnya: <code>${esc(config._berkas || '')}</code>
+      (root:yoru-agent 640). Kunci dashboard dan kunci model sengaja tidak bisa diubah dari sini.</div>`;
+
+  $('saveSettings').onclick = async () => {
+    const btn = $('saveSettings'), note = $('settingsNote');
+    btn.disabled = true; note.className = 'note busy'; note.textContent = 'menyimpan…';
+    const failed = [];
+    let saved = 0, said = '';
+    for (const f of fields) {
+      const el = $('f_' + f.key);
+      const val = el.value.trim();
+      // A secret field left empty means "do not change", not "clear it".
+      // Otherwise opening this page and pressing Save would wipe an existing
+      // token without being asked to.
+      if (f.secret && val === '') continue;
+      const r = await post('/api/konfigurasi', {kunci: f.key, nilai: val});
+      let d; try { d = await r.json(); } catch (e) { d = {}; }
+      if (r.ok && d.berhasil === true) {
+        saved++;
+        if (f.secret) el.value = '';
+        // yoructl answers with what it actually did - the schedule keys change
+        // a systemd timer as well as the file, and that is worth repeating back.
+        if (d.pesan && !/^tersimpan di /.test(d.pesan)) said = d.pesan;
+      } else failed.push(`${f.label}: ${d.pesan || d.detail || 'ditolak'}`);
+    }
+    btn.disabled = false;
+    if (failed.length) { note.className = 'note bad'; note.textContent = failed.join(' · '); }
+    else { note.className = 'note ok';
+           note.textContent = `${saved} setelan tersimpan.${said ? ' ' + said + '.' : ''}`; }
+  };
+}
+
+/* --------------------------------------------------------------- actions */
+function slotSay(slot, cls, text) {
+  if (!slot) return;
+  slot.className = 'result ' + cls;
+  slot.textContent = text;
+}
+
+// Answers that are STORED, not executed here. They are collected by the agent
+// on the server they belong to, which is why they work for every server in the
+// picker and not just this machine.
+async function decide(kontrol, nilai, slot, buttons) {
+  const server = (DATA.server || {}).nama;
+  if (!server) return;
+  buttons.forEach(b => b.disabled = true);
+  slotSay(slot, 'busy', 'menyimpan…');
+  try {
+    const r = await post('/api/keputusan', {server, kontrol, nilai});
+    const d = await r.json();
+    if (r.ok && d.ok) {
+      slotSay(slot, 'ok', nilai === 'kembalikan'
+        ? 'dicatat — agent akan mengembalikannya pada siklus berikutnya'
+        : nilai === 'sah'
+        ? 'dicatat sebagai perubahan yang kamu sengaja'
+        : nilai === 'setuju'
+        ? 'disetujui — agent akan menerapkannya pada siklus berikutnya'
+        : 'dicatat — kontrol ini tidak akan diterapkan');
+    } else {
+      slotSay(slot, 'bad', d.detail || `gagal disimpan (HTTP ${r.status})`);
+      buttons.forEach(b => b.disabled = false);
+    }
+  } catch (e) {
+    slotSay(slot, 'bad', 'API tidak bisa dihubungi');
+    buttons.forEach(b => b.disabled = false);
+  }
+}
+
+async function vouchPort(port, btn, slot) {
+  const server = (DATA.server || {}).nama;
+  if (!server) return;
+  btn.disabled = true;
+  slotSay(slot, 'busy', `menyimpan port ${port}…`);
+  try {
+    const r = await post('/api/port', {server, port: [Number(port)], keterangan: 'dijawab lewat dashboard'});
+    const d = await r.json();
+    if (r.ok && d.ok) {
+      btn.textContent = 'sudah dicatat';
+      slotSay(slot, 'ok', `Port ${port} dicatat sebagai milikmu. Begitu semua port terjawab, `
+        + `K05 boleh menyalakan firewall.`);
+    } else {
+      slotSay(slot, 'bad', d.detail || `gagal disimpan (HTTP ${r.status})`);
+      btn.disabled = false;
+    }
+  } catch (e) {
+    slotSay(slot, 'bad', 'API tidak bisa dihubungi');
+    btn.disabled = false;
+  }
+}
+
 function wireButtons() {
+  // control table
   document.querySelectorAll('tbody button[data-a]').forEach(b => {
     b.onclick = () => {
       const tr = b.closest('tr'), kid = tr.dataset.kid;
@@ -527,6 +1022,7 @@ function wireButtons() {
       run(kid, b.dataset.a, b);
     };
   });
+  // bulk
   document.querySelectorAll('button[data-bulk]').forEach(b => {
     b.onclick = async () => {
       const action = b.dataset.bulk;
@@ -537,9 +1033,7 @@ function wireButtons() {
         const btn = tr.querySelector(`button[data-a="${action}"]`);
         if (!btn || btn.disabled) continue;
         if (action === 'terapkan' && btn.dataset.approval === '1') {
-          const slot = tr.querySelector('[data-slot]');
-          slot.className = 'result busy';
-          slot.textContent = 'dilewati — butuh persetujuan';
+          slotSay(tr.querySelector('[data-slot]'), 'busy', 'dilewati — butuh persetujuan');
           continue;
         }
         await run(tr.dataset.kid, action, btn, true);
@@ -547,6 +1041,21 @@ function wireButtons() {
       b.disabled = false;
       load();
     };
+  });
+  // drift answers and approval queue
+  document.querySelectorAll('[data-drift], [data-decide]').forEach(b => {
+    b.onclick = () => {
+      const box = b.closest('.drift');
+      const kid = box.dataset.kid;
+      const nilai = b.dataset.drift || b.dataset.decide;
+      decide(kid, nilai, box.querySelector('[data-slot]'),
+             [...box.querySelectorAll('button')]);
+    };
+  });
+  // port vouching
+  document.querySelectorAll('[data-portok]').forEach(b => {
+    b.onclick = () => vouchPort(b.dataset.portok, b,
+                                document.querySelector('[data-slot-port]'));
   });
 }
 
@@ -565,7 +1074,7 @@ function confirmApply(kid, btn) {
 // is the real sequence, written in plain words.
 const STEPS = {
   periksa: ['Membaca keadaan yang benar-benar berlaku sekarang',
-            'Bukan isi berkas konfigurasi - itu belum tentu yang aktif',
+            'Bukan isi berkas konfigurasi — itu belum tentu yang aktif',
             'Membandingkan dengan nilai target di katalog'],
   terapkan: ['Merekam keadaan asal ke /var/backups/yoru',
              'Menulis setelan sebagai berkas milik Yoru sendiri',
@@ -577,7 +1086,6 @@ const STEPS = {
                'Membaca ulang keadaan efektif']
 };
 const ACTION_LABEL = {periksa: 'Audit', terapkan: 'Hardening', kembalikan: 'Rollback'};
-
 const statusLabel = s => s === 'DITOLAK' ? 'BELUM BISA'
                        : s === 'MENUNGGU' ? 'MASIH JALAN' : s;
 
@@ -626,7 +1134,7 @@ function closeRun(kid, d) {
 async function run(kid, action, btn, quiet) {
   const tr = btn.closest('tr'), slot = tr.querySelector('[data-slot]');
   tr.querySelectorAll('button').forEach(b => b.disabled = true);
-  slot.className = 'result busy'; slot.textContent = 'menjalankan…';
+  slotSay(slot, 'busy', 'menjalankan…');
   if (!quiet) openRun(kid, action);
   let d;
   try {
@@ -642,18 +1150,19 @@ async function run(kid, action, btn, quiet) {
   // people stop reading the message.
   const ok = d.berhasil === true;
   const waiting = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
-  slot.className = 'result ' + (ok ? 'ok' : waiting ? 'wait' : 'bad');
-  slot.textContent = `${statusLabel(d.status)}${d.nilai ? ' — ' + d.nilai : ''}${d.pesan ? ' — ' + d.pesan : ''}`;
+  slotSay(slot, ok ? 'ok' : waiting ? 'wait' : 'bad',
+    `${statusLabel(d.status)}${d.nilai ? ' — ' + d.nilai : ''}${d.pesan ? ' — ' + d.pesan : ''}`);
   tr.querySelectorAll('button').forEach(b => {
     if (!(b.dataset.a === 'terapkan' && b.title)) b.disabled = false;
   });
   // Including after Audit. The cards used to refresh only after apply or
-  // rollback, so a row that had just passed its audit never moved the "Lolos
-  // Audit" number - and the button looked like it had done nothing.
+  // rollback, so a row that had just passed its audit never moved the score -
+  // and the button looked like it had done nothing.
   if (ok && !quiet) setTimeout(load, 600);
   return d;
 }
 
+/* ------------------------------------------------------------------ boot */
 $('nav').onclick = e => {
   const a = e.target.closest('a[data-h]'); if (!a) return;
   PAGE = a.dataset.h;
@@ -661,8 +1170,13 @@ $('nav').onclick = e => {
   render();
 };
 
-load();
-setInterval(() => { if (PAGE === 'dashboard' || PAGE === 'checklist') load(); }, 30000);
+(async () => { await loadServers(); await load(); })();
+
+// Only the pages that show live state refresh themselves. Reloading a settings
+// form under someone's fingers would throw away what they were typing.
+setInterval(() => {
+  if (PAGE === 'dashboard' || PAGE === 'checklist') load();
+}, 30000);
 </script>
 </body>
 </html>

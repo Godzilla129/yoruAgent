@@ -251,12 +251,26 @@ async def latest_report(req: Request, server: Optional[str] = None,
 
 @app.get("/api/server")
 async def server_list(req: Request, authorization: Optional[str] = Header(None)):
+    """Every server that has ever reported here, and which one is this machine.
+
+    The "lokal" flag is what lets the page tell two very different things apart.
+    The Audit/Hardening/Rollback buttons run yoructl on THIS machine, so they
+    only ever mean anything for this machine's own row. Approving a control or
+    vouching for a port is different: that is written down and collected by the
+    agent on whichever server it belongs to, so it works for every row here.
+
+    Without the flag the page would have to guess, and guessing wrong means
+    offering someone a Hardening button that quietly hardens the wrong server.
+    """
     require_access(req, authorization)
+    local = local_server_name()
     with closing(db()) as conn:
         rows = conn.execute(
             "SELECT server, MAX(diterima) d, COUNT(*) n FROM laporan GROUP BY server ORDER BY d DESC"
         ).fetchall()
-    return {"server": [{"nama": r["server"], "laporan": r["n"], "terakhir": r["d"]} for r in rows]}
+    return {"server": [{"nama": r["server"], "laporan": r["n"], "terakhir": r["d"],
+                        "lokal": r["server"] == local} for r in rows],
+            "lokal": local}
 
 
 @app.get("/api/riwayat")

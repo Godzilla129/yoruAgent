@@ -7,3 +7,4 @@ web/yoru.db
 web/yoru.db-*
 __pycache__/
 Claude outputs/
+web/yoru-demo.conf

@@ -32,9 +32,31 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 DB_FILE = HERE / "yoru.db"
 
+# The dashboard asks the config file which server it is standing on, so that it
+# can tell its own reports (where the buttons mean something) from another
+# server's (where they must not fire). With no config file it falls back to this
+# machine's hostname, which never matches the samples - so in the demo every
+# button came out disabled and there was nothing to rehearse with.
+#
+# YORU_KONF is an env hook api.py already honours, so this needs no special
+# case anywhere in the real code.
+DEMO_CONF = HERE / "yoru-demo.conf"
+DEMO_CONF_BODY = """# Dibuat demo.py. Bukan konfigurasi sungguhan - yang asli ada di
+# /etc/yoru/yoru.conf pada server yang dijaga.
+NAMA_SERVER="yoru-a"
+PORT_DIIZINKAN="80 443"
+LEWATI_KONTROL=""
+JAM_PENJAGAAN="03:17"
+ZONA_WAKTU="Asia/Jakarta"
+HERMES_URL=""
+AI_MODEL=""
+TELEGRAM_TOKEN=""
+TELEGRAM_CHAT_ID=""
+"""
+
 SAMPLES = [
-    ("report-fix.json", "siklus perbaikan (server sakit, skor 10)"),
-    ("report-watch.json", "siklus penjagaan (server sehat, ada satu perubahan)"),
+    ("report-fix.json", "yoru-b - siklus perbaikan (sakit, skor 10, ada port belum dijawab)"),
+    ("report-watch.json", "yoru-a - siklus penjagaan (sehat, skor 90, ada satu perubahan)"),
 ]
 
 
@@ -73,9 +95,39 @@ def load_samples():
                  json.dumps(report, ensure_ascii=False), time.time()),
             )
             print(f"  ok   {label}")
+        seed_history(conn)
         conn.commit()
     finally:
         conn.close()
+
+
+def seed_history(conn):
+    """Older reports, so the score chart has a line instead of one bar.
+
+    A server that has been running Yoru for a fortnight is the normal case, and
+    the shape of that fortnight is the point: the score climbs as controls get
+    approved, then dips the day something drifts. With a single report the chart
+    is technically correct and tells nobody anything.
+
+    Marked "contoh" in the stored JSON so nothing mistakes these for a real run.
+    """
+    base = json.loads((REPO / "examples" / "report-watch.json").read_text(encoding="utf-8"))
+    # Two weeks of a server slowly being put right, with one bad day near the end.
+    curve = [30, 30, 40, 50, 50, 60, 70, 70, 80, 80, 90, 90, 60, 90]
+    now = time.time()
+    for days_ago, skor in enumerate(reversed(curve), start=1):
+        stamp = now - days_ago * 86400
+        report = dict(base)
+        report["waktu"] = time.strftime("%Y-%m-%dT%H:%M:%S+07:00", time.localtime(stamp))
+        report["siklus"] = "penjagaan"
+        report["contoh"] = True
+        report["ringkasan"] = dict(base["ringkasan"],
+                                   skor=skor, lulus=round(skor / 10), gagal=10 - round(skor / 10))
+        conn.execute(
+            "INSERT INTO laporan (server, waktu, siklus, skor, isi, diterima) VALUES (?,?,?,?,?,?)",
+            (base["server"]["nama"], report["waktu"], "penjagaan", skor,
+             json.dumps(report, ensure_ascii=False), stamp))
+    print("  ok   riwayat contoh %d hari untuk %s" % (len(curve), base["server"]["nama"]))
 
 
 def main():
@@ -109,6 +161,9 @@ def main():
     # to find out why every panel came back empty.
     if external:
         os.environ.setdefault("YORU_TOKEN", secrets.token_hex(12))
+
+    DEMO_CONF.write_text(DEMO_CONF_BODY, encoding="utf-8")
+    os.environ.setdefault("YORU_KONF", str(DEMO_CONF))
 
     if wipe:
         for suffix in ("", "-wal", "-shm"):

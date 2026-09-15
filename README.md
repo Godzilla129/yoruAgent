@@ -121,6 +121,33 @@ menampilkan dulu apa yang bakal ikut berubah:
 Orang yang menekan tombol harus sudah membaca akibatnya. Itu aturan yang tidak
 bisa ditawar, dan alasannya ada di `contract/report.md`.
 
+Di atas tabel itu ada dua panel yang cuma muncul kalau memang ada isinya.
+
+**Yang berubah sejak pemeriksaan terakhir.** Inti Siklus Penjagaan: kontrol
+yang dulu lulus dan sekarang tidak. Ditampilkan berikut nilai lamanya, nilai
+barunya, dan — kalau auditd (K08) aktif — siapa yang mengubahnya, kapan, dan
+lewat perintah apa. Kalau auditd mati, yang tertulis adalah bahwa memang tidak
+ada catatannya. Yoru tidak menebak nama orang.
+
+**Butuh jawaban kamu.** Dua hal berkumpul di sini. Port yang terbuka ke
+internet dan belum kamu jawab — K05 menolak menyalakan firewall selama masih
+ada yang menggantung, dan tiap port ditampilkan berikut nama prosesnya dengan
+satu tombol "Punya saya". Lalu kontrol berisiko yang menunggu persetujuan.
+
+Jawaban di dua panel itu **tidak dijalankan halaman ini**. Dia menuliskannya,
+lalu agent di server yang bersangkutan yang mengambil dan mengerjakannya pada
+siklus berikutnya. Karena itu dua panel ini bekerja untuk server mana pun yang
+pernah mengirim laporan ke sini, bukan cuma mesin tempat dashboard dipasang.
+
+Kalau ada lebih dari satu server, pemilih server muncul di kanan atas. Baris
+milik mesin ini ditandai **MESIN INI**, dan untuk server lain tombol Audit,
+Hardening dan Rollback dimatikan — ketiganya menjalankan `yoructl` di mesin
+tempat dashboard dipasang, jadi menekannya untuk server lain akan mengeraskan
+server yang salah.
+
+Menu **Riwayat Skor** menggambar skor laporan-laporan terakhir, jadi kelihatan
+apakah server ini membaik atau justru pelan-pelan mundur.
+
 Menu **Audit Logs** membaca `/var/log/yoru/` — jejak milik root yang tidak bisa
 disunting agent.
 
@@ -142,6 +169,21 @@ python3 demo.py
 
 Buka `http://127.0.0.1:8000`. Datanya dari `examples/`, tidak ada mesin yang
 disentuh. Di Linux dan macOS, `bash demo.sh` sama saja.
+
+Isinya dua server: `yoru-a` yang sehat tapi ada satu setelan berubah, dan
+`yoru-b` yang sakit dengan dua port belum dijawab — supaya panel drift, panel
+port, dan pemilih server ada isinya, bukan kotak kosong.
+
+Siapa yang boleh menjangkau endpoint mana diperiksa, bukan diyakini:
+
+```bash
+cd web
+python3 test_api.py
+```
+
+Aplikasinya dijalankan langsung sebagai ASGI dengan alamat pemanggil disetel
+tangan, jadi "dari 127.0.0.1" dan "dari jaringan" dua-duanya bisa diuji. Itu
+perlu karena aturannya memang beda di dua tempat itu.
 
 ---
 

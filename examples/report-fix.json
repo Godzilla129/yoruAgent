@@ -2,10 +2,10 @@
   "versi_kontrak": "1",
   "versi_yoru": "0.1.0",
   "server": {
-    "nama": "yoru-a",
+    "nama": "yoru-b",
     "os": "Ubuntu 24.04.4 LTS",
     "kernel": "6.8.0-138-generic",
-    "ip_utama": "192.168.206.132",
+    "ip_utama": "192.168.206.147",
     "panel_terdeteksi": null
   },
   "waktu": "2026-09-06T09:15:00+07:00",
@@ -90,9 +90,12 @@
       "kenapa": "Tanpa firewall, semua pintu yang kebetulan terbuka di server bisa dicoba siapa saja dari internet — termasuk pintu yang terbuka tanpa kamu sadari karena aplikasi salah setelan.",
       "yang_rusak_kalau_diterapkan": "Layanan yang portnya belum didaftarkan jadi tidak bisa diakses dari luar. Web, panel, database — semuanya harus diizinkan lebih dulu.",
       "butuh_izin": true,
-      "prasyarat_gagal": [],
+      "prasyarat_gagal": [
+        "port terbuka belum dijawab pemilik: 3306(mariadbd) 8888(python3)"
+      ],
       "hasil": null,
-      "kode_cis": "4.2.1, 4.2.3 dan 4.2.7"
+      "kode_cis": "4.2.1, 4.2.3 dan 4.2.7",
+      "catatan_ai": "Port 3306 itu MariaDB. Database biasanya tidak perlu dibuka ke internet - kalau aplikasimu jalan di server yang sama, dia cukup lewat 127.0.0.1. Port 8888 dipegang python3, pola yang biasa dipakai panel aaPanel."
     },
     {
       "id": "K06",
@@ -174,7 +177,6 @@
   "butuh_keputusan": [
     "K01",
     "K02",
-    "K04",
-    "K05"
+    "K04"
   ]
 }
