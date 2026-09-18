@@ -472,27 +472,25 @@ install_gemini_connector() {  # install_gemini_connector <key> <model>
   install -o root -g root -m 755 "$SRC/bin/yoru-model-proxy" "$MODEL_BIN" \
     || { skip "gagal menyalin yoru-model-proxy"; return 1; }
 
-  # Google menerima dua bentuk kunci dan keduanya tidak diautentikasi sama.
-  # Diuji dulu sebelum layanannya dinyalakan: kalau gagal, yang tampil pesan
-  # asli dari Google, bukan "502".
-  local report way
+  # Diuji sebelum layanannya dinyalakan. Nama model bisa basi tanpa
+  # pemberitahuan, jadi penghubungnya juga yang memilih model yang masih hidup.
+  local report way picked
   report="$(GEMINI_API_KEY="$key" GEMINI_MODEL="$model" python3 "$MODEL_BIN" --diagnose 2>&1)"
   way="$(printf '%s' "$report" | sed -n 's/.*GEMINI_WAY=\([a-z-]*\).*/\1/p' | head -1)"
-
-  if [ -z "$way" ] && [ "$model" != "gemini-2.5-flash" ]; then
-    skip "\"$model\" tidak jalan - dicoba lagi dengan gemini-2.5-flash"
-    model="gemini-2.5-flash"
-    sed -i 's|^GEMINI_MODEL=.*|GEMINI_MODEL=gemini-2.5-flash|' "$MODEL_ENV"
-    report="$(GEMINI_API_KEY="$key" GEMINI_MODEL="$model" python3 "$MODEL_BIN" --diagnose 2>&1)"
-    way="$(printf '%s' "$report" | sed -n 's/.*GEMINI_WAY=\([a-z-]*\).*/\1/p' | head -1)"
-  fi
+  picked="$(printf '%s' "$report" | sed -n 's/.*GEMINI_MODEL=\([A-Za-z0-9._-]*\).*/\1/p' | head -1)"
 
   if [ -z "$way" ]; then
-    skip "Gemini menolak semua cara. Ini jawabannya apa adanya:"
+    skip "Gemini menolak. Ini jawabannya apa adanya:"
     printf '%s\n' "$report" | sed 's/^/      /'
     return 1
   fi
-  ok "cara yang dipakai: $way"
+
+  [ -n "$picked" ] && [ "$picked" != "$model" ] \
+    && skip "\"$model\" ditolak Google - dipakai \"$picked\"" \
+    && model="$picked" \
+    && sed -i "s|^GEMINI_MODEL=.*|GEMINI_MODEL=$model|" "$MODEL_ENV"
+
+  ok "cara yang dipakai: $way, model: $model"
   printf 'GEMINI_WAY=%s\n' "$way" >> "$MODEL_ENV"
 
   cat > "$MODEL_UNIT" <<EOF
@@ -593,18 +591,19 @@ setup_model() {
   case "$pick" in
     1)
       local key model
-      ask "Kunci API Gemini (yang diawali AIza)" key secret
+      # Dua bentuk beredar: AIza... yang lama dan AQ... yang baru. Keduanya sah.
+      ask "Kunci API Gemini (AIza... atau AQ...)" key secret
       key="${key#GEMINI_API_KEY=}"
       key="$(printf '%s' "$key" | tr -d '\r\n "')"
       [ -n "$key" ] || { skip "kunci kosong - dilewati"; return 0; }
       case "$key" in
-        AIza*) ;;
-        *) skip "kunci Gemini biasanya diawali AIza - kalau salah, ketahuan pas dites" ;;
+        AIza*|AQ.*) ;;
+        *) skip "bentuk kunci tidak dikenal - kalau salah, ketahuan pas dites" ;;
       esac
-      printf '    Nama model harus nama resmi Gemini, bukan nama karangan.\n'
-      ask "Nama model (ENTER saja = gemini-2.5-flash)" model
+      printf '    Kosongkan saja; penghubungnya memilih model yang masih hidup.\n'
+      ask "Nama model (ENTER saja = gemini-flash-latest)" model
       model="$(printf '%s' "$model" | tr -d '\r\n ')"
-      [ -n "$model" ] || model="gemini-2.5-flash"
+      [ -n "$model" ] || model="gemini-flash-latest"
       install_gemini_connector "$key" "$model" || skip "model tidak jadi disetel"
       ;;
     2)
@@ -711,16 +710,23 @@ install_dashboard() {
     return 0
   fi
 
+  # pip's own last words, not our guess about them: "no internet" and "no disk
+  # space" look identical from out here, and only one of them is worth waiting on.
+  local pip_log=""
   if ! "$WEB_DIR/venv/bin/python" -c 'import fastapi, uvicorn' 2>/dev/null; then
     printf '    ..   mengunduh fastapi dan uvicorn, ini yang paling lama\n'
-    "$WEB_DIR/venv/bin/pip" install --quiet --disable-pip-version-check \
-      fastapi uvicorn >/dev/null 2>&1
+    pip_log="$(mktemp)"
+    "$WEB_DIR/venv/bin/pip" install --disable-pip-version-check \
+      fastapi uvicorn >"$pip_log" 2>&1
   fi
   if ! "$WEB_DIR/venv/bin/python" -c 'import fastapi, uvicorn' 2>/dev/null; then
-    skip "fastapi/uvicorn gagal dipasang - periksa koneksi internet server ini"
-    skip "sisanya tetap terpasang. Ulangi installer setelah internet jalan."
+    skip "fastapi/uvicorn gagal dipasang. Kata pip:"
+    [ -s "$pip_log" ] && tail -n 8 "$pip_log" | sed 's/^/          /'
+    rm -f "$pip_log"
+    skip "sisanya tetap terpasang. Ulangi installer setelah itu beres."
     return 0
   fi
+  rm -f "$pip_log"
   ok "fastapi dan uvicorn siap di $WEB_DIR/venv"
 
   # No token from 127.0.0.1 - whoever reaches it already has the server. Opened

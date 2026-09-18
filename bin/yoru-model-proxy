@@ -4,18 +4,23 @@
 Yoru speaks one shape - POST /v1/chat/completions, no credentials. This holds
 the API key and forwards. Yoru itself never sees it.
 
-Google issues two key formats and they do not authenticate the same way, so
-the upstream call is tried in three ways and the first that answers is kept:
+Two upstream shapes, because Google runs two:
 
-  openai-bearer   /v1beta/openai/chat/completions   Authorization: Bearer
-  openai-googkey  /v1beta/openai/chat/completions   x-goog-api-key
-  native          /v1beta/models/<model>:generateContent   x-goog-api-key
+  openai   /v1beta/openai/chat/completions          Authorization: Bearer
+  native   /v1beta/models/<model>:generateContent   x-goog-api-key
 
-Run with --diagnose to try all three once and print what each answered.
+Each endpoint accepts only its own header; sending the other one is a 400.
+
+Model names go stale - Google stops offering a model to new accounts while it
+still appears in listings. So a 404 is not fatal: the candidate list is walked
+until one answers, and the winner is reported.
+
+  --diagnose   try everything once, print what Google actually said
 """
 
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -26,19 +31,26 @@ MAX_BODY = 256 * 1024
 TIMEOUT = 30
 
 API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
+MODEL = os.environ.get("GEMINI_MODEL", "").strip() or "gemini-flash-latest"
 HOST = os.environ.get("LISTEN_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LISTEN_PORT", "8080"))
 
-WAYS = ("openai-bearer", "openai-googkey", "native")
+WAYS = ("openai", "native")
 
-# Set once a way answers, so later requests skip the ones that failed.
-chosen = os.environ.get("GEMINI_WAY", "").strip() or None
+# Ranked when Google refuses the configured model. "-latest" first: those are
+# the aliases that do not go stale.
+PREFERRED = ("gemini-flash-latest", "gemini-pro-latest", "gemini-flash-lite-latest")
+UNUSABLE = re.compile(r"tts|embedding|image|vision|aqa|gemma", re.I)
+
+way = os.environ.get("GEMINI_WAY", "").strip() or None
+model = MODEL
 
 
-def post(url, headers, payload):
-    req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST")
-    req.add_header("Content-Type", "application/json")
+def call(url, headers, payload=None):
+    body = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(url, data=body, method="POST" if body else "GET")
+    if body:
+        req.add_header("Content-Type", "application/json")
     for k, v in headers.items():
         req.add_header(k, v)
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
@@ -50,11 +62,10 @@ def to_native(payload):
     contents, system = [], []
     for m in payload.get("messages") or []:
         text = m.get("content") or ""
-        role = m.get("role")
-        if role == "system":
+        if m.get("role") == "system":
             system.append(text)
         else:
-            contents.append({"role": "model" if role == "assistant" else "user",
+            contents.append({"role": "model" if m.get("role") == "assistant" else "user",
                              "parts": [{"text": text}]})
     body = {"contents": contents, "generationConfig": {}}
     if system:
@@ -66,52 +77,85 @@ def to_native(payload):
     return body
 
 
-def from_native(answer):
+def from_native(answer, name):
     """Gemini generateContent reply -> OpenAI chat reply."""
     parts = (((answer.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
-    text = "".join(p.get("text") or "" for p in parts)
-    return {"choices": [{"message": {"role": "assistant", "content": text},
+    return {"choices": [{"message": {"role": "assistant",
+                                     "content": "".join(p.get("text") or "" for p in parts)},
                          "finish_reason": "stop"}],
-            "model": MODEL}
+            "model": name}
 
 
-def attempt(way, payload):
-    """One upstream call. Returns an OpenAI-shaped reply, or raises."""
+def attempt(how, name, payload):
+    """One upstream call with one way and one model. Raises on failure."""
     body = dict(payload)
-    body["model"] = MODEL
+    body["model"] = name
     body.pop("stream", None)
-    if way == "openai-bearer":
-        return post(f"{BASE}/v1beta/openai/chat/completions",
+    if how == "openai":
+        return call(f"{BASE}/v1beta/openai/chat/completions",
                     {"Authorization": f"Bearer {API_KEY}"}, body)
-    if way == "openai-googkey":
-        return post(f"{BASE}/v1beta/openai/chat/completions",
-                    {"x-goog-api-key": API_KEY}, body)
-    return from_native(post(f"{BASE}/v1beta/models/{MODEL}:generateContent",
-                            {"x-goog-api-key": API_KEY}, to_native(body)))
+    return from_native(call(f"{BASE}/v1beta/models/{name}:generateContent",
+                            {"x-goog-api-key": API_KEY}, to_native(body)), name)
 
 
 def describe(e):
     if isinstance(e, urllib.error.HTTPError):
-        detail = e.read()[:400].decode("utf-8", "replace").replace("\n", " ")
-        return f"HTTP {e.code}: {detail}"
+        raw = e.read()[:900].decode("utf-8", "replace")
+        try:
+            body = json.loads(raw)
+            if isinstance(body, list):
+                body = body[0] if body else {}
+            text = (body.get("error") or {}).get("message") or raw
+        except ValueError:
+            text = raw
+        return f"HTTP {e.code}: {' '.join(text.split())}"
     return f"{type(e).__name__}: {e}"
 
 
-def ask(payload):
-    """Try the remembered way first, then the rest. Returns (reply, notes)."""
-    global chosen
-    order = ([chosen] + [w for w in WAYS if w != chosen]) if chosen else list(WAYS)
-    notes = []
-    for way in order:
-        try:
-            reply = attempt(way, payload)
-        except Exception as e:  # noqa: BLE001 - every failure is reported, not guessed
-            notes.append((way, describe(e)))
+def list_models():
+    """Model ids this key may use, best candidates first. Never raises."""
+    try:
+        data = call(f"{BASE}/v1beta/models", {"x-goog-api-key": API_KEY})
+    except Exception:  # noqa: BLE001
+        return []
+    names = []
+    for m in data.get("models") or []:
+        name = (m.get("name") or "").split("/")[-1]
+        methods = m.get("supportedGenerationMethods")
+        if not name or UNUSABLE.search(name):
             continue
-        if chosen != way:
-            chosen = way
-            sys.stderr.write(f"cara yang dipakai: {way}\n")
-        return reply, notes
+        if methods and "generateContent" not in methods:
+            continue
+        names.append(name)
+    ranked = [n for n in PREFERRED if n in names]
+    return ranked + [n for n in names if n not in ranked]
+
+
+def candidates():
+    picks = [model] + [n for n in list_models() if n != model]
+    return picks[:6]
+
+
+def ask(payload):
+    """Try the remembered combination first, then work outwards.
+
+    Returns (reply, notes). Notes carry every refusal, verbatim from Google.
+    """
+    global way, model
+    ways = [way] + [w for w in WAYS if w != way] if way else list(WAYS)
+    names = candidates()
+    notes = []
+    for how in ways:
+        for name in names:
+            try:
+                reply = attempt(how, name, payload)
+            except Exception as e:  # noqa: BLE001 - reported, never guessed
+                notes.append((how, name, describe(e)))
+                continue
+            if (how, name) != (way, model):
+                way, model = how, name
+                sys.stderr.write(f"cara={how} model={name}\n")
+            return reply, notes
     return None, notes
 
 
@@ -131,7 +175,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.rstrip("/") == "/health":
-            self.reply(200, {"status": "hidup", "model": MODEL, "cara": chosen})
+            self.reply(200, {"status": "hidup", "model": model, "cara": way})
         else:
             self.reply(404, {"error": "hanya /v1/chat/completions"})
 
@@ -151,9 +195,9 @@ class Handler(BaseHTTPRequestHandler):
 
         answer, notes = ask(payload)
         if answer is None:
-            for way, why in notes:
-                sys.stderr.write(f"gemini menolak lewat {way}: {why}\n")
-            self.reply(502, {"error": "gemini menolak ketiga cara - lihat journalctl -u yoru-model"})
+            for how, name, why in notes:
+                sys.stderr.write(f"ditolak [{how} {name}]: {why}\n")
+            self.reply(502, {"error": "gemini menolak - lihat journalctl -u yoru-model"})
             return
         self.reply(200, answer)
 
@@ -162,39 +206,27 @@ def diagnose():
     if not API_KEY:
         print("GEMINI_API_KEY kosong")
         return 1
-    print(f"\n  Kunci   : {API_KEY[:4]}... ({len(API_KEY)} karakter)")
-    print(f"  Model   : {MODEL}\n")
+    print(f"\n  Kunci : {API_KEY[:4]}... ({len(API_KEY)} karakter)")
+    print(f"  Model : {model}")
+
+    names = candidates()
+    print(f"  Coba  : {', '.join(names) or '(daftar model tidak terbaca)'}\n")
 
     probe = {"messages": [{"role": "user", "content": "Balas satu kata: siap"}],
              "max_tokens": 20, "temperature": 0}
-    works = []
-    for way in WAYS:
-        try:
-            reply = attempt(way, probe)
+    for how in WAYS:
+        for name in names:
+            try:
+                reply = attempt(how, name, probe)
+            except Exception as e:  # noqa: BLE001
+                print(f"  GAGAL {how:7} {name:26} {describe(e)[:400]}")
+                continue
             text = (reply["choices"][0]["message"]["content"] or "").strip()[:60]
-            print(f"  ok    {way:15} -> {text!r}")
-            works.append(way)
-        except Exception as e:  # noqa: BLE001
-            print(f"  GAGAL {way:15} -> {describe(e)[:160]}")
+            print(f"  ok    {how:7} {name:26} {text!r}")
+            print(f"\n  Pakai: GEMINI_WAY={how} GEMINI_MODEL={name}\n")
+            return 0
 
-    print("\n  Model yang boleh dipakai kunci ini:")
-    for way, headers in (("openai", {"Authorization": f"Bearer {API_KEY}"}),
-                         ("goog", {"x-goog-api-key": API_KEY})):
-        try:
-            req = urllib.request.Request(f"{BASE}/v1beta/openai/models")
-            for k, v in headers.items():
-                req.add_header(k, v)
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-                names = [m.get("id") for m in json.load(r).get("data", [])]
-            print("   ", ", ".join(n for n in names if n)[:300] or "(kosong)")
-            break
-        except Exception as e:  # noqa: BLE001
-            print(f"    lewat {way}: {describe(e)[:120]}")
-
-    if works:
-        print(f"\n  Pakai: GEMINI_WAY={works[0]}\n")
-        return 0
-    print("\n  Tidak ada cara yang jalan. Kunci atau nama modelnya salah.\n")
+    print("\n  Tidak ada yang jalan. Pesan di atas datang dari Google, bukan dari kami.\n")
     return 1
 
 
