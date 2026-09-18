@@ -119,25 +119,10 @@ check_environment() {
     *) die "sistem operasi $os belum didukung. Yoru diuji di Ubuntu 24.04." ;;
   esac
 
-  # Without flock yoructl still runs, just unlocked - better to know it now.
-  local missing=()
-  local cmd
-  for cmd in sshd systemctl sudo visudo install stat flock python3; do
-    command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
-  done
-  [ ${#missing[@]} -eq 0 ] || die "perintah yang dibutuhkan tidak ada: ${missing[*]}"
-  ok "semua perintah yang dibutuhkan tersedia"
-
-  # "sshd exists" is not "sshd -T can be read", and K01-K05 all rest on sshd -T.
-  # /run/sshd is often missing on a freshly booted Ubuntu 24.04: ssh.service
-  # creates it, and it only starts once something connects through ssh.socket.
-  [ -d /run/sshd ] || { mkdir -p /run/sshd 2>/dev/null && chmod 0755 /run/sshd 2>/dev/null; }
-  if sshd -T >/dev/null 2>&1; then
-    ok "sshd -T bisa dibaca - K01 sampai K05 punya sumber data"
-  else
-    skip "sshd -T tidak bisa dibaca: $(sshd -T 2>&1 >/dev/null | head -1)"
-    skip "K01 sampai K05 akan berstatus ERROR sampai ini beres"
-  fi
+  # python3 and apt-get are the two this script cannot install its way out of.
+  command -v python3 >/dev/null 2>&1 || die "python3 tidak ada di server ini"
+  command -v apt-get >/dev/null 2>&1 || die "apt-get tidak ada - installer ini untuk Debian/Ubuntu"
+  ok "python3 $(python3 -c 'import platform; print(platform.python_version())') dan apt-get tersedia"
 
   local f
   for f in bin/yoructl bin/yoru.sudoers bin/yoru-watch \
@@ -147,6 +132,119 @@ check_environment() {
   done
   [ -d "$SRC/catalog" ] || die "folder katalog tidak ada - jalankan skrip ini dari dalam folder repo"
   ok "berkas sumber lengkap"
+}
+
+# ------------------------------------------------------------------ preflight
+# What Yoru needs is a list of capabilities, not a list of package names. Each
+# one is probed on this machine first; only what is actually missing gets
+# installed, and each package goes in on its own - "apt-get install A B C"
+# installs NOTHING when one name in the list is unknown.
+have() {  # have cmd:<name> | py:<module>
+  case "$1" in
+    cmd:*) command -v "${1#cmd:}" >/dev/null 2>&1 ;;
+    py:*)  python3 -c "import ${1#py:}" >/dev/null 2>&1 ;;
+    *) return 1 ;;
+  esac
+}
+
+APT_REFRESHED=no
+apt_refresh() {
+  [ "$APT_REFRESHED" = ya ] && return 0
+  APT_REFRESHED=ya
+  # An index that was never refreshed answers "Unable to locate package" for
+  # names that do exist.
+  apt-get -o DPkg::Lock::Timeout=60 update >>"$PREFLIGHT_LOG" 2>&1
+}
+
+# Tries each candidate package until the capability appears. apt-daily runs in
+# a fresh VPS's first minute, so the lock is waited on rather than fought.
+supply() {  # supply <probe> <package...>
+  local probe="$1"; shift
+  apt_refresh
+  local pkg
+  for pkg in "$@"; do
+    DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 \
+      install "$pkg" >>"$PREFLIGHT_LOG" 2>&1
+    have "$probe" && { printf '%s' "$pkg"; return 0; }
+  done
+  return 1
+}
+
+PREFLIGHT_LOG=""
+preflight() {
+  step "Memeriksa kebutuhan sistem"
+  PREFLIGHT_LOG="$(mktemp)"
+
+  local ver; ver="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+
+  # level|probe|packages|what it is for
+  local checks=(
+    "wajib|cmd:systemctl|systemd|menjalankan layanan dan penjadwal"
+    "wajib|cmd:sudo|sudo|batas izin agent"
+    "wajib|cmd:visudo|sudo|memeriksa berkas sudoers sebelum dipasang"
+    "wajib|cmd:install|coreutils|menyalin berkas dengan izin yang benar"
+    "wajib|cmd:stat|coreutils|membaca izin berkas"
+    "wajib|cmd:flock|util-linux|mengunci saat dua tindakan berbarengan"
+    "wajib|cmd:ss|iproute2|K05 dan K06 membaca port yang terbuka"
+    "wajib|cmd:sshd|openssh-server|K01 sampai K05 membaca sshd -T"
+    "wajib|py:yaml|python3-yaml|agent membaca katalog"
+    "pilihan|cmd:ufw|ufw|K05 menyalakan firewall"
+    "pilihan|cmd:auditctl|auditd|K08 mencatat siapa yang mengubah apa"
+  )
+  [ "$WITH_DASHBOARD" = "ya" ] && checks+=(
+    "wajib|py:ensurepip|python${ver}-venv python3-venv|dashboard dijalankan di venv sendiri"
+    "wajib|py:sqlite3|python3|dashboard menyimpan laporan"
+  )
+
+  local line level probe pkgs why pkg fixed=0 still_missing=()
+  for line in "${checks[@]}"; do
+    IFS='|' read -r level probe pkgs why <<< "$line"
+    have "$probe" && continue
+
+    printf '    ..   %s belum ada, memasang (%s)\n' "${probe#*:}" "$why"
+    if pkg="$(supply "$probe" $pkgs)"; then
+      ok "${probe#*:} siap - dari paket $pkg"
+      fixed=$((fixed + 1))
+    else
+      still_missing+=("$level|${probe#*:}|$pkgs|$why")
+    fi
+  done
+
+  [ "$fixed" -eq 0 ] && [ ${#still_missing[@]} -eq 0 ] \
+    && ok "semua kebutuhan sudah ada, tidak ada yang dipasang"
+
+  local blocked=0
+  for line in "${still_missing[@]}"; do
+    IFS='|' read -r level probe pkgs why <<< "$line"
+    if [ "$level" = "wajib" ]; then
+      skip "$probe TIDAK ADA - $why"
+      skip "  coba sendiri: sudo apt-get install -y ${pkgs%% *}"
+      blocked=$((blocked + 1))
+    else
+      skip "$probe tidak terpasang - $why. Kontrolnya akan dilewati, sisanya jalan"
+    fi
+  done
+
+  if [ "$blocked" -gt 0 ]; then
+    skip "kata apt:"
+    grep -iE "^(E:|W:)|Unable to locate|Temporary failure|not signed" "$PREFLIGHT_LOG" \
+      | tail -n 5 | sed 's/^/          /'
+    rm -f "$PREFLIGHT_LOG"; PREFLIGHT_LOG=""
+    die "$blocked kebutuhan wajib tidak bisa dipenuhi - perbaiki dulu, lalu ulangi installer"
+  fi
+
+  # sshd may have arrived only a moment ago, so this is checked after, not
+  # before. /run/sshd is often absent on a fresh Ubuntu 24.04: ssh.service
+  # creates it, and it starts only once something connects through ssh.socket.
+  [ -d /run/sshd ] || { mkdir -p /run/sshd 2>/dev/null && chmod 0755 /run/sshd 2>/dev/null; }
+  if sshd -T >/dev/null 2>&1; then
+    ok "sshd -T bisa dibaca - K01 sampai K05 punya sumber data"
+  else
+    skip "sshd -T tidak bisa dibaca: $(sshd -T 2>&1 >/dev/null | head -1)"
+    skip "K01 sampai K05 akan berstatus ERROR sampai ini beres"
+  fi
+
+  rm -f "$PREFLIGHT_LOG"; PREFLIGHT_LOG=""
 }
 
 resolve_owner() {
@@ -346,12 +444,6 @@ install_dispatcher() {
     || die "gagal menyalin dispatcher"
 
   if [ -f "$SRC/bin/yoru-agent" ]; then
-    python3 -c 'import yaml' 2>/dev/null || {
-      skip "python3-yaml belum ada, memasang (dipakai agent buat baca katalog)"
-      DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 \
-        install python3-yaml >/dev/null 2>&1 \
-        || skip "gagal memasang python3-yaml - agent tidak akan bisa baca katalog"
-    }
     install -o root -g root -m 755 "$SRC/bin/yoru-agent" "$BIN_DIR/yoru-agent" \
       || die "gagal menyalin agent"
     ok "$BIN_DIR/yoru-agent (root:root 755)"
@@ -697,27 +789,21 @@ build_venv() {
   python3 -m venv "$WEB_DIR/venv" >"$log" 2>&1
   venv_ready && { rm -f "$log"; ok "venv siap di $WEB_DIR/venv"; return 0; }
 
-  # Ubuntu ships venv and ensurepip in separate packages, and the versioned
-  # name is the one that actually exists on 24.04.
-  skip "venv belum lengkap, memasang paketnya"
+  # preflight already made sure ensurepip is importable, so a failure here is
+  # something else - try the manual route before giving up.
   local ver; ver="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)"
-  DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 \
-    install "python${ver}-venv" python3-venv python3-pip >>"$log" 2>&1
 
-  rm -rf "$WEB_DIR/venv"
-  python3 -m venv "$WEB_DIR/venv" >>"$log" 2>&1
-  venv_ready && { rm -f "$log"; ok "venv siap di $WEB_DIR/venv"; return 0; }
-
-  # Last resort: a venv without pip, then pip put in by hand.
+  # A venv without pip, then pip put in by hand.
   python3 -m venv --without-pip "$WEB_DIR/venv" >>"$log" 2>&1
   "$WEB_DIR/venv/bin/python" -m ensurepip --upgrade >>"$log" 2>&1
   venv_ready && { rm -f "$log"; ok "venv siap di $WEB_DIR/venv (lewat ensurepip)"; return 0; }
 
   skip "venv tidak bisa dibuat. Kata sistem:"
-  tail -n 8 "$log" | sed 's/^/          /'
+  grep -iE "^(E:|W:)|Unable to locate|No module named|not installed|Failing command|apt install" "$log" \
+    | tail -n 6 | sed 's/^/          /'
   rm -f "$log"
   skip "dashboard tidak dipasang, sisanya tetap jalan"
-  skip "biasanya beres dengan: sudo apt-get install -y python${ver}-venv python3-pip"
+  skip "coba manual: sudo apt-get update && sudo apt-get install -y python${ver}-venv python3-pip"
   return 1
 }
 
@@ -984,6 +1070,7 @@ esac
 printf '\n%sYoru %s%s  -  pemasangan\n' "$BOLD" "$VERSION" "$RESET"
 
 check_environment
+preflight
 resolve_owner
 create_agent_user
 create_dirs
