@@ -677,6 +677,50 @@ install_timer() {
 
 # ------------------------------------------------------------------ dashboard
 # The dashboard runs as yoru-agent: its buttons go through the same sudo door.
+# A venv is only usable once pip is inside it. Checking bin/python is not
+# enough: a failed "python3 -m venv" still leaves the directory behind with a
+# python symlink and no pip, and the next run then reports a missing file
+# instead of the missing package.
+venv_ready() {
+  [ -x "$WEB_DIR/venv/bin/python" ] || return 1
+  # pip must be the venv's own. A half-built venv can still reach the system
+  # pip, which would then install into /usr and look like it worked.
+  "$WEB_DIR/venv/bin/python" -m pip --version 2>/dev/null \
+    | grep -q "$WEB_DIR/venv"
+}
+
+build_venv() {
+  venv_ready && return 0
+
+  local log; log="$(mktemp)"
+  rm -rf "$WEB_DIR/venv"
+  python3 -m venv "$WEB_DIR/venv" >"$log" 2>&1
+  venv_ready && { rm -f "$log"; ok "venv siap di $WEB_DIR/venv"; return 0; }
+
+  # Ubuntu ships venv and ensurepip in separate packages, and the versioned
+  # name is the one that actually exists on 24.04.
+  skip "venv belum lengkap, memasang paketnya"
+  local ver; ver="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)"
+  DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 \
+    install "python${ver}-venv" python3-venv python3-pip >>"$log" 2>&1
+
+  rm -rf "$WEB_DIR/venv"
+  python3 -m venv "$WEB_DIR/venv" >>"$log" 2>&1
+  venv_ready && { rm -f "$log"; ok "venv siap di $WEB_DIR/venv"; return 0; }
+
+  # Last resort: a venv without pip, then pip put in by hand.
+  python3 -m venv --without-pip "$WEB_DIR/venv" >>"$log" 2>&1
+  "$WEB_DIR/venv/bin/python" -m ensurepip --upgrade >>"$log" 2>&1
+  venv_ready && { rm -f "$log"; ok "venv siap di $WEB_DIR/venv (lewat ensurepip)"; return 0; }
+
+  skip "venv tidak bisa dibuat. Kata sistem:"
+  tail -n 8 "$log" | sed 's/^/          /'
+  rm -f "$log"
+  skip "dashboard tidak dipasang, sisanya tetap jalan"
+  skip "biasanya beres dengan: sudo apt-get install -y python${ver}-venv python3-pip"
+  return 1
+}
+
 install_dashboard() {
   step "Memasang dashboard"
 
@@ -697,18 +741,7 @@ install_dashboard() {
   ok "$WEB_DIR (root:root - agent menjalankannya, tapi tidak bisa mengubahnya)"
 
   # A venv, not pip into the system - other tools share those packages.
-  if [ ! -x "$WEB_DIR/venv/bin/python" ]; then
-    python3 -m venv "$WEB_DIR/venv" >/dev/null 2>&1 || {
-      skip "python3-venv belum ada, memasang"
-      DEBIAN_FRONTEND=noninteractive apt-get -y -o DPkg::Lock::Timeout=60 \
-        install python3-venv >/dev/null 2>&1
-      python3 -m venv "$WEB_DIR/venv" >/dev/null 2>&1
-    }
-  fi
-  if [ ! -x "$WEB_DIR/venv/bin/python" ]; then
-    skip "gagal membuat venv - dashboard tidak dipasang, sisanya tetap jalan"
-    return 0
-  fi
+  build_venv || return 0
 
   # pip's own last words, not our guess about them: "no internet" and "no disk
   # space" look identical from out here, and only one of them is worth waiting on.
@@ -716,7 +749,7 @@ install_dashboard() {
   if ! "$WEB_DIR/venv/bin/python" -c 'import fastapi, uvicorn' 2>/dev/null; then
     printf '    ..   mengunduh fastapi dan uvicorn, ini yang paling lama\n'
     pip_log="$(mktemp)"
-    "$WEB_DIR/venv/bin/pip" install --disable-pip-version-check \
+    "$WEB_DIR/venv/bin/python" -m pip install --disable-pip-version-check \
       fastapi uvicorn >"$pip_log" 2>&1
   fi
   if ! "$WEB_DIR/venv/bin/python" -c 'import fastapi, uvicorn' 2>/dev/null; then
