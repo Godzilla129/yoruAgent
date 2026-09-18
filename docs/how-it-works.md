@@ -149,12 +149,12 @@ yang bertindak.** Tiga hal berbeda, sengaja dipisah.
 nggak ngubah apa pun. Tiap perintah balikin satu baris JSON:
 
 ```json
-{"versi":"0.1.4","id":"K01","tindakan":"periksa","status":"GAGAL",
- "berhasil":true,"nilai":"yes","pesan":null}
+{"version":"0.1.4","id":"K01","action":"periksa","status":"GAGAL",
+ "ok":true,"value":"yes","message":null}
 ```
 
 **Perhatiin ini, sering bikin salah paham:** `status` itu **hasil
-pemeriksaan**, `berhasil` itu **apakah pemeriksaannya berhasil dilakukan**.
+pemeriksaan**, `ok` itu **apakah pemeriksaannya berhasil dilakukan**.
 Jadi `GAGAL` + `berhasil: true` artinya *"gw berhasil ngecek, dan kontrolnya
 memang lagi mati"*. Kalau perintahnya sendiri yang bermasalah, yang keluar
 `DITOLAK` atau `ERROR` dengan `berhasil: false`.
@@ -231,7 +231,7 @@ audit**: milik root, dan **agent sendiri nggak bisa nulis ke situ**. Alat
 keamanan nggak boleh bisa ngedit jejaknya sendiri.
 
 Baris di log ini sama kayak yang keluar di layar, plus dua kolom tambahan di
-depan: `waktu` dan `pemanggil` (siapa yang manggil sudo). Buat halaman riwayat
+depan: `time` dan `caller` (siapa yang manggil sudo). Buat halaman riwayat
 di dashboard, dua kolom itu yang dipakai.
 
 **Laporan** — `/var/lib/yoru/laporan-terakhir.json`. Ini hasil rangkuman
@@ -385,7 +385,7 @@ nggak pernah sebaliknya. Server yang dijaga jadi nggak perlu buka satu port
 pun buat dashboard.
 
 Satu aturan yang nggak bisa ditawar dan udah dipasang: kontrol yang
-`butuh_izin: true` **wajib nampilin `yang_rusak_kalau_diterapkan` tepat di
+`butuh_izin: true` **wajib nampilin `breaks_if_applied` tepat di
 sebelah tombol setuju.** Bukan di tooltip, bukan di halaman lain. Orang yang
 mencet harus udah baca akibatnya — itu alasan Yoru boleh dipercaya nyentuh
 server orang.

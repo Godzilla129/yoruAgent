@@ -1,22 +1,11 @@
 #!/usr/bin/env python3
 """
-demo.py - start the dashboard with sample data.
+demo.py - dashboard with sample data at http://127.0.0.1:8000. Windows, Linux
+or macOS: only Python, no bash and no curl. Data from examples/, no server
+touched.
 
-Runs on Windows, Linux and macOS - all it needs is Python. No bash, no curl,
-no command that behaves differently per system.
-
-    cd web
-    python -m pip install fastapi uvicorn
-    python demo.py
-
-Then open http://127.0.0.1:8000
-
-The data comes from examples/ in this repo. No server is touched - this is
-purely for looking at the interface and rehearsing a presentation.
-
-    python demo.py 9000        change the port
-    python demo.py --bersih    wipe the demo database and start over
-    python demo.py --luar      allow other machines on the network to open it
+    cd web; python -m pip install fastapi uvicorn; python demo.py
+    python demo.py 9000  port   --bersih  wipe the db   --luar  open to the network
 """
 
 import json
@@ -32,14 +21,8 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 DB_FILE = HERE / "yoru.db"
 
-# The dashboard asks the config file which server it is standing on, so that it
-# can tell its own reports (where the buttons mean something) from another
-# server's (where they must not fire). With no config file it falls back to this
-# machine's hostname, which never matches the samples - so in the demo every
-# button came out disabled and there was nothing to rehearse with.
-#
-# YORU_KONF is an env hook api.py already honours, so this needs no special
-# case anywhere in the real code.
+# YORU_KONF is an env hook api.py already honours. With no config file the
+# dashboard falls back to this machine's hostname, and every button is disabled.
 DEMO_CONF = HERE / "yoru-demo.conf"
 DEMO_CONF_BODY = """# Dibuat demo.py. Bukan konfigurasi sungguhan - yang asli ada di
 # /etc/yoru/yoru.conf pada server yang dijaga.
@@ -66,13 +49,7 @@ def die(message):
 
 
 def load_samples():
-    """Written straight into SQLite instead of over HTTP.
-
-    Going through HTTP would mean waiting for the server to be ready and then
-    calling curl - and curl in PowerShell is an alias for something else whose
-    arguments have a different shape. Writing directly removes that whole class
-    of problem.
-    """
+    """Straight into SQLite: in PowerShell curl is an alias with other arguments."""
     import api  # noqa: F401  - importing this is what creates the tables
 
     conn = sqlite3.connect(DB_FILE)
@@ -89,9 +66,9 @@ def load_samples():
             report = json.loads(path.read_text(encoding="utf-8"))
             conn.execute(
                 "INSERT INTO laporan (server, waktu, siklus, skor, isi, diterima) VALUES (?,?,?,?,?,?)",
-                (str((report.get("server") or {}).get("nama") or "contoh"),
-                 str(report.get("waktu")), str(report.get("siklus")),
-                 int((report.get("ringkasan") or {}).get("skor") or 0),
+                (str((report.get("server") or {}).get("name") or "contoh"),
+                 str(report.get("time")), str(report.get("cycle")),
+                 int((report.get("summary") or {}).get("score") or 0),
                  json.dumps(report, ensure_ascii=False), time.time()),
             )
             print(f"  ok   {label}")
@@ -102,32 +79,23 @@ def load_samples():
 
 
 def seed_history(conn):
-    """Older reports, so the score chart has a line instead of one bar.
-
-    A server that has been running Yoru for a fortnight is the normal case, and
-    the shape of that fortnight is the point: the score climbs as controls get
-    approved, then dips the day something drifts. With a single report the chart
-    is technically correct and tells nobody anything.
-
-    Marked "contoh" in the stored JSON so nothing mistakes these for a real run.
-    """
+    """Older reports so the chart has a line, not one bar; marked contoh in the JSON."""
     base = json.loads((REPO / "examples" / "report-watch.json").read_text(encoding="utf-8"))
-    # Two weeks of a server slowly being put right, with one bad day near the end.
     curve = [30, 30, 40, 50, 50, 60, 70, 70, 80, 80, 90, 90, 60, 90]
     now = time.time()
     for days_ago, skor in enumerate(reversed(curve), start=1):
         stamp = now - days_ago * 86400
         report = dict(base)
-        report["waktu"] = time.strftime("%Y-%m-%dT%H:%M:%S+07:00", time.localtime(stamp))
-        report["siklus"] = "penjagaan"
+        report["time"] = time.strftime("%Y-%m-%dT%H:%M:%S+07:00", time.localtime(stamp))
+        report["cycle"] = "penjagaan"
         report["contoh"] = True
-        report["ringkasan"] = dict(base["ringkasan"],
+        report["summary"] = dict(base["summary"],
                                    skor=skor, lulus=round(skor / 10), gagal=10 - round(skor / 10))
         conn.execute(
             "INSERT INTO laporan (server, waktu, siklus, skor, isi, diterima) VALUES (?,?,?,?,?,?)",
-            (base["server"]["nama"], report["waktu"], "penjagaan", skor,
+            (base["server"]["name"], report["time"], "penjagaan", skor,
              json.dumps(report, ensure_ascii=False), stamp))
-    print("  ok   riwayat contoh %d hari untuk %s" % (len(curve), base["server"]["nama"]))
+    print("  ok   riwayat contoh %d hari untuk %s" % (len(curve), base["server"]["name"]))
 
 
 def main():
@@ -154,11 +122,6 @@ def main():
         die("fastapi/uvicorn belum ada. Jalankan dulu:\n"
             "         python -m pip install fastapi uvicorn")
 
-    # Opened to the network, the dashboard needs a token - reading a report is
-    # guarded there exactly like pressing a button, because a report names every
-    # control that fails on the machine it came from. One is made up here and
-    # printed, so the demo still works from another laptop without anyone having
-    # to find out why every panel came back empty.
     if external:
         os.environ.setdefault("YORU_TOKEN", secrets.token_hex(12))
 

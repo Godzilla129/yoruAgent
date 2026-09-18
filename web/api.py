@@ -1,27 +1,12 @@
 #!/usr/bin/env python3
-"""
-Dashboard API and storage.
+"""Dashboard API and storage.
+Run: uvicorn api:app --host 127.0.0.1 --port 8000  (needs fastapi, uvicorn)
 
-Run:
-    pip install fastapi uvicorn
-    uvicorn api:app --host 127.0.0.1 --port 8000
+Data flows one way: the agent POSTs reports and GETs decisions; the dashboard
+never contacts a guarded server, so that server opens no port for it.
 
-Data flows in ONE direction, deliberately:
-
-    agent  --POST /api/laporan-->  dashboard      (agent sends state)
-    agent  --GET  /api/keputusan-> dashboard      (agent collects answers)
-
-The dashboard NEVER contacts a guarded server. So that server never has to
-open a port for the dashboard, and if the dashboard is breached the worst an
-attacker can do is approve a control that ALREADY EXISTS in the catalog - they
-cannot make the server do anything new.
-
-Never reverse this direction for convenience.
-
-Note on names: the JSON fields, the four action verbs and the SQLite column
-names stay in Indonesian on purpose. They are the product's shared vocabulary,
-documented in contract/report.md and written into databases that already
-exist. Renaming them would break upgrades for no gain.
+Endpoints, JSON fields and SQLite columns are English; the four action verbs
+and the catalog keys stay Indonesian. migrate_db carries older databases over.
 """
 
 import asyncio
@@ -42,15 +27,12 @@ HERE = Path(__file__).resolve().parent
 DB_FILE = Path(os.environ.get("YORU_DB", HERE / "yoru.db"))
 PAGE = HERE / "dashboard.html"
 
-# Shared with the agent through DASHBOARD_TOKEN in /etc/yoru/yoru.conf.
-# Empty means no check at all; that is for trying it out on your own laptop.
+# Shared with the agent via DASHBOARD_TOKEN in /etc/yoru/yoru.conf. Empty = no check (local use).
 TOKEN = os.environ.get("YORU_TOKEN", "").strip()
 
 YORUCTL = os.environ.get("YORUCTL", "/opt/yoru/bin/yoructl")
 
-# K07 and K08 install packages through apt. On a new server with a slow link
-# the download alone can pass three minutes, before counting up to 60 seconds
-# waiting for the dpkg lock. The old 200-second limit ran out far too often.
+# K07/K08 run apt; on a slow link the download plus dpkg-lock wait exceeds the old 200s.
 TIME_LIMIT = int(os.environ.get("YORU_BATAS_WAKTU", "600"))
 
 LOG_DIR = Path(os.environ.get("YORU_LOG", "/var/log/yoru"))
@@ -63,17 +45,15 @@ ACTIONS = {"periksa": "periksa", "audit": "periksa",
            "kembalikan": "kembalikan", "rollback": "kembalikan",
            "verifikasi": "verifikasi"}
 
-# Keys the settings page may write. This list must match the one in yoructl -
-# yoructl is what actually enforces it, because yoructl is what runs as root.
-# The copy here only keeps the page from offering a key that would be refused.
+# Mirrors yoructl's list (yoructl enforces it as root); this copy only avoids
+# offering a key that would be refused.
 SETTABLE_KEYS = ("TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID", "HERMES_URL", "HERMES_TOKEN",
                  "AI_MODEL",
                  "NAMA_SERVER", "PORT_DIIZINKAN", "LEWATI_KONTROL",
                  "JAM_PENJAGAAN", "ZONA_WAKTU")
 SECRET_KEYS = ("TELEGRAM_TOKEN", "HERMES_TOKEN")
 
-# Same table as STATUS_MAP in bin/yoru-agent, so a button result and a cycle
-# result speak the same vocabulary.
+# Same table as STATUS_MAP in bin/yoru-agent, so buttons and cycles agree.
 STATUS_MAP = {"LULUS": "LULUS", "GAGAL": "GAGAL", "DILEWATI": "DILEWATI",
               "DIKEMBALIKAN": "DILEWATI", "DITOLAK": "ERROR",
               "ERROR": "ERROR", "PERINGATAN": "ERROR", "MENUNGGU": "ERROR"}
@@ -82,14 +62,7 @@ app = FastAPI(title="Yoru Dashboard", version="0.2.0")
 
 
 def running_as_root() -> bool:
-    """True only where the question means anything.
-
-    os.geteuid is POSIX-only and demo.py is meant to run on Windows too, where
-    asking this used to raise AttributeError and hand the browser a stack trace
-    instead of a sentence. Off Linux there is no yoructl to call anyway, so the
-    answer that matters is "not root - go through sudo", and the missing sudo
-    is then reported as the ordinary, readable failure it is.
-    """
+    """os.geteuid is POSIX-only, and demo.py also runs on Windows."""
     return getattr(os, "geteuid", lambda: -1)() == 0
 
 
@@ -101,32 +74,58 @@ def db():
     return conn
 
 
+def migrate_db(conn):
+    """Rename pre-rename tables/columns. Runs before CREATE TABLE, or the new
+    empty tables would shadow the old data."""
+    have = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if "report" in have or "laporan" not in have:
+        return
+    for old, new in (("laporan", "report"), ("keputusan", "decision")):
+        if old in have:
+            conn.execute(f"ALTER TABLE {old} RENAME TO {new}")
+    columns = {
+        "report": [("waktu", "time"), ("siklus", "cycle"), ("skor", "score"),
+                   ("isi", "body"), ("diterima", "received")],
+        "decision": [("kontrol", "control"), ("nilai", "value"),
+                     ("catatan", "note"), ("dibuat", "created"), ("diambil", "taken")],
+        "port": [("keterangan", "note"), ("dibuat", "created"), ("diambil", "taken")],
+    }
+    for table, pairs in columns.items():
+        present = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        for old, new in pairs:
+            if old in present:
+                conn.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
+    conn.execute("DROP INDEX IF EXISTS i_laporan")
+
+
 def init_db():
     with closing(db()) as conn, conn:
-        conn.execute("""CREATE TABLE IF NOT EXISTS laporan (
+        migrate_db(conn)
+        conn.execute("""CREATE TABLE IF NOT EXISTS report (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             server TEXT NOT NULL,
-            waktu TEXT NOT NULL,
-            siklus TEXT NOT NULL,
-            skor INTEGER NOT NULL,
-            isi TEXT NOT NULL,
-            diterima REAL NOT NULL)""")
-        conn.execute("""CREATE TABLE IF NOT EXISTS keputusan (
+            time TEXT NOT NULL,
+            cycle TEXT NOT NULL,
+            score INTEGER NOT NULL,
+            body TEXT NOT NULL,
+            received REAL NOT NULL)""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS decision (
             server TEXT NOT NULL,
-            kontrol TEXT NOT NULL,
-            nilai TEXT NOT NULL,
-            catatan TEXT,
-            dibuat REAL NOT NULL,
-            diambil INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (server, kontrol))""")
+            control TEXT NOT NULL,
+            value TEXT NOT NULL,
+            note TEXT,
+            created REAL NOT NULL,
+            taken INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (server, control))""")
         conn.execute("""CREATE TABLE IF NOT EXISTS port (
             server TEXT NOT NULL,
             port INTEGER NOT NULL,
-            keterangan TEXT,
-            dibuat REAL NOT NULL,
-            diambil INTEGER NOT NULL DEFAULT 0,
+            note TEXT,
+            created REAL NOT NULL,
+            taken INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (server, port))""")
-        conn.execute("CREATE INDEX IF NOT EXISTS i_laporan ON laporan(server, diterima DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS i_report ON report(server, received DESC)")
 
 
 init_db()
@@ -137,8 +136,7 @@ def check_token(given: Optional[str]):
     if not TOKEN:
         return
     expected = f"Bearer {TOKEN}"
-    # Fixed-time comparison so how long the check takes cannot leak how many
-    # leading characters of the token were already right.
+    # Constant-time compare so timing cannot leak how much of the token matched.
     import hmac
     if not given or not hmac.compare_digest(given, expected):
         raise HTTPException(status_code=401, detail="token tidak sah")
@@ -149,29 +147,15 @@ def from_this_machine(req: Request) -> bool:
 
 
 def require_access(req: Request, given: Optional[str]):
-    """The ONE rule guarding every endpoint that carries data or causes change.
+    """The rule guarding every endpoint that carries data or causes change.
 
-    From the machine itself: open - anyone who can reach 127.0.0.1 already has
-    access to that server. From the network: a token is required, and an empty
-    token means refused, not exempt.
+    From 127.0.0.1: open. From the network a token is required, and an empty
+    token means refused, not exempt. Reads are guarded like writes: a report
+    lists which controls FAIL and every open port, and the action log is
+    root-owned.
 
-    Reading is guarded exactly like writing, and that is the part that used to
-    be missing. A report says which controls FAIL, the server's IP and kernel,
-    and every open port with the name of the process holding it. Handed out
-    unauthenticated that is a free reconnaissance report on a machine whose
-    weak spots are listed for the attacker. The action log is worse: it is
-    root-owned precisely so the agent cannot edit it, and serving it to anyone
-    who can reach the port gives that protection away.
-
-    The same rule covers the two endpoints the agent uses, for a different
-    reason. POST /api/laporan with no check lets anyone submit a report saying
-    "skor 100, semua LULUS" - and for a watchdog, being silenced IS the attack.
-    GET /api/keputusan marks decisions taken; called by a stranger it makes the
-    owner's real approvals evaporate before the agent ever collects them.
-
-    Left open on purpose: "/" and "/sehat". The page holds no data - it has to
-    load before anyone can type a token into it - and the health check has to
-    answer while the dashboard is still being set up.
+    "/" and "/health" stay open: the page holds no data and must load before a
+    token can be typed, and the health check must answer during setup.
     """
     if from_this_machine(req):
         return
@@ -184,8 +168,8 @@ def require_access(req: Request, given: Optional[str]):
 
 
 def read_config() -> Dict[str, str]:
-    """Read as text, never sourced. A value containing $(...) would otherwise
-    run in a process holding the tokens, and this file holds them."""
+    """Parsed as text, never sourced: a value with $(...) would otherwise run
+    in a process that holds the tokens."""
     config: Dict[str, str] = {}
     try:
         text = CONFIG_FILE.read_text(encoding="utf-8", errors="replace")
@@ -201,107 +185,91 @@ def read_config() -> Dict[str, str]:
 
 
 def local_server_name() -> str:
-    """The name the agent on this machine uses - worked out exactly the way the
-    agent works it out. The buttons only touch this machine, so another
-    server's report must never be edited by them."""
+    """This machine's name, worked out as the agent does; buttons touch only this machine."""
     return (read_config().get("NAMA_SERVER") or "").strip() or socket.gethostname()
 
 
 # ------------------------------------------------------------------ endpoints
-@app.post("/api/laporan")
-async def receive_report(req: Request, laporan: Dict[str, Any] = Body(...),
+@app.post("/api/report")
+async def receive_report(req: Request, report: Dict[str, Any] = Body(...),
                          authorization: Optional[str] = Header(None)):
     require_access(req, authorization)
 
-    for field in ("versi_kontrak", "server", "waktu", "siklus", "ringkasan", "kontrol"):
-        if field not in laporan:
+    for field in ("contract_version", "server", "time", "cycle", "summary", "controls"):
+        if field not in report:
             raise HTTPException(status_code=422, detail=f"field '{field}' tidak ada")
 
-    name = str((laporan.get("server") or {}).get("nama") or "tanpa-nama")[:100]
+    name = str((report.get("server") or {}).get("name") or "tanpa-nama")[:100]
     with closing(db()) as conn, conn:
         conn.execute(
-            "INSERT INTO laporan (server, waktu, siklus, skor, isi, diterima) VALUES (?,?,?,?,?,?)",
-            (name, str(laporan["waktu"]), str(laporan["siklus"]),
-             int((laporan.get("ringkasan") or {}).get("skor") or 0),
-             json.dumps(laporan, ensure_ascii=False), time.time()),
+            "INSERT INTO report (server, time, cycle, score, body, received) VALUES (?,?,?,?,?,?)",
+            (name, str(report["time"]), str(report["cycle"]),
+             int((report.get("summary") or {}).get("score") or 0),
+             json.dumps(report, ensure_ascii=False), time.time()),
         )
-        # Decisions the agent already collected are dropped so they are not
-        # carried out twice on the next cycle.
-        conn.execute("DELETE FROM keputusan WHERE server=? AND diambil=1", (name,))
-        conn.execute("DELETE FROM port WHERE server=? AND diambil=1", (name,))
+        # Drop already-collected decisions so they are not carried out twice.
+        conn.execute("DELETE FROM decision WHERE server=? AND taken=1", (name,))
+        conn.execute("DELETE FROM port WHERE server=? AND taken=1", (name,))
     return {"ok": True, "server": name}
 
 
-@app.get("/api/laporan")
+@app.get("/api/report")
 async def latest_report(req: Request, server: Optional[str] = None,
                         authorization: Optional[str] = Header(None)):
     require_access(req, authorization)
     with closing(db()) as conn:
         if server:
-            row = conn.execute("SELECT isi FROM laporan WHERE server=? ORDER BY diterima DESC LIMIT 1",
+            row = conn.execute("SELECT body FROM report WHERE server=? ORDER BY received DESC LIMIT 1",
                                (server,)).fetchone()
         else:
-            row = conn.execute("SELECT isi FROM laporan ORDER BY diterima DESC LIMIT 1").fetchone()
+            row = conn.execute("SELECT body FROM report ORDER BY received DESC LIMIT 1").fetchone()
     if not row:
         return JSONResponse({"kosong": True,
-                             "pesan": "belum ada laporan masuk - jalankan agent dulu"},
+                             "message": "belum ada laporan masuk - jalankan agent dulu"},
                             status_code=404)
-    return json.loads(row["isi"])
+    return json.loads(row["body"])
 
 
-@app.get("/api/server")
+@app.get("/api/servers")
 async def server_list(req: Request, authorization: Optional[str] = Header(None)):
-    """Every server that has ever reported here, and which one is this machine.
-
-    The "lokal" flag is what lets the page tell two very different things apart.
-    The Audit/Hardening/Rollback buttons run yoructl on THIS machine, so they
-    only ever mean anything for this machine's own row. Approving a control or
-    vouching for a port is different: that is written down and collected by the
-    agent on whichever server it belongs to, so it works for every row here.
-
-    Without the flag the page would have to guess, and guessing wrong means
-    offering someone a Hardening button that quietly hardens the wrong server.
-    """
+    """Reporting servers, with a "local" flag: the Audit/Hardening/Rollback
+    buttons run yoructl on THIS machine, so they apply only to the local row."""
     require_access(req, authorization)
     local = local_server_name()
     with closing(db()) as conn:
         rows = conn.execute(
-            "SELECT server, MAX(diterima) d, COUNT(*) n FROM laporan GROUP BY server ORDER BY d DESC"
+            "SELECT server, MAX(received) d, COUNT(*) n FROM report GROUP BY server ORDER BY d DESC"
         ).fetchall()
-    return {"server": [{"nama": r["server"], "laporan": r["n"], "terakhir": r["d"],
-                        "lokal": r["server"] == local} for r in rows],
-            "lokal": local}
+    return {"servers": [{"name": r["server"], "reports": r["n"], "last": r["d"],
+                        "local": r["server"] == local} for r in rows],
+            "local": local}
 
 
-@app.get("/api/riwayat")
-async def history(req: Request, server: Optional[str] = None, batas: int = 30,
+@app.get("/api/history")
+async def history(req: Request, server: Optional[str] = None, limit: int = 30,
                   authorization: Optional[str] = Header(None)):
     require_access(req, authorization)
-    batas = max(1, min(batas, 200))
+    limit = max(1, min(limit, 200))
     with closing(db()) as conn:
         if server:
             rows = conn.execute(
-                "SELECT waktu, siklus, skor FROM laporan WHERE server=? ORDER BY diterima DESC LIMIT ?",
-                (server, batas)).fetchall()
+                "SELECT time, cycle, score FROM report WHERE server=? ORDER BY received DESC LIMIT ?",
+                (server, limit)).fetchall()
         else:
             rows = conn.execute(
-                "SELECT waktu, siklus, skor FROM laporan ORDER BY diterima DESC LIMIT ?",
-                (batas,)).fetchall()
-    return {"riwayat": [dict(r) for r in rows]}
+                "SELECT time, cycle, score FROM report ORDER BY received DESC LIMIT ?",
+                (limit,)).fetchall()
+    return {"history": [dict(r) for r in rows]}
 
 
-@app.post("/api/keputusan")
-async def store_decision(req: Request, badan: Dict[str, Any] = Body(...),
+@app.post("/api/decision")
+async def store_decision(req: Request, payload: Dict[str, Any] = Body(...),
                          authorization: Optional[str] = Header(None)):
-    """The owner's answer from the dashboard.
-
-    Stored, not executed. The agent on the server is still what carries it out,
-    through yoructl - the dashboard never touches anyone's server.
-    """
+    """Stores the owner's answer; the agent carries it out via yoructl, not the dashboard."""
     require_access(req, authorization)
-    server = str(badan.get("server") or "").strip()[:100]
-    control = str(badan.get("kontrol") or "").strip().upper()
-    value = str(badan.get("nilai") or "").strip().lower()
+    server = str(payload.get("server") or "").strip()[:100]
+    control = str(payload.get("control") or "").strip().upper()
+    value = str(payload.get("value") or "").strip().lower()
 
     if not server:
         raise HTTPException(status_code=422, detail="server tidak disebut")
@@ -312,69 +280,63 @@ async def store_decision(req: Request, badan: Dict[str, Any] = Body(...),
                             detail=f"nilai harus salah satu dari {sorted(VALID_DECISIONS)}")
 
     with closing(db()) as conn, conn:
-        conn.execute("""INSERT INTO keputusan (server, kontrol, nilai, catatan, dibuat, diambil)
+        conn.execute("""INSERT INTO decision (server, control, value, note, created, taken)
                         VALUES (?,?,?,?,?,0)
-                        ON CONFLICT(server, kontrol) DO UPDATE SET
-                          nilai=excluded.nilai, catatan=excluded.catatan,
-                          dibuat=excluded.dibuat, diambil=0""",
-                     (server, control, value, str(badan.get("catatan") or "")[:500], time.time()))
-    return {"ok": True, "server": server, "kontrol": control, "nilai": value}
+                        ON CONFLICT(server, control) DO UPDATE SET
+                          value=excluded.value, note=excluded.note,
+                          created=excluded.created, taken=0""",
+                     (server, control, value, str(payload.get("note") or "")[:500], time.time()))
+    return {"ok": True, "server": server, "control": control, "value": value}
 
 
 @app.post("/api/port")
-async def store_ports(req: Request, badan: Dict[str, Any] = Body(...),
+async def store_ports(req: Request, payload: Dict[str, Any] = Body(...),
                       authorization: Optional[str] = Header(None)):
-    """The owner answering "yes, that port is mine"."""
+    """Marks ports as owner-approved."""
     require_access(req, authorization)
-    server = str(badan.get("server") or "").strip()[:100]
+    server = str(payload.get("server") or "").strip()[:100]
     if not server:
         raise HTTPException(status_code=422, detail="server tidak disebut")
 
     accepted = []
     with closing(db()) as conn, conn:
-        for p in (badan.get("port") or []):
+        for p in (payload.get("port") or []):
             try:
                 n = int(p)
             except (TypeError, ValueError):
                 continue
             if not 1 <= n <= 65535:
                 continue
-            conn.execute("""INSERT INTO port (server, port, keterangan, dibuat, diambil)
+            conn.execute("""INSERT INTO port (server, port, note, created, taken)
                             VALUES (?,?,?,?,0)
-                            ON CONFLICT(server, port) DO UPDATE SET diambil=0""",
-                         (server, n, str(badan.get("keterangan") or "")[:200], time.time()))
+                            ON CONFLICT(server, port) DO UPDATE SET taken=0""",
+                         (server, n, str(payload.get("note") or "")[:200], time.time()))
             accepted.append(n)
     return {"ok": True, "port": accepted}
 
 
-@app.get("/api/keputusan")
+@app.get("/api/decision")
 async def decisions_for_agent(req: Request, server: Optional[str] = None,
                               authorization: Optional[str] = Header(None)):
-    """Collected by the agent each cycle. Marks them taken; does not delete.
-
-    Deleting here would lose the decision whenever the agent dies mid-run
-    before carrying it out - and the owner would never know their answer
-    evaporated. Deletion happens when the next report arrives, which means the
-    agent did finish.
-    """
+    """Collected by the agent each cycle; marks them taken but does not delete.
+    Deletion waits for the next report, so a decision survives an agent that
+    dies mid-run before carrying it out."""
     require_access(req, authorization)
 
-    # The server name is mandatory, not a filter you may leave off. Without it
-    # this used to answer with EVERY server's decisions and mark all of them
-    # taken - so one agent checking in would swallow the answers meant for the
-    # other nine, and those owners would never learn their approval vanished.
+    # ?server= is mandatory: without it this would return and mark-taken EVERY
+    # server's decisions, so one agent would swallow the others' answers.
     server = (server or "").strip()
     if not server:
         raise HTTPException(status_code=422, detail="sebutkan ?server=<nama>")
 
     with closing(db()) as conn, conn:
-        decisions = conn.execute("SELECT kontrol, nilai FROM keputusan WHERE server=?",
+        decisions = conn.execute("SELECT control, value FROM decision WHERE server=?",
                                  (server,)).fetchall()
         ports = conn.execute("SELECT port FROM port WHERE server=?", (server,)).fetchall()
-        conn.execute("UPDATE keputusan SET diambil=1 WHERE server=?", (server,))
-        conn.execute("UPDATE port SET diambil=1 WHERE server=?", (server,))
-    return {"keputusan": {r["kontrol"]: r["nilai"] for r in decisions},
-            "port_disetujui": [r["port"] for r in ports]}
+        conn.execute("UPDATE decision SET taken=1 WHERE server=?", (server,))
+        conn.execute("UPDATE port SET taken=1 WHERE server=?", (server,))
+    return {"decisions": {r["control"]: r["value"] for r in decisions},
+            "approved_ports": [r["port"] for r in ports]}
 
 
 # -------------------------------------------------------- running via yoructl
@@ -387,22 +349,18 @@ async def run_yoructl(kid: str, action: str) -> Dict[str, Any]:
         proc = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     except OSError as e:
-        return {"id": kid, "tindakan": action, "status": "ERROR", "berhasil": False,
-                "nilai": None, "pesan": f"tidak bisa menjalankan {YORUCTL}: {e}"}
+        return {"id": kid, "action": action, "status": "ERROR", "ok": False,
+                "value": None, "message": f"tidak bisa menjalankan {YORUCTL}: {e}"}
 
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=TIME_LIMIT)
     except asyncio.TimeoutError:
-        # The process is deliberately NOT killed. If this is K07 or K08 what is
-        # running is apt, and killing apt halfway leaves dpkg in a half state -
-        # far more trouble than waiting.
-        #
-        # And the message must never be empty. An earlier version wrote f"{e}",
-        # but str(asyncio.TimeoutError()) is the empty string - so the screen
-        # showed the word "ERROR" and not one word of why.
-        return {"id": kid, "tindakan": action, "status": "MENUNGGU", "berhasil": False,
-                "nilai": None,
-                "pesan": f"sudah {TIME_LIMIT} detik dan belum selesai - biasanya apt "
+        # Process deliberately NOT killed: it may be apt (K07/K08), and killing it
+        # mid-install leaves dpkg half-done. Message is set explicitly because
+        # str(asyncio.TimeoutError()) is empty.
+        return {"id": kid, "action": action, "status": "MENUNGGU", "ok": False,
+                "value": None,
+                "message": f"sudah {TIME_LIMIT} detik dan belum selesai - biasanya apt "
                          f"masih mengunduh. Tindakannya TETAP JALAN di server, tidak "
                          f"dibatalkan. Tunggu sebentar lalu tekan Audit untuk melihat "
                          f"hasilnya, atau lihat Audit Logs."}
@@ -412,115 +370,102 @@ async def run_yoructl(kid: str, action: str) -> Dict[str, Any]:
             return json.loads(line)
         except json.JSONDecodeError:
             continue
-    return {"id": kid, "tindakan": action, "status": "ERROR", "berhasil": False,
-            "nilai": None,
-            "pesan": (err.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
+    return {"id": kid, "action": action, "status": "ERROR", "ok": False,
+            "value": None,
+            "message": (err.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
 
 
-@app.post("/api/jalankan")
-async def run_action(req: Request, badan: Dict[str, Any] = Body(...),
+@app.post("/api/run")
+async def run_action(req: Request, payload: Dict[str, Any] = Body(...),
                      authorization: Optional[str] = Header(None)):
     require_access(req, authorization)
-    kid = str(badan.get("kontrol") or "").strip().upper()
-    action = ACTIONS.get(str(badan.get("aksi") or "").strip().lower())
+    kid = str(payload.get("control") or "").strip().upper()
+    action = ACTIONS.get(str(payload.get("action") or "").strip().lower())
     if not CONTROL_RE.match(kid):
         raise HTTPException(status_code=422, detail="kontrol tidak dikenal")
     if not action:
         raise HTTPException(status_code=422, detail="tindakan tidak dikenal")
 
     result = await run_yoructl(kid, action)
-    if result.get("berhasil") is True:
+    if result.get("ok") is True:
         if action in ("terapkan", "kembalikan"):
-            # The row's status is read back, not inferred from "apply
-            # succeeded". Same rule verification uses: what we report has to be
-            # the state actually in force now, not the intent we just had.
-            # Without this a row that was just rolled back would be recorded as
-            # DILEWATI instead of GAGAL.
+            # Read the status back rather than infer it from "apply succeeded", or a
+            # just-rolled-back row would record as DILEWATI instead of GAGAL.
             check = await run_yoructl(kid, "periksa")
-            refresh_stored_report(kid, check if check.get("berhasil") is True else result)
+            refresh_stored_report(kid, check if check.get("ok") is True else result)
         else:
             refresh_stored_report(kid, result)
     return result
 
 
 def refresh_stored_report(kid: str, result: Dict[str, Any]):
-    """Bring the stored report in line with what was just measured.
-
-    Without this the cards at the top of the dashboard only move after the next
-    agent cycle - so someone presses Hardening, the control really does change,
-    and the "Lolos Audit" number sits still as if the button did nothing.
-    """
+    """Update the stored report to match what was just measured, so the dashboard
+    cards move now instead of only after the next agent cycle."""
     status = STATUS_MAP.get(str(result.get("status") or "ERROR"), "ERROR")
-    value = result.get("nilai") or "tidak-terbaca"
+    value = result.get("value") or "tidak-terbaca"
     name = local_server_name()
     try:
         with closing(db()) as conn, conn:
-            row = conn.execute("SELECT id, isi FROM laporan WHERE server=? "
-                               "ORDER BY diterima DESC LIMIT 1", (name,)).fetchone()
+            row = conn.execute("SELECT id, body FROM report WHERE server=? "
+                               "ORDER BY received DESC LIMIT 1", (name,)).fetchone()
             if not row:
                 return
-            report = json.loads(row["isi"])
+            report = json.loads(row["body"])
             found = False
-            for entry in report.get("kontrol", []):
+            for entry in report.get("controls", []):
                 if entry.get("id") == kid:
                     entry["status"] = status
-                    entry["nilai_terbaca"] = value
-                    entry["hasil"] = {"tindakan": result.get("tindakan"),
+                    entry["observed"] = value
+                    entry["result"] = {"action": result.get("action"),
                                       "status": result.get("status"),
-                                      "pesan": result.get("pesan"),
-                                      "waktu": time.strftime("%Y-%m-%dT%H:%M:%S")}
+                                      "message": result.get("message"),
+                                      "time": time.strftime("%Y-%m-%dT%H:%M:%S")}
                     found = True
             if not found:
                 return
 
             tally = {"LULUS": 0, "GAGAL": 0, "SEBAGIAN": 0, "DILEWATI": 0, "ERROR": 0}
-            for entry in report["kontrol"]:
+            for entry in report["controls"]:
                 tally[entry["status"]] = tally.get(entry["status"], 0) + 1
-            total = len(report["kontrol"])
-            report["ringkasan"] = {
-                "total": total, "lulus": tally["LULUS"], "gagal": tally["GAGAL"],
-                "sebagian": tally["SEBAGIAN"], "dilewati": tally["DILEWATI"] + tally["ERROR"],
-                "skor": round(tally["LULUS"] / total * 100) if total else 0,
+            total = len(report["controls"])
+            report["summary"] = {
+                "total": total, "passed": tally["LULUS"], "failed": tally["GAGAL"],
+                "partial": tally["SEBAGIAN"], "skipped": tally["DILEWATI"] + tally["ERROR"],
+                "score": round(tally["LULUS"] / total * 100) if total else 0,
             }
-            report["butuh_keputusan"] = [
-                e["id"] for e in report["kontrol"]
-                if e["status"] == "GAGAL" and e.get("butuh_izin") and not e.get("prasyarat_gagal")]
-            conn.execute("UPDATE laporan SET skor=?, isi=? WHERE id=?",
-                         (report["ringkasan"]["skor"],
+            report["pending_decisions"] = [
+                e["id"] for e in report["controls"]
+                if e["status"] == "GAGAL" and e.get("needs_approval") and not e.get("blockers")]
+            conn.execute("UPDATE report SET score=?, body=? WHERE id=?",
+                         (report["summary"]["score"],
                           json.dumps(report, ensure_ascii=False), row["id"]))
     except (OSError, sqlite3.Error, ValueError, KeyError):
-        # Failing to refresh the report is no reason to fail an action that has
-        # already succeeded on the server.
+        # A failed refresh must not fail an action that already succeeded.
         return
 
 
 # ------------------------------------------------------------------- settings
-@app.get("/api/konfigurasi")
+@app.get("/api/config")
 async def read_settings(req: Request, authorization: Optional[str] = Header(None)):
     require_access(req, authorization)
     config = read_config()
     out: Dict[str, Any] = {}
     for key in SETTABLE_KEYS:
         val = config.get(key, "")
-        # A token is never sent to the browser in full. All the owner needs to
-        # know is whether one is set.
-        out[key] = {"terisi": bool(val), "nilai": "" if key in SECRET_KEYS else val}
+        # Secrets are never sent to the browser; only whether one is set.
+        out[key] = {"set": bool(val), "value": "" if key in SECRET_KEYS else val}
     out["_berkas"] = str(CONFIG_FILE)
     return out
 
 
-@app.post("/api/konfigurasi")
-async def write_setting(req: Request, badan: Dict[str, Any] = Body(...),
+@app.post("/api/config")
+async def write_setting(req: Request, payload: Dict[str, Any] = Body(...),
                         authorization: Optional[str] = Header(None)):
-    """Writes through yoructl instead of writing the file itself.
-
-    The dashboard runs as yoru-agent and is deliberately not allowed to write
-    /etc/yoru/yoru.conf. The only way in is yoructl - the same program the
-    agent uses, with the key list and value checks inside it.
-    """
+    """Writes through yoructl, never the file directly: the dashboard runs as
+    yoru-agent, which is not allowed to write /etc/yoru/yoru.conf."""
     require_access(req, authorization)
-    key = str(badan.get("kunci") or "").strip()
-    val = str(badan.get("nilai") or "").strip()
+    key = str(payload.get("key") or "").strip()
+    val = str(payload.get("value") or "").strip()
     if key not in SETTABLE_KEYS:
         raise HTTPException(status_code=422, detail=f"kunci '{key}' tidak bisa disetel dari sini")
 
@@ -532,40 +477,40 @@ async def write_setting(req: Request, badan: Dict[str, Any] = Body(...),
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         out, err = await asyncio.wait_for(proc.communicate(), timeout=30)
     except (OSError, asyncio.TimeoutError) as e:
-        return {"status": "ERROR", "berhasil": False,
-                "pesan": f"tidak bisa menjalankan yoructl: {e or 'kehabisan waktu'}"}
+        return {"status": "ERROR", "ok": False,
+                "message": f"tidak bisa menjalankan yoructl: {e or 'kehabisan waktu'}"}
 
     for line in reversed([b for b in out.decode("utf-8", "replace").splitlines() if b.strip()]):
         try:
             return json.loads(line)
         except json.JSONDecodeError:
             continue
-    return {"status": "ERROR", "berhasil": False,
-            "pesan": (err.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
+    return {"status": "ERROR", "ok": False,
+            "message": (err.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
 
 
 @app.get("/api/log")
-async def read_log(req: Request, kontrol: Optional[str] = None, batas: int = 60,
+async def read_log(req: Request, control: Optional[str] = None, limit: int = 60,
                    authorization: Optional[str] = Header(None)):
     """The action trail from /var/log/yoru. Root-owned; the agent cannot write it."""
     require_access(req, authorization)
-    batas = max(1, min(batas, 500))
+    limit = max(1, min(limit, 500))
     name = "tindakan.log"
-    if kontrol and CONTROL_RE.match(kontrol.upper()):
-        name = f"{kontrol.upper()}.log"
+    if control and CONTROL_RE.match(control.upper()):
+        name = f"{control.upper()}.log"
     try:
         lines = (LOG_DIR / name).read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
-        return {"baris": [], "pesan": f"{LOG_DIR / name} belum ada atau tidak bisa dibaca"}
+        return {"lines": [], "message": f"{LOG_DIR / name} belum ada atau tidak bisa dibaca"}
     out = []
-    for line in lines[-batas:]:
+    for line in lines[-limit:]:
         line = line.strip()
         if line:
             try:
                 out.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
-    return {"baris": list(reversed(out))}
+    return {"lines": list(reversed(out))}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -576,14 +521,11 @@ async def page():
         return HTMLResponse("<h1>dashboard.html tidak ditemukan</h1>", status_code=404)
 
 
-@app.get("/sehat")
+@app.get("/health")
 async def health(req: Request):
-    """Open on purpose - the installer polls it before any token exists.
-
-    From the network it answers only "alive". Where the database sits is of no
-    use to the owner and of some use to everyone else.
-    """
-    out = {"ok": True, "versi": app.version, "token_aktif": bool(TOKEN)}
+    """Open on purpose (the installer polls it before any token exists); the db
+    path is returned only to local callers, the network gets just "alive"."""
+    out = {"ok": True, "version": app.version, "token_active": bool(TOKEN)}
     if from_this_machine(req):
         out["db"] = str(DB_FILE)
     return out

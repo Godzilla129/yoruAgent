@@ -6,7 +6,7 @@ tanpa server bersama dan tanpa saling menunggu jawaban.
 
 - **Lane 3 (agent)** yang menghasilkan file ini
 - **Lane 2 (dashboard + bot)** yang membacanya
-- **Lane 1 (dispatcher)** yang mengisi `nilai_terbaca` dan `hasil`
+- **Lane 1 (dispatcher)** yang mengisi `observed` dan `result`
 
 Kalau ada field yang kurang atau artinya membingungkan, bahas di grup dulu.
 Mengubahnya sendiri berarti memecahkan kode dua orang lain tanpa mereka tahu.
@@ -48,39 +48,39 @@ sama persis.
 
 | Field | Tipe | Arti |
 |---|---|---|
-| `versi_kontrak` | string | `"1"` untuk sekarang. Naik kalau bentuknya berubah |
-| `versi_yoru` | string | Versi paket, misal `"0.1.0"` |
+| `contract_version` | string | `"1"` untuk sekarang. Naik kalau bentuknya berubah |
+| `yoru_version` | string | Versi paket, misal `"0.1.0"` |
 | `server` | objek | Identitas mesin |
-| `waktu` | string | ISO 8601 **berikut zona waktunya** |
-| `siklus` | string | `"perbaikan"` atau `"penjagaan"` |
-| `ringkasan` | objek | Angka-angka untuk kartu di dashboard |
-| `kontrol` | array | Satu entri per kontrol yang diperiksa |
+| `time` | string | ISO 8601 **berikut zona waktunya** |
+| `cycle` | string | `"perbaikan"` atau `"penjagaan"` |
+| `summary` | objek | Angka-angka untuk kartu di dashboard |
+| `controls` | array | Satu entri per kontrol yang diperiksa |
 | `drift` | array | Hanya terisi saat siklus penjagaan. Kosong saat perbaikan |
-| `butuh_keputusan` | array | Daftar `id` yang menunggu jawaban pemilik — ini yang dikirim bot |
+| `pending_decisions` | array | Daftar `id` yang menunggu jawaban pemilik — ini yang dikirim bot |
 
 ### `server`
 
 ```json
 {
-  "nama": "yoru-a",
+  "name": "yoru-a",
   "os": "Ubuntu 24.04.4 LTS",
   "kernel": "6.8.0-138-generic",
-  "ip_utama": "192.168.206.132",
-  "panel_terdeteksi": null
+  "primary_ip": "192.168.206.132",
+  "detected_panel": null
 }
 ```
 
-`panel_terdeteksi` isinya `null`, `"aapanel"`, `"cpanel"`, atau `"cyberpanel"`.
+`detected_panel` isinya `null`, `"aapanel"`, `"cpanel"`, atau `"cyberpanel"`.
 Dashboard memakainya untuk menampilkan peringatan khusus panel yang sudah
 dicatat di katalog — misalnya aaPanel yang butuh port 8888 tetap terbuka.
 
-### `ringkasan`
+### `summary`
 
 ```json
-{ "total": 10, "lulus": 6, "gagal": 3, "sebagian": 1, "dilewati": 0, "skor": 60 }
+{ "total": 10, "passed": 6, "failed": 3, "partial": 1, "skipped": 0, "score": 60 }
 ```
 
-`skor` dihitung dari `lulus / total × 100`, dibulatkan. Ini angka besar yang
+`score` dihitung dari `lulus / total × 100`, dibulatkan. Ini angka besar yang
 pertama kali dilihat orang saat membuka dashboard.
 
 ### `kontrol[]`
@@ -88,34 +88,34 @@ pertama kali dilihat orang saat membuka dashboard.
 | Field | Tipe | Arti |
 |---|---|---|
 | `id` | string | `"K01"` sampai `"K10"` |
-| `nama` | string | Nama kontrol, apa adanya dari katalog |
-| `kategori` | string | `ssh`, `firewall`, `jaringan`, `log`, `audit`, `pembaruan` |
-| `risiko` | string | `AMAN`, `BERISIKO`, `BERBAHAYA` |
+| `name` | string | Nama kontrol, apa adanya dari katalog |
+| `category` | string | `ssh`, `firewall`, `jaringan`, `log`, `audit`, `pembaruan` |
+| `risk` | string | `AMAN`, `BERISIKO`, `BERBAHAYA` |
 | `status` | string | `LULUS`, `GAGAL`, `SEBAGIAN`, `DILEWATI`, `ERROR` |
-| `nilai_terbaca` | string | Yang benar-benar ada di server sekarang |
-| `nilai_target` | string | Yang seharusnya |
-| `kenapa` | string | Penjelasan untuk pemilik server, bukan untuk teknisi |
-| `yang_rusak_kalau_diterapkan` | string | Konsekuensinya. Harus terlihat sebelum tombol setuju |
-| `butuh_izin` | bool | `true` untuk BERISIKO dan BERBAHAYA |
-| `prasyarat_gagal` | array | Kosong kalau aman. Kalau terisi, kontrol ini tidak boleh ditawarkan |
-| `hasil` | objek / `null` | Baru terisi setelah kontrolnya dijalankan |
+| `observed` | string | Yang benar-benar ada di server sekarang |
+| `target` | string | Yang seharusnya |
+| `why` | string | Penjelasan untuk pemilik server, bukan untuk teknisi |
+| `breaks_if_applied` | string | Konsekuensinya. Harus terlihat sebelum tombol setuju |
+| `needs_approval` | bool | `true` untuk BERISIKO dan BERBAHAYA |
+| `blockers` | array | Kosong kalau aman. Kalau terisi, kontrol ini tidak boleh ditawarkan |
+| `result` | objek / `null` | Baru terisi setelah kontrolnya dijalankan |
 
 Contoh satu entri:
 
 ```json
 {
   "id": "K01",
-  "nama": "Root tidak bisa login lewat SSH",
-  "kategori": "ssh",
-  "risiko": "BERISIKO",
+  "name": "Root tidak bisa login lewat SSH",
+  "category": "ssh",
+  "risk": "BERISIKO",
   "status": "SEBAGIAN",
-  "nilai_terbaca": "without-password",
-  "nilai_target": "no",
-  "kenapa": "Kalau akun root bisa login langsung dari internet, penyerang cuma perlu menebak satu password untuk menguasai seluruh server.",
-  "yang_rusak_kalau_diterapkan": "Script otomatis yang selama ini login sebagai root akan berhenti jalan — misalnya tool backup atau deploy.",
-  "butuh_izin": true,
-  "prasyarat_gagal": [],
-  "hasil": null
+  "observed": "without-password",
+  "target": "no",
+  "why": "Kalau akun root bisa login langsung dari internet, penyerang cuma perlu menebak satu password untuk menguasai seluruh server.",
+  "breaks_if_applied": "Script otomatis yang selama ini login sebagai root akan berhenti jalan — misalnya tool backup atau deploy.",
+  "needs_approval": true,
+  "blockers": [],
+  "result": null
 }
 ```
 
@@ -123,8 +123,8 @@ Contoh satu entri:
 
 ```json
 {
-  "tindakan": "terapkan",
-  "berhasil": true,
+  "action": "terapkan",
+  "ok": true,
   "nilai_sesudah": "no",
   "diverifikasi": true,
   "snapshot_id": "yoru-K01-20260904T113000",
@@ -134,11 +134,11 @@ Contoh satu entri:
 }
 ```
 
-`tindakan` isinya `"terapkan"`, `"kembalikan"`, atau `"lewati"`.
+`action` isinya `"terapkan"`, `"kembalikan"`, atau `"lewati"`.
 
 Satu hal yang tidak bisa ditawar: **`berhasil: true` hanya boleh diisi kalau
 `diverifikasi: true`.** Kalau verifikasinya tidak dijalankan atau gagal,
-`berhasil` wajib `false`.
+`ok` wajib `false`.
 
 Kami menaruh aturan ini di sini karena sudah pernah kena. Waktu mengerjakan
 K02, file drop-in berhasil ditulis, `sshd -t` bilang valid, `systemctl reload`
@@ -152,22 +152,22 @@ yang jadi bukti cuma pembacaan ulang keadaan efektif.
 ```json
 {
   "id": "K06",
-  "nama": "Cuma port yang dipakai yang boleh terbuka",
-  "berubah_dari": "127.0.0.1:3306",
-  "berubah_jadi": "0.0.0.0:3306",
-  "terdeteksi": "2026-09-08T03:00:12+07:00",
-  "siapa": "budi",
-  "kapan_diubah": "2026-09-07T22:14:08+07:00",
-  "perintah": "vim /etc/mysql/mariadb.conf.d/zz-yoru-k06.cnf",
-  "sumber_bukti": "auditd",
-  "keputusan_pemilik": null
+  "name": "Cuma port yang dipakai yang boleh terbuka",
+  "changed_from": "127.0.0.1:3306",
+  "changed_to": "0.0.0.0:3306",
+  "detected": "2026-09-08T03:00:12+07:00",
+  "who": "budi",
+  "changed_at": "2026-09-07T22:14:08+07:00",
+  "command": "vim /etc/mysql/mariadb.conf.d/zz-yoru-k06.cnf",
+  "evidence_source": "auditd",
+  "owner_decision": null
 }
 ```
 
-`siapa`, `kapan_diubah`, dan `perintah` datang dari auditd (K08). Boleh `null`
+`who`, `changed_at`, dan `command` datang dari auditd (K08). Boleh `null`
 kalau memang tidak ada jejaknya.
 
-`keputusan_pemilik` isinya `null` (belum dijawab), `"sah"` (berarti ini
+`owner_decision` isinya `null` (belum dijawab), `"sah"` (berarti ini
 perubahan yang disengaja, jadikan patokan baru), atau `"kembalikan"`.
 
 Jawaban di field inilah yang memperbarui baseline. Ini engsel yang
@@ -186,12 +186,12 @@ Kalau nilainya belum ada, isi `null`. Jangan hapus fieldnya — kode yang
 membaca field yang tidak ada akan error, dan errornya muncul di layar orang
 lain, bukan di layar yang menghapus.
 
-**3. `waktu` selalu ikut zona.**
+**3. `time` selalu ikut zona.**
 Jam server itu UTC, pemiliknya membaca WIB. Selisihnya 7 jam, dan itu sudah
 pernah bikin kami salah paham sendiri.
 
-**4. Kalau `butuh_izin` bernilai `true`, dashboard harus menampilkan
-`yang_rusak_kalau_diterapkan` di sebelah tombol setuju.**
+**4. Kalau `needs_approval` bernilai `true`, dashboard harus menampilkan
+`breaks_if_applied` di sebelah tombol setuju.**
 Bukan di tooltip, bukan di halaman lain. Orang yang menekan tombol harus
 sudah membaca konsekuensinya. Ini bukan soal tata letak — ini alasan Yoru
 boleh dipercaya menyentuh server orang.
@@ -200,7 +200,7 @@ boleh dipercaya menyentuh server orang.
 
 ## Kalau kontrak ini perlu berubah
 
-Naikkan `versi_kontrak`, kabari dua lane lain, dan simpan contoh JSON versi
+Naikkan `contract_version`, kabari dua lane lain, dan simpan contoh JSON versi
 lama di `examples/`. Jangan mengganti arti sebuah field tanpa menaikkan versi.
 
 ---
@@ -244,8 +244,8 @@ sedang berjalan, panggilan baru akan menunggu sampai 120 detik. Kalau lewat
 dari itu, jawabannya:
 
 ```json
-{"id":"K06","tindakan":"terapkan","status":"DITOLAK","berhasil":false,
- "nilai":null,"pesan":"kontrol lain sedang diterapkan atau dikembalikan - sudah menunggu 120 detik, coba lagi nanti"}
+{"id":"K06","action":"terapkan","status":"DITOLAK","ok":false,
+ "value":null,"message":"kontrol lain sedang diterapkan atau dikembalikan - sudah menunggu 120 detik, coba lagi nanti"}
 ```
 
 Ini **bukan kegagalan kontrol** — servernya tidak disentuh sama sekali.
@@ -264,8 +264,8 @@ Sejak yoructl 0.1.6, `terapkan` yang dipanggil saat semuanya memang sudah
 benar akan menjawab `DILEWATI` tanpa menyentuh apa pun:
 
 ```json
-{"id":"K06","tindakan":"terapkan","status":"DILEWATI","berhasil":true,
- "nilai":"127.0.0.1:3306","pesan":"sudah diterapkan - mariadb tidak direstart"}
+{"id":"K06","action":"terapkan","status":"DILEWATI","ok":true,
+ "value":"127.0.0.1:3306","message":"sudah diterapkan - mariadb tidak direstart"}
 ```
 
 **Ini keberhasilan, bukan kegagalan.** Perlakukan sama dengan `LULUS` untuk
@@ -284,13 +284,13 @@ tidak diam-diam berubah saat berkas pihak lain itu hilang.
 
 ### Port terbuka: jawaban pemilik dipakai K05
 
-`K05 periksa` mengisi field `pesan` dengan port TCP yang terbuka ke luar tapi
+`K05 periksa` mengisi field `message` dengan port TCP yang terbuka ke luar tapi
 belum pernah dijawab pemilik, berikut nama prosesnya:
 
 ```json
-{"id":"K05","tindakan":"periksa","status":"GAGAL","berhasil":true,
- "nilai":"inactive",
- "pesan":"port terbuka belum dijawab pemilik: 80(nginx) 443(nginx) 8888(python3)"}
+{"id":"K05","action":"periksa","status":"GAGAL","ok":true,
+ "value":"inactive",
+ "message":"port terbuka belum dijawab pemilik: 80(nginx) 443(nginx) 8888(python3)"}
 ```
 
 Port SSH tidak pernah muncul di sini (dicari sendiri dari `sshd -T`), begitu
@@ -327,22 +327,22 @@ baris tanpa perlu menebak format. Berkas per kontrol ada supaya "riwayat K05"
 tidak perlu menyaring berkas gabungan.
 
 ```json
-{"waktu":"2026-09-07T13:22:11+07:00","versi":"0.1.3","pemanggil":"yoru-agent",
- "id":"K05","tindakan":"terapkan","status":"LULUS","berhasil":true,
- "nilai":"active","pesan":null}
+{"time":"2026-09-07T13:22:11+07:00","version":"0.1.3","caller":"yoru-agent",
+ "id":"K05","action":"terapkan","status":"LULUS","ok":true,
+ "value":"active","message":null}
 ```
 
 | Field | Isi |
 |---|---|
-| `waktu` | ISO 8601 berikut zona |
-| `versi` | versi yoructl yang menjalankan |
-| `pemanggil` | pengguna yang memanggil lewat sudo |
+| `time` | ISO 8601 berikut zona |
+| `version` | versi yoructl yang menjalankan |
+| `caller` | pengguna yang memanggil lewat sudo |
 | `id` | `K01`–`K10` |
-| `tindakan` | `periksa`, `terapkan`, `kembalikan`, `verifikasi` |
+| `action` | `periksa`, `terapkan`, `kembalikan`, `verifikasi` |
 | `status` | `LULUS`, `GAGAL`, `DIKEMBALIKAN`, `DILEWATI`, `DITOLAK`, `ERROR`, `PERINGATAN` |
-| `berhasil` | bool. `false` berarti perintahnya sendiri bermasalah |
-| `nilai` | keadaan yang terbaca, atau `null` |
-| `pesan` | keterangan, atau `null` |
+| `ok` | bool. `false` berarti perintahnya sendiri bermasalah |
+| `value` | keadaan yang terbaca, atau `null` |
+| `message` | keterangan, atau `null` |
 
 Folder ini milik root dan agent tidak bisa menulis ke sini — alat keamanan
 tidak boleh bisa menyunting jejaknya sendiri. Berkasnya `640`, jadi bacanya

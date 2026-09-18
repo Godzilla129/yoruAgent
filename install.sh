@@ -27,9 +27,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 SRC="$(dirname "$(readlink -f "$0")")"
 
-# The version is read from the dispatcher, not repeated here. These two numbers
-# used to live apart and drifted immediately - the installer would install
-# 0.1.1 while printing "Yoru 0.1.0", and people thought it had failed.
+# Read from the dispatcher, not repeated here - the two numbers drifted apart.
 VERSION="$(awk -F'"' '/^VERSION=/ {print $2; exit}' "$SRC/bin/yoructl" 2>/dev/null)"
 [ -n "$VERSION" ] || VERSION="tidak-terbaca"
 
@@ -53,11 +51,8 @@ skip() { printf '    %s--%s   %s\n' "$AMBER" "$RESET" "$1"; }
 die()  { printf '\n    %sberhenti%s  %s\n\n' "$RED" "$RESET" "$1"; exit 1; }
 
 # ------------------------------------------------------------ read/write config
-# Same as config_get() in bin/yoru-watch, and for the same reason it never uses
-# `source` - a value containing $(...) would run.
-#
-# Do not use -F= and then edit $1. Touching $1 makes awk rebuild $0 with
-# spaces, and every "=" on that line disappears.
+# Never `source`: a value containing $(...) would run. Do not use -F= and then
+# edit $1 either - awk rebuilds $0 with spaces and every "=" on the line goes.
 config_get() {  # config_get <file> <key>
   [ -r "$1" ] || return 0
   awk -v k="$2" '
@@ -76,9 +71,7 @@ config_get() {  # config_get <file> <key>
     }' "$1"
 }
 
-# Replace one value in place without disturbing the comments around it - those
-# comments are what people read when they are confused. A key that is not there
-# yet gets appended.
+# Replaces one value in place, leaving the comments around it alone.
 config_set() {  # config_set <file> <key> <value>
   local file="$1" key="$2" val="$3" tmp
   tmp=$(mktemp) || return 1
@@ -102,8 +95,7 @@ config_set() {  # config_set <file> <key> <value>
   rm -f "$tmp"
 }
 
-# Read from /dev/tty, not stdin. From stdin, an install whose input is
-# redirected would swallow its own answers and never actually ask.
+# From /dev/tty, not stdin: a redirected install would swallow its own answers.
 ask() {  # ask <label> <variable-name> [secret]
   local label="$1" __var="$2" mode="${3-}" answer=""
   if [ "$mode" = "secret" ]; then
@@ -127,9 +119,7 @@ check_environment() {
     *) die "sistem operasi $os belum didukung. Yoru diuji di Ubuntu 24.04." ;;
   esac
 
-  # flock is what stops terapkan and kembalikan from running at the same time.
-  # Without it yoructl still runs, just unlocked - better to find that out now
-  # than when two actions collide.
+  # Without flock yoructl still runs, just unlocked - better to know it now.
   local missing=()
   local cmd
   for cmd in sshd systemctl sudo visudo install stat flock python3; do
@@ -138,13 +128,9 @@ check_environment() {
   [ ${#missing[@]} -eq 0 ] || die "perintah yang dibutuhkan tidak ada: ${missing[*]}"
   ok "semua perintah yang dibutuhkan tersedia"
 
-  # "sshd exists" does not mean "sshd -T can be read", and K01 through K05 all
-  # rest on sshd -T. Checked here so it surfaces now, instead of later as four
-  # ERROR rows in the dashboard with no visible cause.
-  #
+  # "sshd exists" is not "sshd -T can be read", and K01-K05 all rest on sshd -T.
   # /run/sshd is often missing on a freshly booted Ubuntu 24.04: ssh.service
-  # creates it, and ssh.service only starts once something connects through
-  # ssh.socket. yoructl creates it itself when it is absent.
+  # creates it, and it only starts once something connects through ssh.socket.
   [ -d /run/sshd ] || { mkdir -p /run/sshd 2>/dev/null && chmod 0755 /run/sshd 2>/dev/null; }
   if sshd -T >/dev/null 2>&1; then
     ok "sshd -T bisa dibaca - K01 sampai K05 punya sumber data"
@@ -175,16 +161,8 @@ resolve_owner() {
   install_ssh_key "$home"
 }
 
-# The owner's SSH key.
-#
-# This installer ACCEPTS a public key and deliberately DOES NOT GENERATE a
-# private one. A private key born on the server is a private key that has been
-# on the server, and to reach the owner's laptop it has to travel through a
-# terminal or a file copy - exactly the habit that gets people's servers broken
-# into. Private keys are born on their owner's machine, not on the machine they
-# protect.
-#
-# A public key is a different matter: it was made to be handed around.
+# Accepts a public key, never generates a private one: a private key born on
+# the server has already been on the server.
 install_ssh_key() {  # install_ssh_key <home-dir>
   local home="$1" file="$1/.ssh/authorized_keys"
 
@@ -229,9 +207,7 @@ PETUNJUK
     return 0
   fi
 
-  # Someone who pastes a private key by mistake has to find out immediately.
-  # A key that has crossed a screen and a shell history can no longer be
-  # treated as secret, and staying quiet about that is far worse than failing.
+  # A key that has crossed a screen and a shell history is no longer secret.
   case "$key" in
     *PRIVATE\ KEY*|*BEGIN\ OPENSSH*|*BEGIN\ RSA*)
       printf '    %sBERHENTI%s  itu kunci PRIVAT, bukan publik.\n\n' "$RED" "$RESET"
@@ -244,10 +220,8 @@ PETUNJUK
   local tmp; tmp=$(mktemp) || { skip "gagal menyiapkan berkas sementara"; return 0; }
   printf '%s\n' "$key" > "$tmp"
 
-  # Checked with ssh-keygen rather than a pattern of our own. A key that looks
-  # right but is missing one character would still be written neatly to the
-  # file, and the failure would only show at the next login - once password
-  # login is already off.
+  # ssh-keygen, not a pattern of our own: a key missing one character still
+  # looks right, and would only fail at the next login - after K02 is on.
   local fingerprint=""
   if command -v ssh-keygen >/dev/null 2>&1; then
     fingerprint=$(ssh-keygen -l -f "$tmp" 2>/dev/null) || {
@@ -268,8 +242,7 @@ PETUNJUK
   install -d -o "$OWNER" -g "$group" -m 700 "$home/.ssh" \
     || { skip "gagal membuat $home/.ssh"; return 0; }
 
-  # Appended, never overwritten. This file may already hold someone else's key
-  # who also needs in - overwriting it would lock them out.
+  # Appended, never overwritten - the file may hold someone else's key.
   printf '%s\n' "$key" >> "$file" || { skip "gagal menulis $file"; return 0; }
   chown "$OWNER":"$group" "$file"; chmod 600 "$file"
 
@@ -285,9 +258,7 @@ PETUNJUK
   printf '    Kalau masuk tanpa ditanya password, kuncinya bekerja. Kalau masih\n'
   printf '    ditanya, sesi ini masih hidup untuk membetulkannya.\n\n'
 
-  # A deliberate pause. The lines above would scroll away under the rest of the
-  # install if nothing held them, and this is the one message that must not be
-  # missed.
+  # A deliberate pause - the lines above would otherwise scroll away.
   local cont
   ask "Tekan Enter kalau sudah dites" cont
 }
@@ -302,12 +273,9 @@ create_agent_user() {
       || die "gagal membuat pengguna $AGENT"
     ok "pengguna $AGENT dibuat"
   fi
-  # It must not be in the sudo group. If it were, it would inherit that group's
-  # full rights and the sudoers restriction would mean nothing.
-  #
-  # No pipe, on purpose. An older version used "id -nG | tr | grep -qx sudo",
-  # which is dangerous under pipefail: when grep matches it closes the pipe, tr
-  # dies of SIGPIPE, and the whole pipeline reads as failure - meaning this
+  # In the sudo group it would inherit full rights and the sudoers restriction
+  # would mean nothing. No pipe, on purpose: under pipefail "id -nG | tr | grep
+  # -qx sudo" reads as failure when grep matches and closes the pipe, so the
   # check would PASS exactly when the agent really is in the sudo group.
   local groups=" $(id -nG "$AGENT" 2>/dev/null) "
   case "$groups" in
@@ -324,48 +292,35 @@ create_dirs() {
   ok "$CATALOG_DIR"
   ok "$ETC_DIR"
 
-  # 2750, not 755. The leading 2 is setgid: log files root creates inside it
-  # inherit the yoru-agent group, so the dashboard - which runs as the agent -
-  # can READ the trail. The group still has no write bit and the directory
-  # belongs to root, so the agent still cannot edit or delete its own record.
-  # That is the part that matters.
+  # 2750: setgid, so logs root writes here inherit the yoru-agent group and the
+  # dashboard - which runs as the agent - can READ the trail. No group write
+  # bit, so the agent still cannot edit or delete its own record.
   install -d -o root -g "$AGENT" -m 2750 "$LOG_DIR" || die "gagal membuat $LOG_DIR"
-  # Older installs wrote logs as root:root, and setgid does not apply
-  # retroactively.
+  # Older installs wrote root:root, and setgid does not apply retroactively.
   chgrp "$AGENT" "$LOG_DIR"/*.log 2>/dev/null
   ok "$LOG_DIR (root:$AGENT 2750 - agent boleh baca, tidak boleh menulis)"
 
-  # Where reports live, per contract/report.md. The only directory the agent
-  # may write - the reports are its own output. $LOG_DIR stays root's: a
-  # security tool must not be able to edit its own trail.
+  # The only directory the agent may write; $LOG_DIR stays root's.
   install -d -o "$AGENT" -g "$AGENT" -m 750 "$DATA_DIR" "$DATA_DIR/riwayat" \
     || die "gagal membuat $DATA_DIR"
-  # Ownership of the contents is repaired too. If anyone ever ran the agent
-  # under sudo, laporan-terakhir.json ends up owned by root - and from then on
-  # the daily cycle silently cannot overwrite it.
+  # If the agent was ever run under sudo, laporan-terakhir.json is root-owned
+  # and the daily cycle silently cannot overwrite it.
   chown -R "$AGENT":"$AGENT" "$DATA_DIR" 2>/dev/null
   ok "$DATA_DIR dan $DATA_DIR/riwayat ($AGENT:$AGENT 750)"
 
-  # The record of this server's original state, before Yoru touched anything.
-  # root-owned and 700: the agent may change the server, but it may not change
-  # the record of how that server looked BEFORE it arrived.
+  # The agent may change the server, but not the record of how it looked before.
   install -d -o root -g root -m 700 "$BASELINE_DIR" || die "gagal membuat $BASELINE_DIR"
   ok "$BASELINE_DIR (root:root 700 - agent tidak bisa menyentuh)"
 }
 
-# Before 0.1.3 the action log was free text; now it is one JSON object per
-# line. With both shapes mixed in one file the dashboard's parser breaks at the
-# first old line - and it breaks on someone else's screen, not on the screen
-# doing the upgrade. So old lines are moved aside, not deleted.
+# Before 0.1.3 the action log was free text, now one JSON object per line. Mixed
+# in one file the dashboard's parser breaks, so old lines are moved aside.
 migrate_old_log() {
   local file="$LOG_DIR/tindakan.log" dest tmp text_lines json_lines
   [ -s "$file" ] || return 0
 
-  # Sorted per line, not moved wholesale. The first version of this function
-  # moved the entire file - carrying along JSON lines that had already been
-  # written, so the combined log ended up shorter than the per-control logs. No
-  # data was lost, but two files that should agree no longer did, and that only
-  # surfaces later on someone else's screen.
+  # Sorted per line, not moved wholesale: moving the whole file carries off the
+  # JSON lines too, leaving the combined log shorter than the per-control logs.
   text_lines=$(grep -cv '^{' "$file" 2>/dev/null) || text_lines=0
   [ "${text_lines:-0}" -gt 0 ] || return 0
 
@@ -417,8 +372,7 @@ install_catalog() {
     n=$((n+1))
   done
   [ "$n" -gt 0 ] || die "tidak ada berkas katalog yang tersalin"
-  # root-owned. The agent reads the catalog to make its judgements - a catalog
-  # it could edit would be the agent rewriting its own rules.
+  # root-owned: a catalog the agent could edit is the agent rewriting its rules.
   ok "$n berkas katalog terpasang, hanya bisa dibaca agent"
 }
 
@@ -426,8 +380,7 @@ install_sudoers() {
   step "Memasang aturan sudoers"
   local tmp=/tmp/yoru-sudoers.$$
   cp "$SRC/bin/yoru.sudoers" "$tmp" || die "gagal menyiapkan berkas sudoers"
-  # Checked before it is installed. A broken sudoers file can kill sudo for
-  # everyone, and fixing that needs recovery mode.
+  # Checked first - a broken sudoers file kills sudo until recovery mode.
   if ! visudo -c -f "$tmp" >/dev/null 2>&1; then
     rm -f "$tmp"; die "berkas sudoers tidak lolos pemeriksaan - tidak ada yang dipasang"
   fi
@@ -442,8 +395,7 @@ install_sudoers() {
 write_config() {
   step "Menyiapkan konfigurasi"
 
-  # Re-running the installer is normal. Losing an API key to it is not. An
-  # existing file is never overwritten.
+  # Re-running the installer is normal; losing an API key to it is not.
   if [ -f "$CONFIG_FILE" ]; then
     chown root:"$AGENT" "$CONFIG_FILE"; chmod 640 "$CONFIG_FILE"
     skip "$CONFIG_FILE sudah ada - tidak ditimpa, isinya dibiarkan"
@@ -460,11 +412,8 @@ write_config() {
     return 0
   fi
 
-  # The model API key is NOT asked for here, and that is the point. Hermes holds
-  # the provider key; we only ask where Hermes is listening. So this file - the
-  # one file the agent can read - never holds a spendable credential. An agent
-  # that gets talked into something by a log line it read can make the model say
-  # a wrong sentence; it cannot walk off with the key.
+  # No model API key here: Hermes holds it, so yoru.conf - the one file the
+  # agent can read - never holds a spendable credential.
   printf '\n    Dua pertanyaan, boleh dikosongkan dan diisi belakangan -\n'
   printf '    lewat dashboard, atau dengan menyunting %s\n\n' "$CONFIG_FILE"
 
@@ -486,8 +435,7 @@ write_config() {
 
 # ------------------------------------------------------------------- model AI
 # Yoru bicara ke server model lewat bentuk OpenAI di 127.0.0.1. Kunci API tidak
-# pernah masuk ke yoru.conf - berkas itu satu-satunya yang boleh dibaca agent,
-# jadi kredensial yang bisa dipakai belanja tidak ditaruh di sana.
+# pernah masuk ke yoru.conf - berkas itu satu-satunya yang boleh dibaca agent.
 MODEL_USER="yoru-model"
 MODEL_ENV="/etc/yoru/model.env"
 MODEL_BIN="$BIN_DIR/yoru-model-proxy"
@@ -557,10 +505,29 @@ EOF
 
   local answer
   answer="$(model_probe "http://127.0.0.1:$port" "" "$model")"
+  # Salah ketik nama model itu kesalahan paling sering, dan yang sampai ke layar
+  # cuma "502". Coba sekali lagi dengan nama bawaan sebelum menyerah.
   case "$answer" in
-    ERROR*|"") skip "model belum menjawab: $answer"
-               skip "  lihat sebabnya: journalctl -u yoru-model -n 20 --no-pager"
-               return 1 ;;
+    ERROR*|"")
+      if [ "$model" != "gemini-2.5-flash" ]; then
+        skip "\"$model\" ditolak - dicoba lagi dengan gemini-2.5-flash"
+        sed -i 's|^GEMINI_MODEL=.*|GEMINI_MODEL=gemini-2.5-flash|' "$MODEL_ENV"
+        systemctl restart yoru-model.service >/dev/null 2>&1
+        sleep 2
+        model="gemini-2.5-flash"
+        answer="$(model_probe "http://127.0.0.1:$port" "" "$model")"
+      fi ;;
+  esac
+
+  case "$answer" in
+    ERROR*|"")
+      skip "model belum menjawab: $answer"
+      local reason
+      reason="$(journalctl -u yoru-model -n 20 --no-pager 2>/dev/null \
+                 | grep -o 'gemini menolak .*' | tail -1)"
+      [ -n "$reason" ] && skip "  kata Gemini: $reason"
+      skip "  kunci yang benar diawali AIza, nama model harus nama resmi Gemini"
+      return 1 ;;
     *) ok "model menjawab: $answer" ;;
   esac
 
@@ -621,9 +588,17 @@ setup_model() {
   case "$pick" in
     1)
       local key model
-      ask "Kunci API Gemini" key secret
+      ask "Kunci API Gemini (yang diawali AIza)" key secret
+      key="${key#GEMINI_API_KEY=}"
+      key="$(printf '%s' "$key" | tr -d '\r\n "')"
       [ -n "$key" ] || { skip "kunci kosong - dilewati"; return 0; }
-      ask "Nama model (kosong = gemini-2.5-flash)" model
+      case "$key" in
+        AIza*) ;;
+        *) skip "kunci Gemini biasanya diawali AIza - kalau salah, ketahuan pas dites" ;;
+      esac
+      printf '    Nama model harus nama resmi Gemini, bukan nama karangan.\n'
+      ask "Nama model (ENTER saja = gemini-2.5-flash)" model
+      model="$(printf '%s' "$model" | tr -d '\r\n ')"
       [ -n "$model" ] || model="gemini-2.5-flash"
       install_gemini_connector "$key" "$model" || skip "model tidak jadi disetel"
       ;;
@@ -663,8 +638,7 @@ install_timer() {
   [ -n "$tz" ] || tz="$(timedatectl show -p Timezone --value 2>/dev/null)"
   [ -n "$tz" ] || tz="UTC"
 
-  # Checked here rather than left for systemd to complain about later. A timer
-  # that fails to load does not shout - it simply never runs.
+  # A timer that fails to load does not shout - it simply never runs.
   case "$at" in
     [0-2][0-9]:[0-5][0-9]) : ;;
     *) die "JAM_PENJAGAAN di $CONFIG_FILE harus berbentuk HH:MM, isinya sekarang '$at'" ;;
@@ -679,8 +653,7 @@ install_timer() {
   chown root:root "$SYSTEMD_DIR/yoru-watch.timer"
   chmod 644 "$SYSTEMD_DIR/yoru-watch.timer"
 
-  # Tested before the timer is switched on. One typo in "Asia/Jakarta" makes
-  # systemd reject the timer, and the watch cycle never runs.
+  # One typo in "Asia/Jakarta" and systemd rejects the timer silently.
   if command -v systemd-analyze >/dev/null 2>&1; then
     systemd-analyze calendar "*-*-* $at:00 $tz" >/dev/null 2>&1 \
       || die "jadwal '*-*-* $at:00 $tz' ditolak systemd - periksa ZONA_WAKTU di $CONFIG_FILE"
@@ -699,9 +672,7 @@ install_timer() {
 }
 
 # ------------------------------------------------------------------ dashboard
-# The dashboard runs as yoru-agent, not root. Its buttons call yoructl through
-# sudo exactly the way the agent does - one door, one set of limits. There is
-# no privileged path for requests arriving from a browser.
+# The dashboard runs as yoru-agent: its buttons go through the same sudo door.
 install_dashboard() {
   step "Memasang dashboard"
 
@@ -721,9 +692,7 @@ install_dashboard() {
     || die "gagal menyalin dashboard.html"
   ok "$WEB_DIR (root:root - agent menjalankannya, tapi tidak bisa mengubahnya)"
 
-  # A venv, not pip into the system. The dashboard needs particular fastapi
-  # versions, and overwriting the system's python packages for that can break
-  # other tools on someone's server.
+  # A venv, not pip into the system - other tools share those packages.
   if [ ! -x "$WEB_DIR/venv/bin/python" ]; then
     python3 -m venv "$WEB_DIR/venv" >/dev/null 2>&1 || {
       skip "python3-venv belum ada, memasang"
@@ -749,10 +718,8 @@ install_dashboard() {
   fi
   ok "fastapi dan uvicorn siap di $WEB_DIR/venv"
 
-  # The token. From 127.0.0.1 it is not needed - anyone who can open 127.0.0.1
-  # already has access to that server. The moment the dashboard is opened to
-  # the network its buttons become buttons anyone who can reach the port may
-  # press, so the token is generated here and nobody can forget it.
+  # No token from 127.0.0.1 - whoever reaches it already has the server. Opened
+  # to the network the buttons are anyone's, so the token is generated here.
   local token; token="$(config_get "$CONFIG_FILE" DASHBOARD_TOKEN)"
   case "$WEB_HOST" in
     127.0.0.1|localhost|::1) : ;;
@@ -782,12 +749,11 @@ install_dashboard() {
   systemctl restart yoru-web.service >/dev/null 2>&1 \
     || die "dashboard gagal dinyalakan - lihat: journalctl -u yoru-web -n 30"
 
-  # Waited on until it really answers, not just until systemd says "active". A
-  # process that dies a second after starting still counts as active for that
-  # second, and the failure only shows when someone opens a browser.
+  # Waited on until it really answers, not just until systemd says "active": a
+  # process that dies a second after starting counts as active for that second.
   if python3 - "$WEB_PORT" <<'PY'
 import sys, time, urllib.request
-url = "http://127.0.0.1:%s/sehat" % sys.argv[1]
+url = "http://127.0.0.1:%s/health" % sys.argv[1]
 for _ in range(30):
     try:
         if urllib.request.urlopen(url, timeout=2).status == 200:
@@ -800,16 +766,13 @@ PY
   else die "dashboard tidak menjawab dalam 30 detik - lihat: journalctl -u yoru-web -n 30"
   fi
 
-  # Something answering on that port is not proof that WE answered. If the port
-  # is already taken, our unit dies while the other program keeps replying -
-  # and the install would report success for something that is not Yoru.
+  # Something answering on the port is not proof WE answered: if the port was
+  # already taken, our unit dies while the other program keeps replying.
   systemctl is-active yoru-web.service >/dev/null 2>&1 \
     || die "port $WEB_PORT sudah dipakai program lain, bukan Yoru. Pilih port lain: --port <angka>"
   ok "dashboard menjawab di http://$WEB_HOST:$WEB_PORT"
 
-  # The agent talks to 127.0.0.1 even when the dashboard is open to the
-  # network - it shares a machine with the dashboard and has no reason to go
-  # out and back.
+  # The agent uses 127.0.0.1 even when the dashboard is open to the network.
   local url; url="$(config_get "$CONFIG_FILE" DASHBOARD_URL)"
   if [ -z "$url" ]; then
     config_set "$CONFIG_FILE" DASHBOARD_URL "http://127.0.0.1:$WEB_PORT"
@@ -817,9 +780,7 @@ PY
   elif [ "${url%/}" = "http://127.0.0.1:$WEB_PORT" ]; then
     ok "agent sudah diarahkan ke http://127.0.0.1:$WEB_PORT"
   else
-    # Deliberately not overwritten - it is the owner's file, and it may point
-    # at another dashboard on purpose. But staying quiet about it would mean
-    # the dashboard just installed never receives a single report.
+    # Not overwritten - it may point at another dashboard on purpose.
     skip "DASHBOARD_URL di $CONFIG_FILE masih '$url', bukan port yang baru dipasang"
     skip "laporan tidak akan masuk ke dashboard ini sampai barisnya diganti jadi"
     skip "  DASHBOARD_URL=\"http://127.0.0.1:$WEB_PORT\""
@@ -831,17 +792,15 @@ count_reports() {
   python3 - "$WEB_PORT" <<'PY' 2>/dev/null || printf '0\n'
 import sys, json, urllib.request
 try:
-    with urllib.request.urlopen("http://127.0.0.1:%s/api/server" % sys.argv[1], timeout=5) as r:
-        print(sum(int(s.get("laporan") or 0) for s in json.load(r).get("server", [])))
+    with urllib.request.urlopen("http://127.0.0.1:%s/api/servers" % sys.argv[1], timeout=5) as r:
+        print(sum(int(s.get("reports") or 0) for s in json.load(r).get("servers", [])))
 except Exception:
     print(0)
 PY
 }
 
-# An empty dashboard on first open makes people think the install failed. Run
-# with --kering: the controls are checked and the report is sent, but not one
-# setting on the server is touched. An installer has no business changing the
-# server; that decision belongs to its owner.
+# An empty dashboard on first open looks like a failed install. --kering checks
+# the controls and sends the report without touching one setting on the server.
 seed_dashboard() {
   [ "$WITH_DASHBOARD" = "ya" ] || return 0
   [ -x "$BIN_DIR/yoru-agent" ] || return 0
@@ -854,11 +813,9 @@ seed_dashboard() {
   timeout 300 sudo -u "$AGENT" env HOME="$DATA_DIR" "$BIN_DIR/yoru-agent" \
     --siklus penjagaan --kering --konfigurasi "$CONFIG_FILE" >/dev/null 2>&1
 
-  # Counted before and after, not just "is there anything". A reinstall always
-  # finds older reports in the database, and that is no proof the one just now
-  # arrived. The agent's exit code is no proof either: it deliberately exits 0
-  # even when the dashboard is unreachable, because a report on disk matters
-  # more than a report on a screen.
+  # Counted before and after: a reinstall always finds older reports, and the
+  # exit code proves nothing either - the agent exits 0 even when the dashboard
+  # is unreachable.
   if [ "$(count_reports)" -gt "$before" ]
     then ok "laporan pertama sudah masuk ke dashboard"
   else skip "dashboard masih kosong - laporannya belum sampai"
@@ -897,9 +854,7 @@ self_test() {
     *) die "dispatcher tidak pulih setelah chmod 755" ;;
   esac
 
-  # yoru-watch must refuse to run as root. If it did not, the sudoers
-  # restriction would be decorative - just go through that path and have full
-  # rights.
+  # If yoru-watch ran as root the sudoers restriction would be decorative.
   out=$("$BIN_DIR/yoru-watch" 2>&1)
   case "$out" in
     *"harus berjalan sebagai yoru-agent"*) ok "penjagaan menolak berjalan sebagai root" ;;
@@ -944,9 +899,7 @@ uninstall() {
   fi
   skip "$LOG_DIR, $ETC_DIR, $DATA_DIR dan $BASELINE_DIR sengaja DIBIARKAN - itu catatan, laporan, dan rekaman keadaan asal"
 
-  # Deleting someone's files uncalled for is not our right. But staying quiet
-  # about an API key left lying on a server about to be released is not right
-  # either.
+  # Not ours to delete uncalled for, but not ours to stay quiet about either.
   if [ -f "$CONFIG_FILE" ]; then
     printf '\n    %sPERHATIAN%s  %s masih ada, dan di dalamnya ada kunci API\n' "$AMBER" "$RESET" "$CONFIG_FILE"
     printf '              serta token bot. Sengaja tidak dihapus - itu berkas Anda.\n'

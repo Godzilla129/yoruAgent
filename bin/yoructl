@@ -1,12 +1,7 @@
 #!/bin/bash
 # yoructl - Yoru's only door to root.
-#
-# Usage:  yoructl <K01..K10> <periksa|terapkan|kembalikan|verifikasi>
-#         yoructl konfigurasi <KEY> <value>
-#
-# The agent may only reach this script through sudo. Every command lives in
-# here; none is passed in by the agent. So the agent cannot run arbitrary
-# commands - it can only ask for one of the 40 actions a human wrote and tested.
+# usage: yoructl <K01..K10> <periksa|terapkan|kembalikan|verifikasi>
+#        yoructl konfigurasi <KEY> <value>
 
 set -uo pipefail
 umask 022
@@ -17,26 +12,14 @@ VERSION="0.2.0"
 LOG_DIR=/var/log/yoru
 LOG_FILE="$LOG_DIR/tindakan.log"
 
-# The server's state before Yoru touched anything. Kept in /var/backups - the
-# place Ubuntu already uses for config backups, owned by root, outside
-# everything the agent can write.
+# state from before Yoru touched anything; /var/backups is root-owned.
 BASELINE_DIR=/var/backups/yoru
 
 # ------------------------------------------------------------------- lock
-# Two processes must never work the same control at once: a double-click in
-# the dashboard, or the daily timer firing while someone presses a button.
-#
-# Two concurrent "periksa" runs are harmless - they only read. Two writers are
-# not. In K06 one process writes the file and restarts mariadb while the other
-# deletes it and restarts mariadb; the end state is unpredictable and BOTH
-# report success.
-#
-# One lock for all ten controls, not one per control, because the controls
-# share files: K01-K04 all write /etc/ssh/sshd_config.d, and K05 and K10 both
-# edit /etc/default/ufw. Per-control locks would feel safe while two `sed -i`
-# still ran against the same file.
-#
-# /run/lock is tmpfs, so a stale lock never survives a hard reboot.
+# two writers on one control race: in K06 one process writes the file and
+# restarts mariadb while the other deletes it and restarts, and both report
+# success. one lock for all ten - the controls share files (K01-K04 write
+# sshd_config.d, K05 and K10 both edit /etc/default/ufw). /run/lock is tmpfs.
 LOCK_FILE=/run/lock/yoru.lock
 LOCK_WAIT=120
 
@@ -51,12 +34,11 @@ take_lock() {
 }
 
 # ------------------------------------------------------------------ output
-# Every result is one line of JSON so the agent never has to guess a format.
 value=""; message=""
 
 finish() {  # finish <status> <ok> [value] [message]
   local status="$1" ok="$2" value="${3-}" message="${4-}"
-  printf '{"versi":"%s","id":"%s","tindakan":"%s","status":"%s","berhasil":%s,"nilai":%s,"pesan":%s}\n' \
+  printf '{"version":"%s","id":"%s","action":"%s","status":"%s","ok":%s,"value":%s,"message":%s}\n' \
     "$VERSION" "${KID:-?}" "${ACTION:-?}" "$status" "$ok" \
     "$(json_quote "$value")" "$(json_quote "$message")"
   log_action "$status" "$ok" "$value" "$message"
@@ -68,18 +50,16 @@ json_quote() {  # JSON-safe string, or null when empty
   [ -z "$s" ] && { printf 'null'; return; }
   s="${s//\\/\\\\}"; s="${s//\"/\\\"}"
   s="${s//$'\n'/ }"; s="${s//$'\r'/ }"; s="${s//$'\t'/ }"
-  # apt and journalctl sometimes emit control characters. One of them breaks
-  # the whole JSON line, including the log line the dashboard parses.
+  # apt and journalctl emit control characters; one breaks the whole JSON line.
   s=$(printf '%s' "$s" | LC_ALL=C tr -d '\000-\037')
   printf '"%s"' "$s"
 }
 
-# One JSON line per action, written twice: to the combined log and to a
-# per-control log, so "K05 history" needs no filtering of a large file.
+# one JSON line per action, written twice: combined log plus per-control log.
 log_action() {  # log_action <status> <ok> <value> <message>
   [ -d "$LOG_DIR" ] || mkdir -p "$LOG_DIR" 2>/dev/null || return 0
   local line
-  line=$(printf '{"waktu":%s,"versi":%s,"pemanggil":%s,"id":%s,"tindakan":%s,"status":%s,"berhasil":%s,"nilai":%s,"pesan":%s}' \
+  line=$(printf '{"time":%s,"version":%s,"caller":%s,"id":%s,"action":%s,"status":%s,"ok":%s,"value":%s,"message":%s}' \
     "$(json_quote "$(date -Is)")" "$(json_quote "$VERSION")" "$(json_quote "${SUDO_USER:-?}")" \
     "$(json_quote "${KID:-?}")" "$(json_quote "${ACTION:-?}")" \
     "$(json_quote "$1")" "${2:-false}" "$(json_quote "${3-}")" "$(json_quote "${4-}")")
@@ -91,8 +71,7 @@ log_action() {  # log_action <status> <ok> <value> <message>
 }
 
 append_log() {  # append_log <file> <line>
-  # Created 640 from the start - a security tool's action log has no business
-  # being readable by every account on the box.
+  # 640 from the start - the action log is not readable by every account.
   [ -e "$1" ] || { : > "$1" 2>/dev/null && chmod 640 "$1" 2>/dev/null; }
   printf '%s\n' "$2" >> "$1" 2>/dev/null || true
 }
@@ -100,9 +79,7 @@ append_log() {  # append_log <file> <line>
 refuse() { KID="${KID:-?}"; ACTION="${ACTION:-?}"; finish "DITOLAK" "false" "" "$1"; }
 
 # --------------------------------------------------------------- self check
-# If this script were writable by anyone but root, the agent could rewrite it
-# and then run it through sudo - which would make the sudoers restriction
-# meaningless. So it is checked before anything else happens.
+# writable by non-root = the agent could rewrite it and run it through sudo.
 root_owned_only() {
   local path="$1" owner mode
   owner=$(stat -c '%U' "$path" 2>/dev/null) || return 1
@@ -123,17 +100,9 @@ self_check() {
 }
 
 # ------------------------------------------------------------------ helpers
-# /run/sshd is sshd's privilege-separation directory. Without it both `sshd -T`
-# and `sshd -t` REFUSE TO RUN - not because openssh-server is missing, but
-# because the directory is not there.
-#
-# On Ubuntu 24.04 it often is not. SSH starts from ssh.socket, while /run/sshd
-# is created by ssh.service via RuntimeDirectory=sshd - and ssh.service only
-# starts once something actually connects. So on a freshly booted server with
-# no SSH login yet, K01 through K05 all report ERROR while sshd is installed
-# and healthy. systemd also removes the directory again when ssh.service stops.
-#
-# Recreated with exactly the ownership and mode systemd uses.
+# without /run/sshd, both `sshd -T` and `sshd -t` refuse to run. on ubuntu 24.04
+# ssh.socket starts sshd but /run/sshd comes from ssh.service RuntimeDirectory,
+# so a freshly booted box has none and K01-K05 all report ERROR.
 ensure_run_sshd() {
   [ -d /run/sshd ] && return 0
   command -v sshd >/dev/null 2>&1 || return 1
@@ -142,12 +111,8 @@ ensure_run_sshd() {
   chmod 0755 /run/sshd 2>/dev/null
 }
 
-# The real reason `sshd -T` failed, not our guess at it. Only called on the
-# failure path.
-#
-# An earlier version discarded stderr and guessed "is openssh-server
-# installed?" - and that guess was wrong in the most common case, so people
-# reinstalled openssh-server over and over for something else entirely.
+# sshd's own failure reason, not a guess: an earlier version guessed
+# "openssh-server not installed" and was wrong in the common case.
 sshd_error_reason() {
   command -v sshd >/dev/null 2>&1 || {
     printf 'sshd tidak ada - openssh-server belum terpasang'; return 0; }
@@ -158,15 +123,12 @@ sshd_error_reason() {
   printf '%s' "$msg"
 }
 
-# An empty reading is a question, not a conclusion. When the probe itself
-# cannot be read the status is ERROR, not GAGAL - an agent that reads GAGAL
-# will try to apply the control while we do not yet know the state.
+# an unreadable probe is ERROR, not GAGAL - GAGAL makes the agent apply blind.
 require_value() {  # require_value <value> <message>
   local v="${1//\//}"
   [ -n "$v" ] || finish ERROR false "$1" "$2"
 }
 
-# Same, but for sshd: the message carries sshd's own reason.
 require_sshd_value() {  # require_sshd_value <value>
   local v="${1//\//}"
   [ -n "$v" ] || finish ERROR false "$1" "sshd -T gagal: $(sshd_error_reason)"
@@ -187,17 +149,9 @@ remove_ssh_dropin() {
 
 sshd_get() { sshd -T 2>/dev/null | awk -v k="^$1\$" '$1 ~ k {print $2; exit}'; }
 
-# Find literal text in a command's output, without a pipe.
-#
-# DO NOT turn this into "command | grep -q text". This script runs under
-# pipefail, and grep -q closes the pipe as soon as it matches; the upstream
-# command dies of SIGPIPE (141) and pipefail reads that as failure. So a
-# SUCCESSFUL match reads as a failure. That is what kept K02's precondition
-# from ever passing on day one - see catalog/K02.yaml.
-#
-# Matching is literal like grep -F, not regex. Some patterns here contain
-# parentheses and dots ("deny (incoming)", "0.0.0.0:3306") that would mean
-# something else as a regex.
+# do NOT rewrite as "cmd | grep -q text": under pipefail grep -q closes the pipe
+# on match, upstream dies of SIGPIPE (141), and a successful match reads as
+# failure. matching is literal, not regex - patterns hold "(" and "." (K02.yaml).
 output_has() {  # output_has <literal-text> <command...>
   local text="$1"; shift
   local out
@@ -205,18 +159,8 @@ output_has() {  # output_has <literal-text> <command...>
   [[ "$out" == *"$text"* ]]
 }
 
-# Install a package without giving up on ordinary situations, and without
-# inventing a reason when it fails:
-#   - an already-installed package never calls apt at all
-#   - DPkg::Lock::Timeout makes apt WAIT for the lock instead of failing. On a
-#     freshly booted VPS, apt-daily runs in the first minutes - exactly when
-#     Yoru starts working.
-#   - apt's own complaint is captured, not discarded
-#
-# The old version threw apt's output away and reported "check your internet
-# connection" without having checked any connection. Guessing a cause and then
-# writing it down as if it were a finding is the very thing we forbid the
-# agent to do.
+# DPkg::Lock::Timeout makes apt wait for the lock instead of failing - apt-daily
+# runs in a fresh VPS's first minutes. apt's own error is captured, never guessed.
 apt_error=""
 install_pkg() {  # install_pkg <package>
   local pkg="$1" state out
@@ -230,8 +174,7 @@ install_pkg() {  # install_pkg <package>
 }
 
 # ------------------------------------------------------- hard preconditions
-# Re-checked here even though the agent checks them too. "I already checked"
-# is a promise, not a security boundary.
+# re-checked here even though the agent checks too; the agent is not a boundary.
 other_sudo_user_exists() {
   local user members
   members=$(getent group sudo | cut -d: -f4 | tr ',' ' ')
@@ -247,11 +190,8 @@ other_sudo_user_exists() {
   return 1
 }
 
-# The "server owner" - the human whose SSH key must be proven to work before
-# K02 may switch off password login.
-#
-# Read from a root-owned file. SUDO_USER is not the primary source because the
-# agent runs as yoru-agent, which by design has no key of its own.
+# the human whose SSH key must be proven to work before K02 turns off password
+# login. read from a root-owned file; SUDO_USER is the agent, which has no key.
 server_owner() {
   local user=""
   [ -r /etc/yoru/pemilik ] && user=$(head -1 /etc/yoru/pemilik 2>/dev/null | tr -dc 'a-z0-9_-')
@@ -263,9 +203,7 @@ ssh_key_proven() {
   [ -z "$(ssh_key_blocker)" ]
 }
 
-# Four different things can block K02, and each needs a different fix. An
-# earlier version folded them into one sentence - correct, but the person
-# reading it still had no idea what to do. Empty means clear to proceed.
+# each blocker needs a different fix, so each gets its own message. empty = clear.
 ssh_key_blocker() {
   local user; user="$(server_owner)"
   [ -n "$user" ] || {
@@ -278,39 +216,30 @@ ssh_key_blocker() {
   [ -s "$home/.ssh/authorized_keys" ] || {
     printf '%s belum punya kunci SSH di %s/.ssh/authorized_keys' "$user" "$home"
     return 0; }
-  # An installed key is not a working key. Only one thing proves it: a login
-  # that actually succeeded with it.
+  # an installed key is not a working key - only a successful login proves it.
   output_has "Accepted publickey for $user" journalctl -t sshd --since "-30 days" || {
     printf 'kunci %s sudah terpasang tapi belum pernah dipakai login. Login sekali pakai kunci itu (ssh %s@<alamat-server>), lalu ulangi' "$user" "$user"
     return 0; }
 }
 
 # ---------------------------------------------------------- everyone on the box
-# The owner is not the only person here. With five accounts where only the
-# owner has a key, switching off password login locks four people out - and
-# Yoru would report LULUS. A control that costs people their access does not
-# count as successful.
+# turning off password login also locks out every other account without a key.
 
-# Read a whole sshd setting, not just its first word. allowusers/denyusers can
-# hold many names. Done on a copy of $0 - touching $1 makes awk rebuild the
-# line, which has silently broken our parsing before.
+# whole setting, not just the first word - allowusers can hold many names. works
+# on a copy of $0: touching $1 makes awk rebuild the line and has broken parsing.
 sshd_get_all() {
   sshd -T 2>/dev/null | awk -v k="^$1\$" '$1 ~ k { s=$0; sub(/^[^ ]+[ ]+/, "", s); print s; exit }'
 }
 
-# Is <name> in the space-separated <list>? Matched per word, not as a
-# substring - "budi" must not match "budianto".
+# word match, not substring - "budi" must not match "budianto".
 list_has() {
   local list=" $1 " name="$2"
   case "$list" in *" $name "*) return 0 ;; esac
   return 1
 }
 
-# Are these all plain names, with no patterns? AllowUsers may hold "bu*" or
-# "budi@1.2.3.4". Matching a pattern literally could MISS someone who can
-# still log in - and the one we miss is the one who gets locked out. So when a
-# pattern is present the setting is ignored and every account is checked: K02
-# becomes noisier, never more permissive.
+# AllowUsers may hold patterns ("bu*", "budi@1.2.3.4"). matching one literally
+# could miss someone, so any pattern means ignore the setting and check everyone.
 list_is_plain() {
   local item
   for item in $1; do
@@ -334,13 +263,10 @@ users_without_key() {
 
   local name uid home shell
   while IFS=: read -r name _ uid _ _ home shell; do
-    # Service accounts cannot log in at all.
     case "$shell" in *nologin|*false|"") continue ;; esac
 
     if [ "$uid" = "0" ]; then
-      # root counts only if it still gets in by password. With permitrootlogin
-      # already "no" or "prohibit-password", K02 changes nothing for root and
-      # naming it would just be noise.
+      # root counts only if it still gets in by password.
       [ "$root_login" = "yes" ] || continue
     else
       [ "$uid" -ge 1000 ]  2>/dev/null || continue
@@ -355,16 +281,9 @@ users_without_key() {
 }
 
 # ------------------------------------------------------- baseline recording
-# Before a control is applied for the FIRST time on this server, copy the
-# files it will touch and read the state that is currently in force.
-#
-# Why: "kembalikan" restores the DEFAULT value we wrote, not this server's
-# original value. On a server whose default differs, those are two different
-# things. This recording is what closes that gap later.
-#
-# Stored as files, not a database. Rollback is most needed while the server is
-# already in trouble, and a database is one more thing that can be down with
-# it. Files on disk still read from an emergency shell.
+# on the first terapkan, copy the files the control touches and read the live
+# state. kembalikan restores our default, not this server's original value -
+# this closes that gap. files, not a database: readable from an emergency shell.
 
 control_paths() {  # the files each control touches
   case "$1" in
@@ -378,9 +297,8 @@ control_paths() {  # the files each control touches
   esac
 }
 
-# The state actually in force - not what a file says, but what is live. For
-# K10 this matters most: the file can be deleted without changing the value
-# the kernel holds.
+# the state in force, not what a file says. K10 shows why: the file can be
+# deleted without changing the value the kernel holds.
 read_effective() {
   case "$KID" in
     K01) sshd_get permitrootlogin ;;
@@ -396,8 +314,7 @@ read_effective() {
   esac
 }
 
-# Once per server, never overwritten. The FIRST recording is the one that is
-# genuinely "before Yoru"; a second would only photograph our own work.
+# once per server: only the first recording is genuinely "before Yoru".
 record_baseline() {
   local dir="$BASELINE_DIR/$KID"
   [ -e "$dir/tercatat" ] && return 0
@@ -411,7 +328,7 @@ record_baseline() {
     cp -a --parents "$path" "$dir/berkas/" 2>/dev/null
   done < <(control_paths "$KID")
 
-  printf '{"id":%s,"waktu":%s,"nilai_sebelum":%s,"versi_yoru":%s}\n' \
+  printf '{"id":%s,"time":%s,"value_before":%s,"yoru_version":%s}\n' \
     "$(json_quote "$KID")" "$(json_quote "$(date -Is)")" \
     "$(json_quote "$(read_effective)")" "$(json_quote "$VERSION")" \
     > "$dir/keadaan.json" 2>/dev/null || return 1
@@ -422,22 +339,10 @@ record_baseline() {
 }
 
 # ---------------------------------------------------------------- idempotence
-# Calling terapkan twice must not repeat the change. K06 shows why: each call
-# restarts mariadb, so two calls drop database connections twice. Same end
-# state, real disruption.
-#
-# Two conditions, not one:
-#
-#   1. our own drop-in exists with EXACTLY the expected content, and
-#   2. the effective state already matches
-#
-# With only condition 2 ("value is already right, skip") there is a subtle
-# hole: that value may come from someone else's file. If that file ever
-# disappears the setting silently goes back to unsafe, because Yoru believed
-# it was done. Condition 1 makes Yoru write its own file first - become the
-# OWNER of that setting - and only then skip.
-#
-# One setting, one owner. Learned from ufw and sysctl in K10.
+# terapkan twice must not repeat the work - K06 restarts mariadb on every call.
+# skip only when BOTH hold: our own drop-in has exactly the expected content,
+# AND the effective state matches. condition 2 alone is a hole - the right value
+# may come from someone else's file that later disappears. one setting, one owner.
 file_is() {  # file_is <file> <expected-content>
   [ -f "$1" ] || return 1
   [ "$(cat "$1" 2>/dev/null)" = "$2" ]
@@ -481,8 +386,6 @@ k02() { local missing blocker; case "$1" in
     blocker="$(ssh_key_blocker)"
     [ -z "$blocker" ] || refuse "menerapkan ini menutup satu-satunya jalan masuk. $blocker"
 
-    # A safe owner does not mean everyone is safe. Without this step K02 can
-    # lock other residents out and still report LULUS.
     missing=$(users_without_key)
     missing="${missing//$'\n'/ }"; missing="${missing% }"
     if [ -n "$missing" ]; then
@@ -531,39 +434,16 @@ k04() { local weak; case "$1" in
     finish DIKEMBALIKAN true "mac_sha1=$(sshd -T 2>/dev/null | grep -E '^macs ' | grep -c 'sha1')" ;;
 esac }
 
-# The SSH port is read from sshd itself, never assumed to be 22.
-#
-# Providers move it - CloudBaik uses 4422. Hard-coding it makes K05 refuse to
-# run on that server, and a control that can never run is the same as no
-# control. The refusal even sounds reasonable ("no sshd on port 22"), so
-# nobody gets suspicious.
-#
-# `sshd -T` prints one "port <n>" line per port, so a server listening on two
-# is handled too.
+# the SSH port is read from sshd, never assumed to be 22 - providers move it
+# (CloudBaik uses 4422). sshd -T prints one "port <n>" line per port.
 ssh_ports() { sshd -T 2>/dev/null | awk '/^port /{print $2}'; }
 
 # ---------------------------------------------------------- other open ports
-# SSH is not the only door. Real servers also run web, a control panel
-# (aaPanel, CyberPanel), or something else. Turning on a deny-all firewall
-# without handling those ports locks the owner out of their own panel.
-#
-# The tempting fix is to memorise the numbers: 8888 for aaPanel, 8090 for
-# CyberPanel, 2083 for cPanel. That is the same mistake as pinning SSH to 22,
-# only better dressed - people change their panel port, and there are hundreds
-# of panels we have never heard of.
-#
-# So we do what we do for SSH: READ REALITY, do not guess.
+# a deny-all firewall also closes web and panel ports. the numbers are not
+# memorised (8888 aaPanel, 8090 CyberPanel) - they are read from ss, like ssh.
 
-# Every TCP port actually open to the outside, with its process name.
-#
-# Loopback addresses are dropped - 127.x and ::1 cannot be reached from the
-# internet, so they are not holes. Listing them would bury the owner in
-# questions about ports that are already safe, and questions that feel
-# pointless are the fastest way to make someone stop reading.
-#
-# UDP is deliberately excluded: what locks people out is TCP (ssh, web,
-# panel). Including UDP would only add noise like the DHCP client port. This
-# is a known gap, written down so nobody mistakes it for complete.
+# every TCP port open to the outside, with its process name. loopback is dropped
+# (unreachable). UDP is deliberately excluded - a known gap, not an oversight.
 public_ports() {
   local out
   out=$(ss -tlnp 2>/dev/null) || return 0
@@ -583,21 +463,9 @@ public_ports() {
     }' | sort -k1,1n -u
 }
 
-# Ports the owner has already vouched for.
-#
-# Two sources, on purpose:
-#   /etc/yoru/yoru.conf  PORT_DIIZINKAN="80 443"   <- root, agent cannot write
-#   /var/lib/yoru/port-disetujui                   <- agent writes owner's answers
-#
-# The second one is agent-writable by design: if the owner had to SSH in and
-# edit a file, the whole promise of "for people without an IT team" collapses.
-# It is not a widening of power either - the agent can already call "K05
-# kembalikan", which turns the firewall off entirely, so adding one allowed
-# port is smaller than what it can already do. What does not change: every
-# allowed port lands in the root-owned audit trail the agent cannot edit.
-#
-# Anyone wanting it stricter can use yoru.conf alone and leave the second file
-# empty.
+# ports the owner has already vouched for, from two sources:
+#   /etc/yoru/yoru.conf  PORT_DIIZINKAN   <- root, agent cannot write
+#   /var/lib/yoru/port-disetujui          <- agent writes the owner's answers
 DATA_DIR=/var/lib/yoru
 PORT_FILE="$DATA_DIR/port-disetujui"
 CONFIG_FILE=/etc/yoru/yoru.conf
@@ -640,17 +508,8 @@ approved_ports() {
   printf '%s' "${result# }"
 }
 
-# Another firewall already running on the same server.
-#
-# Two firewalls are not a configuration, they are a race, and the winner
-# changes with service start order. Same lesson as K10 and ufw over
-# log_martians, at the scale of the whole rule table.
-#
-# Only CSF and firewalld are checked: neither ships with stock Ubuntu, so
-# finding one means it was installed on purpose. nftables is not checked
-# because ufw itself uses it underneath, and we have not tested how to tell
-# "ufw's nftables" from "the owner's nftables". Written down so this is not
-# mistaken for complete.
+# two firewalls are a race whose winner changes with service start order. only
+# CSF and firewalld are checked; nftables is not, since ufw uses it underneath.
 other_firewall() {
   if command -v csf >/dev/null 2>&1 || [ -f /etc/csf/csf.conf ]; then
     printf 'CSF (biasanya bawaan cPanel)'; return 0
@@ -677,10 +536,7 @@ k05() { local p ports heard approved pending other; case "$1" in
   periksa|verifikasi)
     command -v ufw >/dev/null 2>&1 || finish ERROR false "" "ufw tidak terpasang - tidak bisa diperiksa"
 
-    # The unanswered-port list rides along in "pesan". It is raw material for
-    # Hermes to build the question to the owner: "port 8888 is open, used by
-    # python3, is that your panel?" - and that answer is what later lets
-    # terapkan run.
+    # the unanswered-port list rides along in "message" - Hermes asks the owner.
     pending="$(unapproved_ports "$(ssh_ports)" "$(approved_ports)")"
     [ -z "$pending" ] || pending="port terbuka belum dijawab pemilik: $pending"
 
@@ -689,9 +545,7 @@ k05() { local p ports heard approved pending other; case "$1" in
       then finish LULUS true "$value" "$pending"
       else finish GAGAL true "${value:-tidak-aktif}" "$pending"; fi ;;
   terapkan)
-    # Without this guard every ufw command fails silently (output discarded)
-    # and the empty status reads as "ufw failed to activate" - the wrong
-    # cause, exactly the mistake we already made once in K07.
+    # without this guard, missing ufw reads as "ufw failed to activate".
     command -v ufw >/dev/null 2>&1 || refuse "ufw tidak terpasang - pasang dulu: apt-get install ufw"
 
     other="$(other_firewall)" && refuse "server ini sudah memakai $other - dua firewall akan saling menimpa aturan. Yoru tidak menyalakan ufw di sini"
@@ -699,17 +553,12 @@ k05() { local p ports heard approved pending other; case "$1" in
     ports="$(ssh_ports)"
     [ -n "$ports" ] || refuse "tidak bisa membaca port SSH: $(sshd_error_reason)"
 
-    # The port must actually be listening, not merely written in a config.
-    # Turning on a firewall based on intent rather than reality is how you
-    # lock yourself out.
+    # the port must actually be listening, not merely written in a config.
     heard=0
     for p in $ports; do output_has ":$p " ss -tulpn && heard=1; done
     [ "$heard" = "1" ] || refuse "sshd tidak terdengar di port mana pun dari daftar: $(printf '%s ' $ports)"
 
-    # Other services that are open but unanswered. Yoru cannot tell whether
-    # 8888 is a panel or a hole - only the owner can. So stop and ask, DO NOT
-    # guess. Allowing automatically makes the firewall pointless; leaving them
-    # closed locks the owner out of their own panel.
+    # only the owner knows whether 8888 is a panel or a hole - stop and ask.
     approved="$(approved_ports)"
     pending="$(unapproved_ports "$ports" "$approved")"
     [ -z "$pending" ] || refuse "port ini terbuka tapi belum dijawab pemilik: $pending - tanyakan dulu, lalu catat portnya di $PORT_FILE atau PORT_DIIZINKAN di $CONFIG_FILE"
@@ -729,8 +578,7 @@ k05() { local p ports heard approved pending other; case "$1" in
     value=$(ufw status 2>/dev/null | awk '/^Status:/ {print $2}')
     [ "$value" = "active" ] && finish LULUS true "$value" || refuse "ufw gagal aktif" ;;
   kembalikan)
-    # With no ufw there is nothing to roll back. Reporting DIKEMBALIKAN with
-    # an empty value would be a lie that sounds like success.
+    # with no ufw there is nothing to roll back; an empty DIKEMBALIKAN would lie.
     command -v ufw >/dev/null 2>&1 || finish DILEWATI true "ufw tidak terpasang"
     ufw --force reset >/dev/null 2>&1
     finish DIKEMBALIKAN true "$(ufw status 2>/dev/null | awk '/^Status:/ {print $2}')" ;;
@@ -743,12 +591,9 @@ k06() { case "$1" in
     elif output_has '127.0.0.1:3306' ss -tulpn; then finish LULUS true "127.0.0.1:3306"
     else finish DILEWATI true "tidak ada layanan di 3306"; fi ;;
   terapkan)
-    # Not installed means "does not apply here", not "failed". This used to be
-    # DITOLAK, which looked exactly as red in the dashboard as a control that
-    # was genuinely broken.
+    # not installed means "does not apply here", not "failed" - DILEWATI not DITOLAK.
     [ -d /etc/mysql/mariadb.conf.d ] \
       || finish DILEWATI true "tidak ada layanan di 3306" "MariaDB tidak terpasang - tidak ada yang perlu dikunci di server ini"
-    # mariadb is NOT restarted when everything is already correct
     file_is "$K06_FILE" "$K06_BODY" && output_has '127.0.0.1:3306' ss -tulpn \
       && finish DILEWATI true "127.0.0.1:3306" "sudah diterapkan - mariadb tidak direstart"
     printf '[mysqld]\nbind-address = 127.0.0.1\n' > "$K06_FILE"; chmod 644 "$K06_FILE"
@@ -814,10 +659,8 @@ k08() { local n; case "$1" in
 esac }
 
 K09_FILE=/etc/systemd/journald.conf.d/99-yoru-k09.conf
-# journald prints whatever unit fits - M here, G on a big-disk server. The old
-# pattern only matched M, so on a large VPS the reading came back empty and
-# was read as "tidak-terbaca": an empty result used as a conclusion, exactly
-# what we forbid.
+# journald prints whatever unit fits - M here, G on a big-disk server. matching
+# only M made the reading come back empty on a large VPS and read as a verdict.
 k09_journal_cap() { journalctl -b -t systemd-journald --no-pager 2>/dev/null | grep -oE 'max [0-9.]+[KMGT]' | tail -1; }
 k09() { case "$1" in
   periksa|verifikasi) value=$(k09_journal_cap)
@@ -862,9 +705,7 @@ k10_read() {
   martians=$(sysctl -n net.ipv4.conf.all.log_martians     2>/dev/null)
   redirects=$(sysctl -n net.ipv4.conf.all.secure_redirects 2>/dev/null)
   router_ad=$(sysctl -n net.ipv6.conf.all.accept_ra        2>/dev/null)
-  # A server with IPv6 fully disabled has no such knob at all. That is not a
-  # failure - no IPv6 means nothing to secure. Without this, K10 would report
-  # GAGAL forever on any VPS without IPv6.
+  # no IPv6 means no such knob at all; without this K10 reports GAGAL forever.
   [ -n "$router_ad" ] || router_ad="na"
   printf '%s/%s/%s' "${martians:-?}" "${redirects:-?}" "$router_ad"
 }
@@ -877,13 +718,9 @@ k10() { case "$1" in
     file_is "$K10_FILE" "$K10_BODY" && k10_ok "$(k10_read)" && output_has '#yoru-k10#IPT_SYSCTL=' cat /etc/default/ufw \
       && finish DILEWATI true "$(k10_read)" "sudah diterapkan - sysctl tidak dimuat ulang"
     printf '%s\n' "$K10_BODY" > "$K10_FILE"; chmod 644 "$K10_FILE"
-    # ufw re-applies its own sysctl on every start and overwrites log_martians
-    # back to 0. Take ufw out of the sysctl business so one setting has one
-    # owner. Everything ufw used to set is already covered by our file.
-    #
-    # The marker goes in FRONT and nothing is appended behind it. The original
-    # value must stay intact, because it is the only material kembalikan has
-    # to restore this line exactly as it was. Long version in catalog/K10.yaml.
+    # ufw re-applies its own sysctl on every start and puts log_martians back to
+    # 0, so ufw is taken out of the sysctl business. the marker goes in FRONT and
+    # nothing is appended - the original value is all kembalikan has to restore.
     if grep -q '^IPT_SYSCTL=' /etc/default/ufw 2>/dev/null; then
       sed -i 's|^IPT_SYSCTL=|#yoru-k10#IPT_SYSCTL=|' /etc/default/ufw
     fi
@@ -893,9 +730,7 @@ k10() { case "$1" in
   kembalikan)
     # The kernel keeps the last value - deleting the file is NOT enough.
     rm -f "$K10_FILE"
-    # Only lines Yoru marked itself are uncommented. Lines commented out by
-    # the owner or the distro are left alone: Yoru undoes its own work, it
-    # does not guess what ought to be active.
+    # only lines Yoru marked itself are uncommented; the owner's are left alone.
     sed -i 's|^#yoru-k10#IPT_SYSCTL=|IPT_SYSCTL=|' /etc/default/ufw 2>/dev/null
     sysctl -w net.ipv4.conf.all.log_martians=0 \
              -w net.ipv4.conf.default.log_martians=0 \
@@ -908,15 +743,8 @@ k10() { case "$1" in
 esac }
 
 # ------------------------------------------------------ settings from the web
-# So the owner never has to open a terminal just to change a bot token.
-#
-# The keys that may be set from here are LIMITED to the list below, and every
-# value is shape-checked. Not because the other keys are dangerous, but
-# because the same file holds DASHBOARD_TOKEN: if the dashboard could write
-# any key, a compromised dashboard could change its own token - and the owner
-# would lose the only thing separating them from an attacker.
-#
-# The value is NEVER written to the log. Only the key name is.
+# only the keys listed below may be set from here, each shape-checked: the same
+# file holds DASHBOARD_TOKEN. the value is never logged, only the key name.
 config_set_line() {  # config_set_line <file> <key> <value>
   local file="$1" key="$2" val="$3" tmp
   tmp=$(mktemp) || return 1
@@ -935,21 +763,14 @@ config_set_line() {  # config_set_line <file> <key> <value>
     }
     END { if (!done) print k "=\"" v "\"" }
   ' "$file" > "$tmp" || { rm -f "$tmp"; return 1; }
-  # The content is copied, not the file moved, so the original owner and mode
-  # (root:yoru-agent 640) stay as they were.
+  # content is copied, not the file moved, so owner and mode (640) survive.
   cat "$tmp" > "$file" || { rm -f "$tmp"; return 1; }
   rm -f "$tmp"
 }
 
-# The daily schedule is two settings in a config file AND a line in a systemd
-# timer. Writing only the file is how JAM_PENJAGAAN became a lie: the owner
-# changed the hour, the dashboard said "tersimpan", and the timer went on
-# firing at the old one forever. Nothing said so, because nothing was wrong -
-# the value really had been saved, just nowhere that mattered.
-#
-# Only the OnCalendar= line is rewritten, not the whole unit. The rest of that
-# file belongs to install.sh, and two writers with two copies of a template
-# drift apart the first time one of them is edited.
+# the schedule lives in the config file AND in the systemd timer; writing only
+# the file leaves the timer firing at the old hour with nothing to say so. only
+# the OnCalendar= line is rewritten - the rest of the unit belongs to install.sh.
 TIMER_UNIT=/etc/systemd/system/yoru-watch.timer
 
 apply_schedule() {  # apply_schedule -> prints what happened, never fails the write
@@ -959,17 +780,9 @@ apply_schedule() {  # apply_schedule -> prints what happened, never fails the wr
   [ -n "$tz" ] || tz="$(timedatectl show -p Timezone --value 2>/dev/null)"
   [ -n "$tz" ] || tz="UTC"
 
-  # Checked again here, even though set_config checked before writing. These
-  # two came back OUT of a file, and a file can be edited by hand between the
-  # write and this read - so what set_config approved is not necessarily what
-  # we are holding. Same rule the preconditions follow: "I already checked" is
-  # a promise, not a boundary.
-  #
-  # What it stops: a hand-edited ZONA_WAKTU carrying a backslash-n. awk -v
-  # expands escape sequences, so that value would arrive in the unit file as a
-  # real newline and whatever followed it would become another systemd
-  # directive. Only root can write yoru.conf, so this is not a way in - it is
-  # just not a trap worth leaving armed.
+  # re-checked: these came back out of a file that can be hand-edited between
+  # the write and this read. awk -v expands escape sequences, so a backslash-n
+  # in ZONA_WAKTU would land in the unit file as another systemd directive.
   [[ "$at" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || {
     printf 'nilai tersimpan, tapi JAM_PENJAGAAN di berkas ("%s") bukan bentuk HH:MM - timer dibiarkan' "$at"
     return 0; }
@@ -981,9 +794,8 @@ apply_schedule() {  # apply_schedule -> prints what happened, never fails the wr
 
   line="*-*-* $at:00 $tz"
 
-  # Checked before it is written. systemd does not shout at a timer it cannot
-  # parse - it just never runs it, which is the quietest way to lose the whole
-  # watch cycle. One typo in "Asia/Jakarta" is enough.
+  # systemd never complains about a timer it cannot parse, it just never runs
+  # it. one typo in "Asia/Jakarta" silently loses the whole watch cycle.
   if command -v systemd-analyze >/dev/null 2>&1; then
     systemd-analyze calendar "$line" >/dev/null 2>&1 || {
       printf 'nilai tersimpan, TAPI systemd menolak jadwal "%s" - timer dibiarkan seperti semula' "$line"
@@ -1005,8 +817,7 @@ apply_schedule() {  # apply_schedule -> prints what happened, never fails the wr
     printf 'timer ditulis ulang tapi daemon-reload gagal - jalankan sendiri: systemctl daemon-reload'
     return 0; }
 
-  # restart, not reload: a timer picks up a new OnCalendar only when it is
-  # started again, and "enabled" says nothing about when it next fires.
+  # restart, not reload: a timer picks up a new OnCalendar only when restarted.
   systemctl restart yoru-watch.timer >/dev/null 2>&1 || {
     printf 'timer ditulis ulang tapi gagal dinyalakan ulang - periksa: systemctl status yoru-watch.timer'
     return 0; }
@@ -1066,8 +877,7 @@ set_config() {  # set_config <KEY> <value>
 # ---------------------------------------------------------------------- main
 KID=""; ACTION=""; FORCE=0
 
-# Settings path first: it takes three arguments and the second one is a key,
-# not an action name.
+# settings path first: it takes three arguments and arg 2 is a key, not an action.
 if [ "${1-}" = "konfigurasi" ]; then
   KID="konfigurasi"; ACTION="set"
   [ $# -eq 3 ] || refuse "pakai: yoructl konfigurasi <KUNCI> <nilai>"
@@ -1088,13 +898,8 @@ KID="$1"; ACTION="$2"
 [[ "$KID"    =~ ^K(0[1-9]|10)$ ]] || refuse "nomor kontrol tidak dikenal"
 [[ "$ACTION" =~ ^(periksa|terapkan|kembalikan|verifikasi)$ ]] || refuse "tindakan tidak dikenal"
 
-# --paksa is a HUMAN decision, not the agent's.
-#
-# The sudoers line does not restrict arguments, so technically the agent could
-# type --paksa itself. The block has to live here. Without it, one
-# maliciously crafted log line could end with the agent forcing K02 and
-# locking the server's residents out - the exact scenario this whole design
-# exists to prevent.
+# --paksa is a human decision. the sudoers line does not restrict arguments, so
+# the agent could type it itself; the block has to live here.
 AGENT=yoru-agent
 if [ "$FORCE" = "1" ] && [ "${SUDO_USER:-}" = "$AGENT" ]; then
   refuse "--paksa tidak boleh dipakai agent - ini keputusan manusia, jalankan sendiri lewat sudo"
@@ -1103,9 +908,7 @@ fi
 self_check
 ensure_run_sshd
 
-# The lock covers WRITING actions only. periksa and verifikasi just read, so
-# they stay free: the daily watch cycle is all periksa, and there is no reason
-# to make it queue behind a long apply.
+# the lock covers writing actions only - the daily watch cycle is all periksa.
 case "$ACTION" in
   terapkan|kembalikan)
     take_lock
@@ -1115,14 +918,8 @@ case "$ACTION" in
     esac ;;
 esac
 
-# Record the baseline before touching anything. Only for terapkan: periksa and
-# verifikasi change nothing, and kembalikan needs the existing recording
-# rather than a fresh one.
-#
-# If recording fails, terapkan still runs but the failure is logged. Rollback
-# keeps working from the catalog recipe, so this is not a loss of rollback -
-# only of the ability to restore this server's original value. What is not
-# acceptable is failing silently and letting someone believe a backup exists.
+# terapkan only: kembalikan needs the existing recording, not a fresh one.
+# a failed recording is logged and terapkan still runs.
 if [ "$ACTION" = "terapkan" ]; then
   if ! record_baseline; then
     log_action "PERINGATAN" "true" "" "keadaan asal gagal direkam ke $BASELINE_DIR/$KID - terapkan tetap dilanjutkan"

@@ -1,32 +1,16 @@
 #!/usr/bin/env python3
 """
-yoru-agent - the brain.
-
-Called daily by yoru-watch:
+yoru-agent - the brain. Called daily by yoru-watch:
     yoru-agent --siklus penjagaan --konfigurasi /etc/yoru/yoru.conf
 
-Four jobs:
-  1. ask yoructl to check the ten controls
-  2. assemble a report matching contract/report.md
-  3. send it to the dashboard and collect the owner's answers
-  4. apply what it is allowed to apply
-
-ONE RULE SHAPES THIS ENTIRE FILE:
-
-The agent NEVER assembles a shell command. The only way it touches the server
-is by calling yoructl with two fixed arguments - a control number and an action
-name. No command string is built from config, from the owner's answers, and
-certainly not from a model's output. If someone is ever tempted to add
-subprocess(shell=True) here, the whole reason Yoru can be trusted near
-someone's server collapses.
-
-AND ONE MORE:
-
-The report must assemble with NO model at all. The sentences for the owner are
-already written by humans in the catalog. A model adds a layer on top - work
-ordering, judging suspicious ports, translating drift - but if the key expires
-or the network is down, the report still comes out complete. Neither a demo
-nor someone's server may depend on one API call that can fail.
+Checks the ten controls through yoructl, builds the contract/report.md report,
+sends it to the dashboard, collects the owner's answers, applies what it is
+allowed to apply. Two invariants:
+  - The agent NEVER assembles a shell command: it calls yoructl with a control
+    number and an action name, never a string built from config, owner answers
+    or model output. No subprocess(shell=True) here.
+  - The report must assemble with NO model at all. Owner-facing sentences come
+    from the catalog; a model only adds a layer on top.
 """
 
 import argparse
@@ -51,18 +35,16 @@ TELEGRAM_API = "https://api.telegram.org"
 YORUCTL = "/opt/yoru/bin/yoructl"
 CATALOG_DIR = Path("/usr/share/yoru/catalog")
 DATA_DIR = Path("/var/lib/yoru")
-HISTORY_DIR = DATA_DIR / "riwayat"
+HISTORY_DIR = DATA_DIR / "history"
 REPORT_FILE = DATA_DIR / "laporan-terakhir.json"
 PORT_FILE = DATA_DIR / "port-disetujui"
 
 ALL_CONTROLS = [f"K{n:02d}" for n in range(1, 11)]
 
-# Must match the catalog. If they drift apart, a risky control could run
-# without approval - so when the catalog changes, change this too.
+# Must match the catalog, or a risky control could run without approval.
 SAFE = {"K03", "K07", "K08", "K09", "K10"}
 
-# yoructl -> contract. DITOLAK during a check means the request itself was
-# wrong, not that the control failed, so it maps to ERROR.
+# yoructl -> contract. DITOLAK on a check is a bad request, not a failed control.
 STATUS_MAP = {
     "LULUS": "LULUS",
     "GAGAL": "GAGAL",
@@ -74,23 +56,12 @@ STATUS_MAP = {
 }
 
 
-# The zone every timestamp in the report is written in. None means "whatever
-# this machine is set to", which is what we fall back to.
+# Zone for every timestamp in the report; None means this machine's own.
 REPORT_TZ = None
 
 
 def use_timezone(name):
-    """Honour ZONA_WAKTU from the config.
-
-    A VPS is almost always on UTC while its owner lives somewhere else, so
-    "changed at 03:17" meant a time the owner had to convert in their head -
-    on the one screen they open when something looks wrong. The setting has
-    been in yoru.conf since the first version and nothing ever read it.
-
-    A bad zone name falls back to the machine's own and says so. Refusing to
-    produce a report over a timezone string would be the wrong trade: the
-    timestamps are for reading, and a report an hour off still beats no report.
-    """
+    """Honour ZONA_WAKTU; a bad name falls back to the machine's zone and says so."""
     global REPORT_TZ
     name = (name or "").strip()
     if not name:
@@ -106,9 +77,7 @@ def use_timezone(name):
     except Exception:  # noqa: BLE001 - the reason is worked out below, not guessed
         pass
 
-    # Two very different failures land in the same exception, and telling the
-    # owner the wrong one sends them off editing a name that was never wrong.
-    # An empty list means this machine has no timezone database at all.
+    # Two different failures raise the same exception; an empty list means no tzdata.
     REPORT_TZ = None
     try:
         has_db = bool(available_timezones())
@@ -133,12 +102,8 @@ def say(*a):
 
 # --------------------------------------------------------------------- config
 def read_config(path):
-    """Read as TEXT, never executed.
-
-    The tempting shortcut is `source` or `exec` because it is shorter. That
-    turns the config file into a place to put commands - one line there runs as
-    root, and nothing inspects it.
-    """
+    """Read as TEXT, never sourced: `source` or `exec` would turn the config
+    file into a place to put commands that run as root, uninspected."""
     config = {}
     try:
         text = Path(path).read_text(encoding="utf-8", errors="replace")
@@ -157,7 +122,7 @@ def read_config(path):
 
 
 def read_catalog():
-    """The facts for each control. The agent may not invent anything beyond it."""
+    """The facts for each control; the agent invents nothing beyond it."""
     try:
         import yaml
     except ImportError:
@@ -188,8 +153,8 @@ def call_yoructl(kid, action, timeout=180):
     if kid not in ALL_CONTROLS or action not in {
         "periksa", "terapkan", "kembalikan", "verifikasi"
     }:
-        return {"status": "ERROR", "berhasil": False,
-                "pesan": "kontrol atau tindakan tidak dikenal", "nilai": None}
+        return {"status": "ERROR", "ok": False,
+                "message": "kontrol atau tindakan tidak dikenal", "value": None}
 
     cmd = ["sudo", "-n", YORUCTL, kid, action]
     if os.geteuid() == 0:
@@ -198,11 +163,11 @@ def call_yoructl(kid, action, timeout=180):
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        return {"status": "ERROR", "berhasil": False, "nilai": None,
-                "pesan": f"yoructl {kid} {action} lewat batas {timeout} detik"}
+        return {"status": "ERROR", "ok": False, "value": None,
+                "message": f"yoructl {kid} {action} lewat batas {timeout} detik"}
     except OSError as e:
-        return {"status": "ERROR", "berhasil": False, "nilai": None,
-                "pesan": f"tidak bisa memanggil yoructl: {e}"}
+        return {"status": "ERROR", "ok": False, "value": None,
+                "message": f"tidak bisa memanggil yoructl: {e}"}
 
     # yoructl always prints one JSON line as the last line of stdout.
     for line in reversed([b for b in p.stdout.splitlines() if b.strip()]):
@@ -211,12 +176,12 @@ def call_yoructl(kid, action, timeout=180):
         except json.JSONDecodeError:
             continue
 
-    return {"status": "ERROR", "berhasil": False, "nilai": None,
-            "pesan": (p.stderr or "yoructl tidak mengeluarkan JSON").strip()[:300]}
+    return {"status": "ERROR", "ok": False, "value": None,
+            "message": (p.stderr or "yoructl tidak mengeluarkan JSON").strip()[:300]}
 
 
 def run_output(cmd, timeout=10):
-    """Read one command's output. Argument list, never a shell string."""
+    """Argument list, never a shell string."""
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return p.stdout.strip()
@@ -237,11 +202,7 @@ def detect_panel():
 
 
 def server_info(config=None):
-    """Server name: the owner's choice first, hostname when empty.
-
-    A hostname often means nothing to its owner - a fresh VPS is called "vm" or
-    "ubuntu-2gb-sgp1". With three servers, the dashboard becomes unreadable.
-    """
+    """Server name: NAMA_SERVER first, hostname when empty."""
     os_name = ""
     try:
         for line in Path("/etc/os-release").read_text().splitlines():
@@ -263,54 +224,36 @@ def server_info(config=None):
 
     chosen = (config or {}).get("NAMA_SERVER", "").strip()
     return {
-        "nama": chosen or socket.gethostname(),
+        "name": chosen or socket.gethostname(),
         "os": os_name or platform.system(),
         "kernel": platform.release(),
-        "ip_utama": ip,
-        "panel_terdeteksi": detect_panel(),
+        "primary_ip": ip,
+        "detected_panel": detect_panel(),
     }
 
 
 # -------------------------------------------------------------------- reasoner
 class Reasoner:
-    """The judgement layer. It still answers with no model available.
-
-    Deterministic: the explanation sentences come straight from the catalog -
-    they were written for non-technical owners already. Work order follows a
-    fixed rule: safe controls first, then risky ones from least to most
-    disruptive.
-
-    What a model adds: judging whether an open port is reasonable, turning a
-    sudden change into a question an ordinary person can answer, and phrasing
-    things around this particular server. With no model, all three fall back to
-    fixed answers that stay correct - only stiffer.
-    """
+    """Judgement layer; still answers with no model. Explanations come from the
+    catalog. Fixed work order: safe controls first, risky ones least-disruptive first."""
 
     ORDER = ["K03", "K09", "K10", "K08", "K07", "K04", "K06", "K05", "K01", "K02"]
 
     def __init__(self, config):
         self.config = config
-        # Hermes runs its own API server and speaks the OpenAI shape:
-        # POST {base}/v1/chat/completions. The provider key lives in Hermes'
-        # config, set with `hermes setup` - it is deliberately NOT in
-        # yoru.conf, so this file never holds a model credential at all.
+        # OpenAI-shaped API at POST {base}/v1/chat/completions. HERMES_TOKEN is a
+        # local-service token; the provider API key stays in Hermes' own config,
+        # deliberately not in yoru.conf.
         self.base = config.get("HERMES_URL", "").strip().rstrip("/")
         self.model = config.get("AI_MODEL", "").strip() or "hermes"
         self.token = config.get("HERMES_TOKEN", "").strip()
         self.enabled = bool(self.base)
 
     def ask(self, instruction, material, limit=400):
-        """Ask Hermes for prose. Returns None when anything at all goes wrong.
-
-        Three rules hold this together:
-          1. The answer is only ever DISPLAYED. It never becomes a command, a
-             control id, or an action. A model that hallucinates here produces
-             a wrong sentence, not a wrong change to someone's server.
-          2. Everything falls back to the catalog. No model, no network, bad
-             JSON - the report still comes out complete, just stiffer.
-          3. Short timeout. The daily cycle must not hang because a model is
-             slow.
-        """
+        """Ask Hermes for prose; None on any failure. The answer is only ever
+        DISPLAYED - never a command, control id or action; no model, no network
+        or bad JSON falls back to the catalog; short timeout so the daily cycle
+        cannot hang on a slow model."""
         if not self.enabled:
             return None
         answer = http_json("POST", f"{self.base}/v1/chat/completions", self.token, {
@@ -335,17 +278,7 @@ class Reasoner:
         return text or None
 
     def judge_ports(self, raw):
-        """Is this open port normal, or is it a hole?
-
-        This is the one judgement a fixed rule does badly. Memorising port
-        numbers is the same mistake as pinning SSH to 22 - people move things,
-        and there are more services than anyone can list. A model reads the
-        process name and says something useful about it.
-
-        Whatever it answers, K05 still refuses to switch the firewall on until
-        the owner has actually answered. This adds a sentence to help them
-        decide; it does not decide for them.
-        """
+        """A displayed sentence about open ports; K05 still waits for the owner."""
         return self.ask(
             "Server ini punya port terbuka yang belum dijawab pemiliknya. Untuk "
             "tiap port, jelaskan singkat itu kemungkinan layanan apa, dan apakah "
@@ -358,30 +291,25 @@ class Reasoner:
         return sorted(ids, key=lambda k: rank.get(k, 99))
 
     def explain(self, kid, catalog, result):
-        """The sentence shown to the owner. Sourced from the catalog, not invented."""
-        text = tidy(catalog.get(kid, {}).get("kenapa"))
+        text = tidy(catalog.get(kid, {}).get("why"))
         return text or f"Kontrol {kid} belum punya penjelasan di katalog."
 
     def consequence(self, kid, catalog):
-        text = tidy(catalog.get(kid, {}).get("yang_rusak_kalau_diterapkan"))
+        text = tidy(catalog.get(kid, {}).get("breaks_if_applied"))
         return text or "Belum ada catatan konsekuensi di katalog untuk kontrol ini."
 
     def drift_question(self, d):
         return (
-            f"{d['nama']} berubah pada {d.get('kapan_diubah') or 'waktu yang tidak tercatat'}. "
-            f"Sebelumnya {d['berubah_dari']}, sekarang {d['berubah_jadi']}."
-            + (f" Yang mengubah: {d['siapa']}." if d.get("siapa") else "")
+            f"{d['name']} berubah pada {d.get('changed_at') or 'waktu yang tidak tercatat'}. "
+            f"Sebelumnya {d['changed_from']}, sekarang {d['changed_to']}."
+            + (f" Yang mengubah: {d['who']}." if d.get("who") else "")
         )
 
 
 # ---------------------------------------------------------------- audit trail
 def audit_trail(kid, catalog):
-    """Who changed it, when, with what command - from auditd (K08).
-
-    May be empty. The contract allows null on purpose: a server whose auditd is
-    off genuinely has no trail, and inventing a culprit is far more dangerous
-    than admitting we do not know.
-    """
+    """Who changed it, when, with what - from auditd (K08). Often empty: with
+    auditd off there is no trail, and inventing a culprit is worse than null."""
     key = {"K01": "ssh_config", "K02": "ssh_config", "K03": "ssh_config",
            "K04": "ssh_config", "K05": "firewall", "K06": "yoru_kontrol",
            "K09": "yoru_kontrol", "K10": "yoru_kontrol"}.get(kid)
@@ -407,8 +335,8 @@ def audit_trail(kid, catalog):
     if m:
         command = m.group(1)
 
-    return {"siapa": who, "kapan_diubah": when, "perintah": command,
-            "sumber_bukti": "auditd"}
+    return {"who": who, "changed_at": when, "command": command,
+            "evidence_source": "auditd"}
 
 
 # --------------------------------------------------------------------- report
@@ -431,36 +359,35 @@ def build_report(cycle, config, catalog, reasoner, checks, previous=None):
         tally[status] = tally.get(status, 0) + 1
         risky = kid not in SAFE
 
-        # Failed preconditions travel with the report so the dashboard does not
-        # offer an approve button for a control that cannot run yet.
+        # Failed preconditions travel with the report so the dashboard offers no
+        # approve button for a control that cannot run yet.
         blockers = []
-        if raw.get("pesan") and raw.get("status") in {"DITOLAK", "ERROR"}:
-            blockers.append(tidy(raw["pesan"]))
-        if kid == "K05" and raw.get("pesan"):
-            blockers = [tidy(raw["pesan"])]
+        if raw.get("message") and raw.get("status") in {"DITOLAK", "ERROR"}:
+            blockers.append(tidy(raw["message"]))
+        if kid == "K05" and raw.get("message"):
+            blockers = [tidy(raw["message"])]
 
-        # Sengaja cuma K05. Itu satu-satunya kontrol yang hasilnya bergantung
-        # pada layanan apa yang kebetulan jalan di server ini - selebihnya
-        # jawabannya sudah pasti dan sudah ada di katalog.
+        # Sengaja cuma K05: hasilnya bergantung pada layanan yang kebetulan jalan
+        # di server ini, sisanya jawabannya sudah pasti dan ada di katalog.
         note = None
         if kid == "K05" and blockers and reasoner.enabled:
             note = reasoner.judge_ports(blockers[0])
 
         controls.append({
             "id": kid,
-            "nama": cat.get("nama") or kid,
-            "kategori": cat.get("kategori") or "lain",
-            "kode_cis": str(cat.get("kode_cis") or "-"),
-            "risiko": cat.get("risiko") or ("BERISIKO" if risky else "AMAN"),
+            "name": cat.get("name") or kid,
+            "category": cat.get("category") or "lain",
+            "cis_code": str(cat.get("cis_code") or "-"),
+            "risk": cat.get("risk") or ("BERISIKO" if risky else "AMAN"),
             "status": status,
-            "nilai_terbaca": raw.get("nilai") or "tidak-terbaca",
-            "nilai_target": str(cat.get("nilai_target") or ""),
-            "kenapa": reasoner.explain(kid, catalog, raw),
-            "yang_rusak_kalau_diterapkan": reasoner.consequence(kid, catalog),
-            "butuh_izin": risky,
-            "prasyarat_gagal": blockers,
-            "catatan_ai": note,
-            "hasil": None,
+            "observed": raw.get("value") or "tidak-terbaca",
+            "target": str(cat.get("target") or ""),
+            "why": reasoner.explain(kid, catalog, raw),
+            "breaks_if_applied": reasoner.consequence(kid, catalog),
+            "needs_approval": risky,
+            "blockers": blockers,
+            "ai_note": note,
+            "result": None,
         })
 
         if status == "GAGAL" and risky and kid not in skip and not blockers:
@@ -469,57 +396,53 @@ def build_report(cycle, config, catalog, reasoner, checks, previous=None):
     total = len(controls)
 
     report = {
-        "versi_kontrak": CONTRACT_VERSION,
-        "versi_yoru": (checks.get("K01") or {}).get("versi") or "?",
+        "contract_version": CONTRACT_VERSION,
+        "yoru_version": (checks.get("K01") or {}).get("version") or "?",
         "server": server_info(config),
-        "waktu": now_iso(),
-        "siklus": cycle,
-        "ringkasan": {
+        "time": now_iso(),
+        "cycle": cycle,
+        "summary": {
             "total": total,
-            "lulus": tally["LULUS"],
-            "gagal": tally["GAGAL"],
-            "sebagian": tally["SEBAGIAN"],
-            "dilewati": tally["DILEWATI"] + tally["ERROR"],
-            "skor": round(tally["LULUS"] / total * 100) if total else 0,
+            "passed": tally["LULUS"],
+            "failed": tally["GAGAL"],
+            "partial": tally["SEBAGIAN"],
+            "skipped": tally["DILEWATI"] + tally["ERROR"],
+            "score": round(tally["LULUS"] / total * 100) if total else 0,
         },
-        "kontrol": controls,
+        "controls": controls,
         "drift": [],
-        "butuh_keputusan": reasoner.order(needs_decision),
+        "pending_decisions": reasoner.order(needs_decision),
     }
 
     if cycle == "penjagaan" and previous:
         report["drift"] = find_drift(previous, report, catalog)
         for d in report["drift"]:
-            if d["id"] not in report["butuh_keputusan"]:
-                report["butuh_keputusan"].append(d["id"])
+            if d["id"] not in report["pending_decisions"]:
+                report["pending_decisions"].append(d["id"])
 
     return report
 
 
 def find_drift(previous, current, catalog):
-    """Controls that used to pass and no longer do.
-
-    This is the heart of the watch cycle. What we look for is not "failing now"
-    but "CHANGED" - a server that was never secure to begin with is the fix
-    cycle's business, not drift.
-    """
-    before = {k["id"]: k for k in previous.get("kontrol", [])}
+    """Controls that used to pass and no longer do. The test is CHANGED, not
+    "failing now": a server that was never secure is the fix cycle's business."""
+    before = {k["id"]: k for k in previous.get("controls", [])}
     out = []
-    for k in current.get("kontrol", []):
+    for k in current.get("controls", []):
         old = before.get(k["id"])
         if not old or old.get("status") != "LULUS" or k.get("status") == "LULUS":
             continue
         d = {
             "id": k["id"],
-            "nama": k["nama"],
-            "berubah_dari": old.get("nilai_terbaca"),
-            "berubah_jadi": k.get("nilai_terbaca"),
-            "terdeteksi": current["waktu"],
-            "siapa": None,
-            "kapan_diubah": None,
-            "perintah": None,
-            "sumber_bukti": None,
-            "keputusan_pemilik": None,
+            "name": k["name"],
+            "changed_from": old.get("observed"),
+            "changed_to": k.get("observed"),
+            "detected": current["time"],
+            "who": None,
+            "changed_at": None,
+            "command": None,
+            "evidence_source": None,
+            "owner_decision": None,
         }
         d.update({kk: vv for kk, vv in audit_trail(k["id"], catalog).items() if vv})
         out.append(d)
@@ -529,7 +452,7 @@ def find_drift(previous, current, catalog):
 def save_report(report):
     try:
         HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-        stamp = report["waktu"].replace(":", "").replace("+", "p")
+        stamp = report["time"].replace(":", "").replace("+", "p")
         (HISTORY_DIR / f"{stamp}.json").write_text(
             json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         REPORT_FILE.write_text(
@@ -569,39 +492,30 @@ def send_report(report, config):
     base = config.get("DASHBOARD_URL", "").rstrip("/")
     if not base:
         return
-    http_json("POST", f"{base}/api/laporan", config.get("DASHBOARD_TOKEN"), report)
+    http_json("POST", f"{base}/api/report", config.get("DASHBOARD_TOKEN"), report)
 
 
 def fetch_decisions(config, server_name):
-    """The owner's answers, pulled from the dashboard.
-
-    Traffic goes ONE WAY: the agent contacts the dashboard, never the reverse.
-    So the guarded server never has to open a port for the dashboard, and if
-    the dashboard is breached the worst an attacker can do is approve a control
-    that ALREADY EXISTS in the catalog - they cannot make the server do
-    anything new.
-    """
+    """The owner's answers. Traffic goes ONE WAY - the agent contacts the
+    dashboard, never the reverse - so the guarded server opens no port for it."""
     base = config.get("DASHBOARD_URL", "").rstrip("/")
     if not base:
         return {}
-    # The server name is mandatory. One dashboard can hold many servers, and
-    # without this filter the agent on server A would carry out answers meant
-    # for server B - including "turn off password login" on a machine whose
-    # owner was never asked.
+    # The server name is mandatory: one dashboard holds many servers, and without
+    # the filter this agent would carry out answers meant for another one.
     j = http_json("GET",
-                  f"{base}/api/keputusan?server={urllib.parse.quote(server_name)}",
+                  f"{base}/api/decision?server={urllib.parse.quote(server_name)}",
                   config.get("DASHBOARD_TOKEN"))
     if not isinstance(j, dict):
         return {}
     out = {}
-    for kid, val in (j.get("keputusan") or {}).items():
+    for kid, val in (j.get("decisions") or {}).items():
         if kid in ALL_CONTROLS and val in {"setuju", "tolak", "sah", "kembalikan"}:
             out[kid] = val
-    return {"kontrol": out, "port": j.get("port_disetujui") or []}
+    return {"decisions": out, "port": j.get("approved_ports") or []}
 
 
 def record_ports(ports):
-    """Ports the owner vouched for: "yes, that one is mine"."""
     valid = [str(int(p)) for p in ports if str(p).isdigit() and 1 <= int(p) <= 65535]
     if not valid:
         return
@@ -622,17 +536,8 @@ def record_ports(ports):
 
 # ------------------------------------------------------------------- telegram
 def find_chat_id(token):
-    """Who is this bot supposed to talk to?
-
-    A Telegram bot cannot start a conversation - the person has to message it
-    first. So the owner sends /start, and the next cycle picks the id up from
-    getUpdates. That is the whole reason TELEGRAM_CHAT_ID may be left empty:
-    "chat id" is our word, not something an ordinary owner should have to hunt
-    for.
-
-    This used to be a promise written in yoru.conf that no code kept. The bot
-    simply never answered, and nothing said why.
-    """
+    """A bot cannot start a conversation: the owner sends /start, the next cycle
+    picks the id up from getUpdates. Hence TELEGRAM_CHAT_ID may be left empty."""
     answer = http_json("GET", f"{TELEGRAM_API}/bot{token}/getUpdates?limit=10",
                        None, timeout=15, label="Telegram")
     if not isinstance(answer, dict) or not answer.get("ok"):
@@ -646,12 +551,8 @@ def find_chat_id(token):
 
 
 def remember_chat_id(chat):
-    """Write it back so the lookup happens once, not every day.
-
-    The agent cannot write /etc/yoru/yoru.conf - that is deliberate. It goes
-    through yoructl, the same door as everything else, and yoructl checks the
-    shape of the value before writing it.
-    """
+    """Goes through yoructl, which validates the value: the agent itself cannot
+    write /etc/yoru/yoru.conf."""
     cmd = ["sudo", "-n", YORUCTL, "konfigurasi", "TELEGRAM_CHAT_ID", chat]
     if os.geteuid() == 0:
         cmd = [YORUCTL, "konfigurasi", "TELEGRAM_CHAT_ID", chat]
@@ -663,13 +564,7 @@ def remember_chat_id(chat):
 
 
 def notify_telegram(report, config):
-    """Tell the owner - but only when there is something to tell.
-
-    What is never sent: a daily "everything is still fine". A notification that
-    arrives every day carrying nothing gets muted within a week, and the one
-    that mattered gets muted with it. So Yoru only speaks up when something
-    changed or something needs an answer.
-    """
+    """Sends only when something changed or needs an answer, never a daily all-clear."""
     token = config.get("TELEGRAM_TOKEN", "").strip()
     if not token:
         return False
@@ -683,42 +578,40 @@ def notify_telegram(report, config):
             return False
         remember_chat_id(chat)
 
-    summary = report["ringkasan"]
+    summary = report["summary"]
     drift = report.get("drift") or []
-    asking = report.get("butuh_keputusan") or []
+    asking = report.get("pending_decisions") or []
     if not drift and not asking:
         say("tidak ada yang perlu dikabarkan - Telegram dilewati")
         return False
 
-    name = (report.get("server") or {}).get("nama") or "server kamu"
-    lines = [f"*{name}* - skor {summary['skor']}/100 "
-             f"({summary['lulus']} dari {summary['total']} aman)"]
+    name = (report.get("server") or {}).get("name") or "server kamu"
+    lines = [f"*{name}* - skor {summary['score']}/100 "
+             f"({summary['passed']} dari {summary['total']} aman)"]
 
     if drift:
         lines.append("")
         lines.append("*Ada yang berubah:*")
         for d in drift[:5]:
-            who = f" oleh {d['siapa']}" if d.get("siapa") else ""
-            lines.append(f"- {d['nama']}: {d['berubah_dari']} jadi {d['berubah_jadi']}{who}")
+            who = f" oleh {d['who']}" if d.get("who") else ""
+            lines.append(f"- {d['name']}: {d['changed_from']} jadi {d['changed_to']}{who}")
 
     if asking:
         lines.append("")
         lines.append(f"*{len(asking)} hal nunggu jawaban kamu:*")
-        by_id = {k["id"]: k for k in report["kontrol"]}
+        by_id = {k["id"]: k for k in report["controls"]}
         for kid in asking[:5]:
             k = by_id.get(kid)
             if k:
-                lines.append(f"- {k['nama']}")
+                lines.append(f"- {k['name']}")
 
     base = config.get("DASHBOARD_URL", "").rstrip("/")
     if base:
         lines.append("")
         lines.append(f"Buka {base} buat jawab.")
 
-    # The text is NOT assembled from raw command output - all of it comes from
-    # the catalog and from values yoructl already validated. A filename or
-    # username containing Markdown characters can at worst look ugly; it cannot
-    # smuggle another message out.
+    # The text comes from the catalog and from values yoructl already validated,
+    # so stray Markdown can look ugly but cannot smuggle another message out.
     url = f"{TELEGRAM_API}/bot{token}/sendMessage"
     data = {"chat_id": chat, "text": "\n".join(lines), "parse_mode": "Markdown"}
     if http_json("POST", url, None, data) is None:
@@ -729,8 +622,7 @@ def notify_telegram(report, config):
 
 
 def test_telegram(config):
-    """One test message, so nobody has to wait for real drift to find out that
-    the token was wrong."""
+    """One test message, so a wrong token surfaces before real drift does."""
     token = config.get("TELEGRAM_TOKEN", "").strip()
     if not token:
         say("TELEGRAM_TOKEN kosong - isi dulu di dashboard, menu Telegram Bot")
@@ -764,36 +656,32 @@ def test_telegram(config):
 
 # ------------------------------------------------------------------- applying
 def apply_one(kid):
-    """Apply, then verify. berhasil=true ONLY when verification passed.
-
-    This is rule one in contract/report.md, and it is not a formality: we have
-    had a control write its file, pass `sshd -t`, and reload without error
-    while the server's setting did not change at all. "The command ran" is not
-    evidence; only reading the state back is.
-    """
+    """Apply, then verify; berhasil=true ONLY when verification passed. We have
+    had a control write its file, pass `sshd -t` and reload cleanly while the
+    setting did not change - only reading the state back is evidence."""
     started = time.time()
     applied = call_yoructl(kid, "terapkan")
     elapsed = round(time.time() - started, 1)
 
     if applied.get("status") == "DILEWATI":
-        return {"tindakan": "lewati", "berhasil": True,
-                "nilai_sesudah": applied.get("nilai"), "diverifikasi": True,
+        return {"action": "lewati", "ok": True,
+                "nilai_sesudah": applied.get("value"), "diverifikasi": True,
                 "snapshot_id": None, "dirollback": False,
                 "pesan_error": None, "durasi_detik": elapsed}
 
-    if not applied.get("berhasil"):
-        return {"tindakan": "terapkan", "berhasil": False,
-                "nilai_sesudah": applied.get("nilai"), "diverifikasi": False,
+    if not applied.get("ok"):
+        return {"action": "terapkan", "ok": False,
+                "nilai_sesudah": applied.get("value"), "diverifikasi": False,
                 "snapshot_id": None, "dirollback": False,
-                "pesan_error": applied.get("pesan") or applied.get("status"),
+                "pesan_error": applied.get("message") or applied.get("status"),
                 "durasi_detik": elapsed}
 
     verified = call_yoructl(kid, "verifikasi")
     ok = verified.get("status") == "LULUS"
     return {
-        "tindakan": "terapkan",
-        "berhasil": bool(ok),
-        "nilai_sesudah": verified.get("nilai"),
+        "action": "terapkan",
+        "ok": bool(ok),
+        "nilai_sesudah": verified.get("value"),
         "diverifikasi": ok,
         "snapshot_id": f"yoru-{kid}-{datetime.now().strftime('%Y%m%dT%H%M%S')}",
         "dirollback": False,
@@ -804,12 +692,12 @@ def apply_one(kid):
 
 def execute(report, decisions, dry_run=False):
     """Safe controls run on their own. Risky ones only with the owner's yes."""
-    by_id = {k["id"]: k for k in report["kontrol"]}
+    by_id = {k["id"]: k for k in report["controls"]}
     done = []
 
     for kid in ALL_CONTROLS:
         k = by_id.get(kid)
-        if not k or k["status"] != "GAGAL" or k["prasyarat_gagal"]:
+        if not k or k["status"] != "GAGAL" or k["blockers"]:
             continue
 
         if kid in SAFE:
@@ -824,7 +712,7 @@ def execute(report, decisions, dry_run=False):
             continue
 
         say(f"{kid} terapkan - {reason}")
-        k["hasil"] = apply_one(kid)
+        k["result"] = apply_one(kid)
         done.append(kid)
 
     for kid in list(decisions):
@@ -832,11 +720,11 @@ def execute(report, decisions, dry_run=False):
             say(f"{kid} kembalikan - diminta pemilik")
             r = call_yoructl(kid, "kembalikan")
             if by_id.get(kid):
-                by_id[kid]["hasil"] = {
-                    "tindakan": "kembalikan", "berhasil": bool(r.get("berhasil")),
-                    "nilai_sesudah": r.get("nilai"), "diverifikasi": bool(r.get("berhasil")),
+                by_id[kid]["result"] = {
+                    "action": "kembalikan", "ok": bool(r.get("ok")),
+                    "nilai_sesudah": r.get("value"), "diverifikasi": bool(r.get("ok")),
                     "snapshot_id": None, "dirollback": True,
-                    "pesan_error": r.get("pesan"), "durasi_detik": None,
+                    "pesan_error": r.get("message"), "durasi_detik": None,
                 }
             done.append(kid)
 
@@ -844,30 +732,29 @@ def execute(report, decisions, dry_run=False):
 
 
 def refresh(report, catalog, reasoner, done):
-    """Re-read the controls we just touched, then recount the score."""
     if not done:
         return report
-    by_id = {k["id"]: k for k in report["kontrol"]}
+    by_id = {k["id"]: k for k in report["controls"]}
     for kid in done:
         m = call_yoructl(kid, "periksa")
         if kid in by_id:
             by_id[kid]["status"] = STATUS_MAP.get(m.get("status", "ERROR"), "ERROR")
-            by_id[kid]["nilai_terbaca"] = m.get("nilai") or "tidak-terbaca"
+            by_id[kid]["observed"] = m.get("value") or "tidak-terbaca"
 
     tally = {"LULUS": 0, "GAGAL": 0, "SEBAGIAN": 0, "DILEWATI": 0, "ERROR": 0}
-    for k in report["kontrol"]:
+    for k in report["controls"]:
         tally[k["status"]] = tally.get(k["status"], 0) + 1
-    total = len(report["kontrol"])
-    report["ringkasan"] = {
-        "total": total, "lulus": tally["LULUS"], "gagal": tally["GAGAL"],
-        "sebagian": tally["SEBAGIAN"], "dilewati": tally["DILEWATI"] + tally["ERROR"],
-        "skor": round(tally["LULUS"] / total * 100) if total else 0,
+    total = len(report["controls"])
+    report["summary"] = {
+        "total": total, "passed": tally["LULUS"], "failed": tally["GAGAL"],
+        "partial": tally["SEBAGIAN"], "skipped": tally["DILEWATI"] + tally["ERROR"],
+        "score": round(tally["LULUS"] / total * 100) if total else 0,
     }
-    report["butuh_keputusan"] = reasoner.order(
-        [k["id"] for k in report["kontrol"]
-         if k["status"] == "GAGAL" and k["butuh_izin"] and not k["prasyarat_gagal"]]
+    report["pending_decisions"] = reasoner.order(
+        [k["id"] for k in report["controls"]
+         if k["status"] == "GAGAL" and k["needs_approval"] and not k["blockers"]]
     )
-    report["waktu"] = now_iso()
+    report["time"] = now_iso()
     return report
 
 
@@ -886,10 +773,9 @@ def main():
                     help="kirim satu pesan uji ke Telegram lalu berhenti")
     args = ap.parse_args()
 
-    # Same rule as yoru-watch. Run as root, the agent no longer goes through
-    # sudoers, so every restriction on it becomes decorative. And there is a
-    # quiet side effect: the report it writes ends up owned by root, and the
-    # next daily cycle can never overwrite it again - failing silently.
+    # Same rule as yoru-watch. As root the agent bypasses sudoers, making every
+    # restriction on it decorative, and leaves the report owned by root - which
+    # the next daily cycle then fails to overwrite, silently.
     if os.geteuid() == 0:
         say("berhenti: harus berjalan sebagai yoru-agent, bukan root")
         say("coba: sudo -u yoru-agent /opt/yoru/bin/yoru-agent "
@@ -913,22 +799,22 @@ def main():
 
     report = build_report(args.siklus, config, catalog, reasoner, checks,
                           read_previous_report() if args.siklus == "penjagaan" else None)
-    say(f"skor {report['ringkasan']['skor']} "
-        f"(lulus {report['ringkasan']['lulus']}/{report['ringkasan']['total']}), "
+    say(f"skor {report['summary']['score']} "
+        f"(lulus {report['summary']['passed']}/{report['summary']['total']}), "
         f"drift {len(report['drift'])}, "
-        f"menunggu keputusan {len(report['butuh_keputusan'])}")
+        f"menunggu keputusan {len(report['pending_decisions'])}")
 
     decisions = {}
     if not args.tanpa_kirim:
         send_report(report, config)
-        answer = fetch_decisions(config, report["server"]["nama"])
-        decisions = answer.get("kontrol", {}) if isinstance(answer, dict) else {}
+        answer = fetch_decisions(config, report["server"]["name"])
+        decisions = answer.get("decisions", {}) if isinstance(answer, dict) else {}
         record_ports(answer.get("port", []) if isinstance(answer, dict) else [])
 
     done = execute(report, decisions, dry_run=args.kering)
     if done:
         report = refresh(report, catalog, reasoner, done)
-        say(f"skor sesudah dikerjakan: {report['ringkasan']['skor']}")
+        say(f"skor sesudah dikerjakan: {report['summary']['score']}")
 
     save_report(report)
     if not args.tanpa_kirim:
@@ -939,7 +825,7 @@ def main():
         Path(args.keluar).write_text(
             json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(json.dumps(report["ringkasan"], ensure_ascii=False))
+    print(json.dumps(report["summary"], ensure_ascii=False))
     return 0
 
 

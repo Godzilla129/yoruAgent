@@ -333,7 +333,7 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
     <nav id="nav">
       <a data-h="dashboard" class="on"><span class="ic">▦</span>Dashboard</a>
       <a data-h="checklist"><span class="ic">☰</span>CIS Checklist</a>
-      <a data-h="riwayat"><span class="ic">▤</span>Riwayat Skor</a>
+      <a data-h="history"><span class="ic">▤</span>Riwayat Skor</a>
       <a data-h="log"><span class="ic">◷</span>Audit Logs</a>
       <a data-h="telegram"><span class="ic">✈</span>Telegram Bot</a>
       <a data-h="llm"><span class="ic">✦</span>LLM Settings</a>
@@ -398,9 +398,8 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
 </form></dialog>
 
 <script>
-// The UI text stays Indonesian - it is what the server's owner reads. The JSON
-// fields, the four action verbs and the API paths stay too: they are the
-// product's shared vocabulary, documented in contract/report.md.
+// UI text stays Indonesian - it is what the server owner reads. Identifiers,
+// API paths and JSON fields are English; the four action verbs are not.
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g,
   c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -410,11 +409,10 @@ let PAGE = 'dashboard';
 let LOG_KID = null;         // which control's log to show, null = all of them
 let SERVERS = [];           // every server that has reported to this dashboard
 let PICKED = null;          // the one being looked at; null = whatever is newest
-let LOCAL = null;           // the server name of THIS machine, from /api/server
+let LOCAL = null;           // the server name of THIS machine, from /api/servers
 
-// Bumped by every render. A page function that awaits a fetch checks it again
-// afterwards and gives up if the number moved: while it was waiting, the owner
-// clicked something else, and the screen is no longer theirs to write to.
+// Bumped by every render. A page function re-checks it after awaiting a fetch
+// and gives up if it moved - the owner has navigated away since.
 let RENDER = 0;
 
 /* ------------------------------------------------------------------ theme
@@ -439,7 +437,7 @@ $('themeBtn').onclick = () => {
   const next = THEMES[(THEMES.indexOf(readTheme()) + 1) % THEMES.length];
   try { localStorage.setItem('yoru-tema', next); } catch (e) {}
   applyTheme(next);
-  if (PAGE === 'riwayat') render();   // the chart is drawn with theme colours
+  if (PAGE === 'history') render();   // the chart is drawn with theme colours
 };
 
 /* ------------------------------------------------------------------ token
@@ -462,8 +460,7 @@ function askToken() {
   });
 }
 
-// Every call to the API goes through one of these two, so there is exactly one
-// place that knows how to answer a 401/403 by asking for the token and retrying.
+// Every API call goes through these two, so 401/403 handling lives in one place.
 async function post(url, body) {
   const opts = () => ({
     method: 'POST',
@@ -487,7 +484,7 @@ const TAG = {LULUS:['LULUS','p'], GAGAL:['GAGAL','f'], SEBAGIAN:['SEBAGIAN','n']
              DILEWATI:['DILEWATI','x'], ERROR:['ERROR','x']};
 
 const PAGE_TITLE = {dashboard:'Dashboard', checklist:'CIS Checklist',
-                    riwayat:'Riwayat Skor', log:'Audit Logs',
+                    history:'Riwayat Skor', log:'Audit Logs',
                     telegram:'Telegram Bot', llm:'LLM Settings', system:'System Settings'};
 
 const shorten = t => {
@@ -499,36 +496,35 @@ const when = t => String(t || '').replace('T', ' ').slice(0, 16);
 
 // Is the report on screen from this very machine? Only then do the
 // Audit/Hardening/Rollback buttons mean anything - they run yoructl HERE.
-const isLocal = () => !LOCAL || !DATA || (DATA.server && DATA.server.nama === LOCAL);
+const isLocal = () => !LOCAL || !DATA || (DATA.server && DATA.server.name === LOCAL);
 
 /* --------------------------------------------------------------- loading */
 async function loadServers() {
   try {
-    const r = await get('/api/server');
+    const r = await get('/api/servers');
     if (!r.ok) return;
     const j = await r.json();
-    SERVERS = j.server || [];
-    LOCAL = j.lokal || null;
+    SERVERS = j.servers || [];
+    LOCAL = j.local || null;
   } catch (e) { /* the picker simply does not appear */ }
 }
 
 async function load() {
   const q = PICKED ? `?server=${encodeURIComponent(PICKED)}` : '';
   try {
-    const r = await get('/api/laporan' + q);
+    const r = await get('/api/report' + q);
     DATA = (r.status === 404 || !r.ok) ? null : await r.json();
   } catch (e) { DATA = null; }
   render();
 }
 
 function drawPicker() {
-  // One server is the ordinary case - a picker offering a single choice is
-  // furniture, not a control. It appears when there is something to pick.
+  // Shown only when there is more than one server to pick from.
   if (SERVERS.length < 2) { $('serverPicker').hidden = true; return; }
   $('serverPicker').hidden = false;
-  const current = (DATA && DATA.server && DATA.server.nama) || PICKED || '';
+  const current = (DATA && DATA.server && DATA.server.name) || PICKED || '';
   $('serverSelect').innerHTML = SERVERS.map(s =>
-    `<option value="${esc(s.nama)}" ${s.nama === current ? 'selected' : ''}>${esc(s.nama)}</option>`
+    `<option value="${esc(s.name)}" ${s.name === current ? 'selected' : ''}>${esc(s.name)}</option>`
   ).join('');
   $('localTag').hidden = !(current && current === LOCAL);
 }
@@ -570,12 +566,12 @@ function render() {
       hint:'Bentuk HH:MM. Timer systemd langsung ikut diganti begitu disimpan — pilih jam sepi.'},
      {key:'ZONA_WAKTU', label:'Zona waktu',
       hint:'Contoh: Asia/Jakarta. Dipakai untuk jam penjagaan dan semua jam di laporan.'}]);
-  if (PAGE === 'riwayat')  return historyPage(gen);
+  if (PAGE === 'history')  return historyPage(gen);
 
   if (!DATA) return emptyState();
 
   const s = DATA.server || {};
-  $('meta').textContent = [s.nama, s.os, s.ip_utama, when(DATA.waktu)].filter(Boolean).join(' · ');
+  $('meta').textContent = [s.name, s.os, s.primary_ip, when(DATA.time)].filter(Boolean).join(' · ');
 
   $('content').innerHTML =
     (PAGE === 'dashboard' ? statCards() + remoteNotice() + driftPanel() + attentionPanel() : '') +
@@ -583,11 +579,9 @@ function render() {
   wireButtons();
 }
 
-// The red number next to "Dashboard" in the menu: how many things are actually
-// waiting on the owner. Shown in the menu because the whole point of this tool
-// is that nobody has to remember to come and look.
+// The red number beside "Dashboard": how many things wait on the owner.
 function markBadge() {
-  const waiting = DATA ? (DATA.butuh_keputusan || []).length + (DATA.drift || []).length : 0;
+  const waiting = DATA ? (DATA.pending_decisions || []).length + (DATA.drift || []).length : 0;
   const a = document.querySelector('#nav a[data-h="dashboard"]');
   const old = a.querySelector('.pill');
   if (old) old.remove();
@@ -619,21 +613,21 @@ function ring(pct) {
 }
 
 function statCards() {
-  const s = DATA.ringkasan || {}, total = s.total || 10;
-  const waiting = (DATA.butuh_keputusan || []).length + (DATA.drift || []).length;
+  const s = DATA.summary || {}, total = s.total || 10;
+  const waiting = (DATA.pending_decisions || []).length + (DATA.drift || []).length;
   return `<div class="stats">
-    <div class="stat">${ring(s.skor ?? 0)}
+    <div class="stat">${ring(s.score ?? 0)}
       <div class="grow"><div class="lbl">Skor kepatuhan</div>
-        <div class="val">${s.skor ?? 0}<span style="font-size:15px;color:var(--muted)">/100</span></div>
-        <div class="sub">${esc(DATA.siklus || '-')}</div></div></div>
+        <div class="val">${s.score ?? 0}<span style="font-size:15px;color:var(--muted)">/100</span></div>
+        <div class="sub">${esc(DATA.cycle || '-')}</div></div></div>
     <div class="stat"><div class="chip-ic pass">✓</div>
       <div class="grow"><div class="lbl">Sudah aman</div>
-        <div class="val">${s.lulus ?? 0} <span style="font-size:15px;color:var(--muted)">/ ${total}</span></div>
+        <div class="val">${s.passed ?? 0} <span style="font-size:15px;color:var(--muted)">/ ${total}</span></div>
         <div class="sub">sesuai target katalog</div></div></div>
     <div class="stat"><div class="chip-ic fail">!</div>
       <div class="grow"><div class="lbl">Perlu hardening</div>
-        <div class="val">${s.gagal ?? 0} <span style="font-size:15px;color:var(--muted)">/ ${total}</span></div>
-        <div class="sub">${s.sebagian ? s.sebagian + ' sebagian · ' : ''}${s.dilewati ?? 0} dilewati</div></div></div>
+        <div class="val">${s.failed ?? 0} <span style="font-size:15px;color:var(--muted)">/ ${total}</span></div>
+        <div class="sub">${s.partial ? s.partial + ' sebagian · ' : ''}${s.skipped ?? 0} dilewati</div></div></div>
     <div class="stat"><div class="chip-ic ${waiting ? 'fail' : 'info'}">${waiting ? '◔' : '✓'}</div>
       <div class="grow"><div class="lbl">Nunggu jawabanmu</div>
         <div class="val">${waiting}</div>
@@ -641,15 +635,13 @@ function statCards() {
   </div>`;
 }
 
-// Said plainly rather than by greying buttons out with no explanation: this
-// report came from somewhere else, so the buttons that run yoructl here cannot
-// touch it. Approving and vouching for ports still work, because those are
-// written down and collected by the agent on that server.
+// This report came from another server, so the yoructl buttons cannot touch it.
+// Approving and vouching still work - the agent there collects those.
 function remoteNotice() {
   if (isLocal()) return '';
   return `<div class="panel"><div class="panel-body" style="display:flex;gap:11px;align-items:flex-start">
     <div class="chip-ic info">⇄</div>
-    <div><b>Laporan ini datang dari ${esc((DATA.server || {}).nama || 'server lain')}</b>
+    <div><b>Laporan ini datang dari ${esc((DATA.server || {}).name || 'server lain')}</b>
     <div style="color:var(--muted);font-size:13px;margin-top:3px;line-height:1.6">
       Tombol Audit, Hardening dan Rollback menjalankan <code>yoructl</code> di mesin tempat
       dashboard ini dipasang, jadi untuk server lain tombolnya dimatikan — kalau tidak, menekannya
@@ -666,20 +658,20 @@ function driftPanel() {
   if (!drift.length) return '';
   const rows = drift.map(d => {
     const bits = [];
-    if (d.siapa)        bits.push(`diubah oleh <b>${esc(d.siapa)}</b>`);
-    if (d.kapan_diubah) bits.push(`pada ${esc(when(d.kapan_diubah))}`);
-    if (d.perintah)     bits.push(`lewat <code>${esc(d.perintah)}</code>`);
+    if (d.who)        bits.push(`diubah oleh <b>${esc(d.who)}</b>`);
+    if (d.changed_at) bits.push(`pada ${esc(when(d.changed_at))}`);
+    if (d.command)     bits.push(`lewat <code>${esc(d.command)}</code>`);
     const evidence = bits.length
       ? `<div class="evidence">${bits.join(' · ')}${
-           d.sumber_bukti ? ` <span style="opacity:.75">(sumber: ${esc(d.sumber_bukti)})</span>` : ''}</div>`
+           d.evidence_source ? ` <span style="opacity:.75">(sumber: ${esc(d.evidence_source)})</span>` : ''}</div>`
       : `<div class="evidence">Tidak ada jejak siapa yang mengubah — auditd (K08) belum aktif
          di server ini, jadi memang tidak ada catatannya. Yoru tidak menebak.</div>`;
     return `<div class="drift" data-kid="${esc(d.id)}">
       <div class="who">⚠</div>
       <div class="body">
-        <div class="t">${esc(d.nama)} <span class="cis">${esc(d.id)}</span></div>
-        <div class="change">Dulu <span class="was">${esc(d.berubah_dari)}</span>
-          sekarang <span class="now">${esc(d.berubah_jadi)}</span></div>
+        <div class="t">${esc(d.name)} <span class="cis">${esc(d.id)}</span></div>
+        <div class="change">Dulu <span class="was">${esc(d.changed_from)}</span>
+          sekarang <span class="now">${esc(d.changed_to)}</span></div>
         ${evidence}
         <span class="result" data-slot></span>
       </div>
@@ -701,17 +693,17 @@ function driftPanel() {
    answer from this page at all: POST /api/port existed and nothing called it,
    so the only route was editing PORT_DIIZINKAN by hand. */
 function pendingPorts() {
-  const k05 = (DATA.kontrol || []).find(k => k.id === 'K05');
-  const raw = (k05 && (k05.prasyarat_gagal || [])[0]) || '';
+  const k05 = (DATA.controls || []).find(k => k.id === 'K05');
+  const raw = (k05 && (k05.blockers || [])[0]) || '';
   const out = [];
   // Shape written by yoructl: "port terbuka belum dijawab pemilik: 8888(python3) 3306(mariadbd)"
   for (const m of raw.matchAll(/(\d{1,5})\(([^)]*)\)/g)) out.push({port: m[1], proc: m[2]});
-  return {ports: out, catatan: (k05 && k05.catatan_ai) || ''};
+  return {ports: out, note: (k05 && k05.ai_note) || ''};
 }
 
 function attentionPanel() {
   const {ports, catatan} = pendingPorts();
-  const asking = DATA.butuh_keputusan || [];
+  const asking = DATA.pending_decisions || [];
   if (!ports.length && !asking.length) return '';
 
   let body = '';
@@ -732,7 +724,7 @@ function attentionPanel() {
   }
   if (asking.length) {
     const byId = {};
-    (DATA.kontrol || []).forEach(k => byId[k.id] = k);
+    (DATA.controls || []).forEach(k => byId[k.id] = k);
     body += `<div class="panel-body">
       <b>${asking.length} kontrol menunggu persetujuanmu</b>
       <div style="color:var(--muted);font-size:13px;margin-top:4px;line-height:1.6">
@@ -740,11 +732,11 @@ function attentionPanel() {
         dikerjakan agent di server itu pada siklus berikutnya${isLocal()
           ? ' — atau tekan Hardening di tabel bawah kalau mau sekarang juga' : ''}.</div>
       <div style="margin-top:11px">${asking.map(kid => {
-        const k = byId[kid] || {id: kid, nama: kid};
+        const k = byId[kid] || {id: kid, name: kid};
         return `<div class="drift" data-kid="${esc(kid)}" style="padding-left:0;padding-right:0">
           <div class="body">
-            <div class="t">${esc(k.nama || kid)} <span class="cis">${esc(kid)}</span></div>
-            <div class="change">${esc(k.kenapa || '')}</div>
+            <div class="t">${esc(k.name || kid)} <span class="cis">${esc(kid)}</span></div>
+            <div class="change">${esc(k.why || '')}</div>
             <span class="result" data-slot></span>
           </div>
           <div class="acts">
@@ -759,20 +751,20 @@ function attentionPanel() {
 
 /* ----------------------------------------------------------------- table */
 function table() {
-  const needsApproval = new Set(DATA.butuh_keputusan || []);
+  const needsApproval = new Set(DATA.pending_decisions || []);
   const local = isLocal();
-  const rows = (DATA.kontrol || []).map((k, i) => {
+  const rows = (DATA.controls || []).map((k, i) => {
     const [label, cls] = TAG[k.status] || ['?', 'x'];
-    const blocked = (k.prasyarat_gagal || []).length > 0;
+    const blocked = (k.blockers || []).length > 0;
     const off = !local ? ' disabled' : '';
     return `<tr data-kid="${esc(k.id)}">
       <td class="num">#${i + 1}</td>
-      <td class="point" data-l="Poin CIS"><span class="nm">${esc(k.nama)}</span>
-        ${k.catatan_ai ? `<span class="ai">${esc(k.catatan_ai)}</span>` : ''}
-        ${blocked ? `<span class="blocked">${esc(k.prasyarat_gagal[0])}</span>` : ''}</td>
-      <td data-l="Kode CIS"><span class="cis" title="${esc(k.kode_cis || '')}">${esc(shorten(k.kode_cis || k.id))}</span></td>
+      <td class="point" data-l="Poin CIS"><span class="nm">${esc(k.name)}</span>
+        ${k.ai_note ? `<span class="ai">${esc(k.ai_note)}</span>` : ''}
+        ${blocked ? `<span class="blocked">${esc(k.blockers[0])}</span>` : ''}</td>
+      <td data-l="Kode CIS"><span class="cis" title="${esc(k.cis_code || '')}">${esc(shorten(k.cis_code || k.id))}</span></td>
       <td data-l="Status"><span class="tag ${cls}">${label}</span></td>
-      <td data-l="Terbaca" style="color:var(--muted);font-size:12.5px">${esc(k.nilai_terbaca || '-')}</td>
+      <td data-l="Terbaca" style="color:var(--muted);font-size:12.5px">${esc(k.observed || '-')}</td>
       <td class="actions" data-l="Aksi">
         <button class="btn" data-a="periksa"${off}>Audit</button>
         <button class="btn" data-a="terapkan"${off || (blocked ? ' disabled' : '')}
@@ -805,13 +797,13 @@ function table() {
 
 /* --------------------------------------------------------------- history */
 async function historyPage(gen) {
-  $('meta').textContent = PICKED || (DATA && DATA.server && DATA.server.nama) || '';
+  $('meta').textContent = PICKED || (DATA && DATA.server && DATA.server.name) || '';
   $('content').innerHTML = `<div class="panel"><div class="empty">memuat riwayat…</div></div>`;
-  const q = PICKED ? `?server=${encodeURIComponent(PICKED)}&batas=60` : '?batas=60';
+  const q = PICKED ? `?server=${encodeURIComponent(PICKED)}&batas=60` : '?limit=60';
   let rows = [];
   try {
-    const r = await get('/api/riwayat' + q);
-    if (r.ok) rows = (await r.json()).riwayat || [];
+    const r = await get('/api/history' + q);
+    if (r.ok) rows = (await r.json()).history || [];
   } catch (e) { /* drawn as empty below */ }
   if (gen !== RENDER) return;
 
@@ -821,16 +813,15 @@ async function historyPage(gen) {
     return;
   }
 
-  // Oldest on the left, so the line reads the way time does.
   const data = rows.slice().reverse();
   const W = 780, H = 170, pad = 26, n = data.length;
   const bw = Math.max(3, Math.min(34, (W - pad * 2) / n - 5));
   const step = (W - pad * 2) / n;
   const bars = data.map((r, i) => {
-    const h = Math.max(2, (r.skor / 100) * (H - pad - 12));
+    const h = Math.max(2, (r.score / 100) * (H - pad - 12));
     const x = pad + i * step + (step - bw) / 2;
     return `<rect class="bar" x="${x.toFixed(1)}" y="${(H - pad - h).toFixed(1)}"
-      width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2"><title>${esc(when(r.waktu))} — skor ${r.skor} (${esc(r.siklus)})</title></rect>`;
+      width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2"><title>${esc(when(r.time))} — skor ${r.score} (${esc(r.cycle)})</title></rect>`;
   }).join('');
   const gridlines = [0, 25, 50, 75, 100].map(v => {
     const y = H - pad - (v / 100) * (H - pad - 12);
@@ -839,7 +830,7 @@ async function historyPage(gen) {
   }).join('');
 
   const first = data[0], last = data[n - 1];
-  const delta = last.skor - first.skor;
+  const delta = last.score - first.score;
   const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '=';
   const colour = delta > 0 ? 'var(--pass)' : delta < 0 ? 'var(--fail)' : 'var(--muted)';
 
@@ -853,8 +844,8 @@ async function historyPage(gen) {
       </svg>
     </div>
     <div class="legend">
-      <span>Paling lama: <b>${esc(when(first.waktu))}</b> — skor ${first.skor}</span>
-      <span>Terbaru: <b>${esc(when(last.waktu))}</b> — skor ${last.skor}</span>
+      <span>Paling lama: <b>${esc(when(first.time))}</b> — skor ${first.score}</span>
+      <span>Terbaru: <b>${esc(when(last.time))}</b> — skor ${last.score}</span>
       <span style="color:${colour}">${arrow} ${delta > 0 ? '+' : ''}${delta} poin</span>
     </div></div>`;
 }
@@ -862,21 +853,21 @@ async function historyPage(gen) {
 /* ------------------------------------------------------------------ logs */
 async function logPage(kid, gen) {
   $('meta').textContent = kid ? kid : 'semua kontrol';
-  const q = kid ? `?kontrol=${encodeURIComponent(kid)}` : '';
+  const q = kid ? `?control=${encodeURIComponent(kid)}` : '';
   let d;
   try {
     const r = await get('/api/log' + q);
-    d = r.ok ? await r.json() : {baris: [], pesan: 'perlu token untuk membaca jejak tindakan'};
-  } catch (e) { d = {baris: []}; }
+    d = r.ok ? await r.json() : {lines: [], message: 'perlu token untuk membaca jejak tindakan'};
+  } catch (e) { d = {lines: []}; }
   if (gen !== undefined && gen !== RENDER) return;
 
-  const body = (d.baris || []).length
-    ? d.baris.map(b => `<div>
-        <span class="w">${esc((b.waktu||'').replace('T',' ').slice(0,19))}</span>
+  const body = (d.lines || []).length
+    ? d.lines.map(b => `<div>
+        <span class="w">${esc((b.time||'').replace('T',' ').slice(0,19))}</span>
         <span class="s ${esc(b.status)}">${esc(b.status)}</span>
-        <span class="w">${esc(b.id)} ${esc(b.tindakan)}</span>
-        <span class="msg">${esc(b.nilai ?? '')}${b.pesan ? ' — ' + esc(b.pesan) : ''}</span></div>`).join('')
-    : `<div class="empty"><b>Belum ada catatan.</b>${esc(d.pesan || 'Jejak tindakan ditulis ke /var/log/yoru/ setiap kali sebuah kontrol dijalankan.')}</div>`;
+        <span class="w">${esc(b.id)} ${esc(b.action)}</span>
+        <span class="msg">${esc(b.value ?? '')}${b.message ? ' — ' + esc(b.message) : ''}</span></div>`).join('')
+    : `<div class="empty"><b>Belum ada catatan.</b>${esc(d.message || 'Jejak tindakan ditulis ke /var/log/yoru/ setiap kali sebuah kontrol dijalankan.')}</div>`;
 
   $('content').innerHTML = `<div class="panel">
     <div class="head"><h2>Jejak tindakan${kid ? ' — ' + esc(kid) : ''}</h2>
@@ -894,7 +885,7 @@ async function settingsPage(gen, title, intro, fields) {
 
   let config = {}, failure = null;
   try {
-    const r = await get('/api/konfigurasi');
+    const r = await get('/api/config');
     if (!r.ok) throw new Error('refused');
     config = await r.json();
   } catch (e) { failure = e; }
@@ -911,12 +902,12 @@ async function settingsPage(gen, title, intro, fields) {
     `<p class="intro">${esc(intro)}</p>` +
     fields.map(f => {
       const cur = config[f.key] || {};
-      const val = f.secret ? '' : (cur.nilai || '');
-      const mark = f.secret && cur.terisi ? ' — sudah terisi, kosongkan kalau tidak mau diganti' : '';
+      const val = f.secret ? '' : (cur.value || '');
+      const mark = f.secret && cur.set ? ' — sudah terisi, kosongkan kalau tidak mau diganti' : '';
       return `<div class="field">
         <label for="f_${f.key}">${esc(f.label)}<span class="mark">${esc(mark)}</span></label>
         <input id="f_${f.key}" ${f.secret ? 'type="password" autocomplete="off"' : 'type="text"'}
-               value="${esc(val)}" placeholder="${f.secret && cur.terisi ? '••••••••••••' : ''}">
+               value="${esc(val)}" placeholder="${f.secret && cur.set ? '••••••••••••' : ''}">
         <div class="hint">${esc(f.hint)}</div>
       </div>`;
     }).join('') +
@@ -933,19 +924,17 @@ async function settingsPage(gen, title, intro, fields) {
     for (const f of fields) {
       const el = $('f_' + f.key);
       const val = el.value.trim();
-      // A secret field left empty means "do not change", not "clear it".
-      // Otherwise opening this page and pressing Save would wipe an existing
-      // token without being asked to.
+      // Empty secret field means "do not change", not "clear it" - otherwise
+      // opening this page and pressing Save would wipe a stored token.
       if (f.secret && val === '') continue;
-      const r = await post('/api/konfigurasi', {kunci: f.key, nilai: val});
+      const r = await post('/api/config', {key: f.key, value: val});
       let d; try { d = await r.json(); } catch (e) { d = {}; }
-      if (r.ok && d.berhasil === true) {
+      if (r.ok && d.ok === true) {
         saved++;
         if (f.secret) el.value = '';
-        // yoructl answers with what it actually did - the schedule keys change
-        // a systemd timer as well as the file, and that is worth repeating back.
-        if (d.pesan && !/^tersimpan di /.test(d.pesan)) said = d.pesan;
-      } else failed.push(`${f.label}: ${d.pesan || d.detail || 'ditolak'}`);
+        // Schedule keys change a systemd timer too, so report what yoructl did.
+        if (d.message && !/^tersimpan di /.test(d.message)) said = d.message;
+      } else failed.push(`${f.label}: ${d.message || d.detail || 'ditolak'}`);
     }
     btn.disabled = false;
     if (failed.length) { note.className = 'note bad'; note.textContent = failed.join(' · '); }
@@ -961,23 +950,22 @@ function slotSay(slot, cls, text) {
   slot.textContent = text;
 }
 
-// Answers that are STORED, not executed here. They are collected by the agent
-// on the server they belong to, which is why they work for every server in the
-// picker and not just this machine.
-async function decide(kontrol, nilai, slot, buttons) {
-  const server = (DATA.server || {}).nama;
+// Stored, not executed here: the agent on that server collects them, so these
+// work for every server in the picker.
+async function decide(control, value, slot, buttons) {
+  const server = (DATA.server || {}).name;
   if (!server) return;
   buttons.forEach(b => b.disabled = true);
   slotSay(slot, 'busy', 'menyimpan…');
   try {
-    const r = await post('/api/keputusan', {server, kontrol, nilai});
+    const r = await post('/api/decision', {server, control, value});
     const d = await r.json();
     if (r.ok && d.ok) {
-      slotSay(slot, 'ok', nilai === 'kembalikan'
+      slotSay(slot, 'ok', value === 'kembalikan'
         ? 'dicatat — agent akan mengembalikannya pada siklus berikutnya'
-        : nilai === 'sah'
+        : value === 'sah'
         ? 'dicatat sebagai perubahan yang kamu sengaja'
-        : nilai === 'setuju'
+        : value === 'setuju'
         ? 'disetujui — agent akan menerapkannya pada siklus berikutnya'
         : 'dicatat — kontrol ini tidak akan diterapkan');
     } else {
@@ -991,7 +979,7 @@ async function decide(kontrol, nilai, slot, buttons) {
 }
 
 async function vouchPort(port, btn, slot) {
-  const server = (DATA.server || {}).nama;
+  const server = (DATA.server || {}).name;
   if (!server) return;
   btn.disabled = true;
   slotSay(slot, 'busy', `menyimpan port ${port}…`);
@@ -1047,8 +1035,8 @@ function wireButtons() {
     b.onclick = () => {
       const box = b.closest('.drift');
       const kid = box.dataset.kid;
-      const nilai = b.dataset.drift || b.dataset.decide;
-      decide(kid, nilai, box.querySelector('[data-slot]'),
+      const value = b.dataset.drift || b.dataset.decide;
+      decide(kid, value, box.querySelector('[data-slot]'),
              [...box.querySelectorAll('button')]);
     };
   });
@@ -1060,18 +1048,17 @@ function wireButtons() {
 }
 
 function confirmApply(kid, btn) {
-  const k = (DATA.kontrol || []).find(x => x.id === kid) || {};
-  $('confirmTitle').textContent = k.nama || kid;
-  $('confirmKid').textContent = `${kid} · ${k.kode_cis || ''} · sekarang ${k.nilai_terbaca} → target ${k.nilai_target}`;
-  $('confirmWhy').textContent = k.kenapa || '';
-  $('confirmRisk').textContent = k.yang_rusak_kalau_diterapkan || '(katalog belum mencantumkan konsekuensinya)';
+  const k = (DATA.controls || []).find(x => x.id === kid) || {};
+  $('confirmTitle').textContent = k.name || kid;
+  $('confirmKid').textContent = `${kid} · ${k.cis_code || ''} · sekarang ${k.observed} → target ${k.target}`;
+  $('confirmWhy').textContent = k.why || '';
+  $('confirmRisk').textContent = k.breaks_if_applied || '(katalog belum mencantumkan konsekuensinya)';
   const d = $('dlgConfirm');
   d.onclose = () => { if (d.returnValue === 'ya') run(kid, 'terapkan', btn); };
   d.showModal();
 }
 
-// What yoructl actually does for each action. Not decorative animation - this
-// is the real sequence, written in plain words.
+// The real sequence yoructl runs for each action, in plain words.
 const STEPS = {
   periksa: ['Membaca keadaan yang benar-benar berlaku sekarang',
             'Bukan isi berkas konfigurasi — itu belum tentu yang aktif',
@@ -1092,9 +1079,9 @@ const statusLabel = s => s === 'DITOLAK' ? 'BELUM BISA'
 let runTimer = null;
 
 function openRun(kid, action) {
-  const k = (DATA?.kontrol || []).find(x => x.id === kid) || {};
-  $('runTitle').textContent = `${ACTION_LABEL[action] || action} — ${k.nama || kid}`;
-  $('runKid').textContent = `${kid}${k.kode_cis ? ' · ' + k.kode_cis : ''}`;
+  const k = (DATA?.controls || []).find(x => x.id === kid) || {};
+  $('runTitle').textContent = `${ACTION_LABEL[action] || action} — ${k.name || kid}`;
+  $('runKid').textContent = `${kid}${k.cis_code ? ' · ' + k.cis_code : ''}`;
   $('runSteps').innerHTML = (STEPS[action] || []).map((s, i) =>
     `<li class="${i === 0 ? 'on' : ''}">${esc(s)}</li>`).join('');
   $('runCmd').textContent = `sudo yoructl ${kid} ${action}`;
@@ -1116,11 +1103,11 @@ function openRun(kid, action) {
 function closeRun(kid, d) {
   clearInterval(runTimer);
   const box = $('runReply');
-  const ok = d.berhasil === true;
+  const ok = d.ok === true;
   const waiting = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
   box.className = 'reply ' + (ok ? 'ok' : waiting ? 'wait' : 'bad');
-  box.innerHTML = `<b>${esc(statusLabel(d.status))}</b>${d.nilai ? ' — ' + esc(d.nilai) : ''}` +
-    (d.pesan ? `<br>${esc(d.pesan)}` : '');
+  box.innerHTML = `<b>${esc(statusLabel(d.status))}</b>${d.value ? ' — ' + esc(d.value) : ''}` +
+    (d.message ? `<br>${esc(d.message)}` : '');
   box.hidden = false;
   $('runClock').textContent = 'selesai';
   $('runSteps').querySelectorAll('li').forEach(li => li.classList.remove('on'));
@@ -1138,26 +1125,23 @@ async function run(kid, action, btn, quiet) {
   if (!quiet) openRun(kid, action);
   let d;
   try {
-    const r = await post('/api/jalankan', {kontrol: kid, aksi: action});
+    const r = await post('/api/run', {control: kid, action: action});
     d = await r.json();
-    if (!r.ok) d = {status: 'DITOLAK', berhasil: false, pesan: d.detail || `HTTP ${r.status}`};
-  } catch (e) { d = {status: 'ERROR', pesan: 'API tidak bisa dihubungi'}; }
+    if (!r.ok) d = {status: 'DITOLAK', ok: false, message: d.detail || `HTTP ${r.status}`};
+  } catch (e) { d = {status: 'ERROR', message: 'API tidak bisa dihubungi'}; }
   if (!quiet) closeRun(kid, d);
 
-  // Three states, not two. "Refused" is Yoru stopping on purpose because some
-  // condition is unmet - different from "error", which means something broke.
-  // Painting both red makes a healthy server look full of problems, and then
-  // people stop reading the message.
-  const ok = d.berhasil === true;
+  // Three states, not two: "refused" is Yoru stopping on purpose, "error" is
+  // something broken. Painting both red makes a healthy server look sick.
+  const ok = d.ok === true;
   const waiting = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
   slotSay(slot, ok ? 'ok' : waiting ? 'wait' : 'bad',
-    `${statusLabel(d.status)}${d.nilai ? ' — ' + d.nilai : ''}${d.pesan ? ' — ' + d.pesan : ''}`);
+    `${statusLabel(d.status)}${d.value ? ' — ' + d.value : ''}${d.message ? ' — ' + d.message : ''}`);
   tr.querySelectorAll('button').forEach(b => {
     if (!(b.dataset.a === 'terapkan' && b.title)) b.disabled = false;
   });
-  // Including after Audit. The cards used to refresh only after apply or
-  // rollback, so a row that had just passed its audit never moved the score -
-  // and the button looked like it had done nothing.
+  // Including after Audit: the cards used to move only on apply or rollback,
+  // so a freshly passing row never changed the score.
   if (ok && !quiet) setTimeout(load, 600);
   return d;
 }
@@ -1172,8 +1156,7 @@ $('nav').onclick = e => {
 
 (async () => { await loadServers(); await load(); })();
 
-// Only the pages that show live state refresh themselves. Reloading a settings
-// form under someone's fingers would throw away what they were typing.
+// Only live-state pages auto-refresh; reloading a form would discard typing.
 setInterval(() => {
   if (PAGE === 'dashboard' || PAGE === 'checklist') load();
 }, 30000);

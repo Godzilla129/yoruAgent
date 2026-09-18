@@ -2,27 +2,12 @@
 """
 Who is allowed to reach which endpoint - checked, not assumed.
 
-    python3 test_api.py
+    python3 test_api.py [token]
 
-Needs only fastapi, the same dependency the dashboard already has. No pytest,
-no httpx, no network: the app is driven directly as an ASGI callable, with the
-scope built by hand.
-
-That last part is the whole reason this file exists. The rule being tested is
-"free from 127.0.0.1, token required from anywhere else", and a test client
-that picks its own client address cannot express the difference. Here the
-caller's IP is just a field we set, so both sides of the rule are reproducible.
-
-What it is guarding against, concretely: this suite was written after six
-endpoints turned out to be readable by anyone who could reach the port - the
-report naming every control that FAILS on a server, and the root-owned action
-log - and it immediately caught a seventh being re-opened by a later edit that
-rewrote the function and dropped its guard line. That is exactly the kind of
-mistake no amount of care prevents and one run catches.
-
-Add every new endpoint to READ or WRITE below. An endpoint that belongs in
-neither - one deliberately left open - goes in OPEN, so that "this is public"
-stays a decision somebody wrote down rather than something nobody noticed.
+Needs only fastapi. The app is driven directly as an ASGI callable with the
+scope built by hand, because the rule under test is "free from 127.0.0.1,
+token required from anywhere else" and a normal test client cannot set the
+caller's IP. Add every new endpoint below to READ, WRITE or OPEN.
 """
 
 import asyncio
@@ -34,8 +19,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
-# Pointed at throwaway files before api is imported: the module reads all of
-# these at import time, and a test must never touch a real installation.
+# Pointed at throwaway files before api is imported - it reads them at import time.
 os.environ["YORU_DB"] = str(Path(tempfile.mkdtemp()) / "uji.db")
 os.environ["YORU_KONF"] = str(Path(tempfile.mkdtemp()) / "yoru.conf")
 os.environ["YORU_LOG"] = tempfile.mkdtemp()
@@ -46,26 +30,23 @@ import api  # noqa: E402
 
 LOCAL, REMOTE = "127.0.0.1", "203.0.113.9"
 
-# Everything that hands out data about a guarded server.
-READ = [("GET", "/api/laporan", None),
-        ("GET", "/api/server", None),
-        ("GET", "/api/riwayat", None),
+READ = [("GET", "/api/report", None),
+        ("GET", "/api/servers", None),
+        ("GET", "/api/history", None),
         ("GET", "/api/log", None),
-        ("GET", "/api/keputusan?server=uji", None),
-        ("GET", "/api/konfigurasi", None)]
+        ("GET", "/api/decision?server=uji", None),
+        ("GET", "/api/config", None)]
 
-# Everything that changes something, on a server or in the decision queue.
-WRITE = [("POST", "/api/keputusan", {"server": "uji", "kontrol": "K01", "nilai": "setuju"}),
+WRITE = [("POST", "/api/decision", {"server": "uji", "control": "K01", "value": "setuju"}),
          ("POST", "/api/port", {"server": "uji", "port": [8080]}),
-         ("POST", "/api/konfigurasi", {"kunci": "NAMA_SERVER", "nilai": "uji"}),
-         ("POST", "/api/jalankan", {"kontrol": "K01", "aksi": "periksa"}),
-         ("POST", "/api/laporan", {"versi_kontrak": "1", "server": {"nama": "palsu"},
-                                   "waktu": "x", "siklus": "penjagaan",
-                                   "ringkasan": {"skor": 100}, "kontrol": []})]
+         ("POST", "/api/config", {"key": "NAMA_SERVER", "value": "uji"}),
+         ("POST", "/api/run", {"control": "K01", "action": "periksa"}),
+         ("POST", "/api/report", {"contract_version": "1", "server": {"name": "palsu"},
+                                   "time": "x", "cycle": "penjagaan",
+                                   "summary": {"score": 100}, "controls": []})]
 
-# Open on purpose. The page has to load before anyone can type a token into it,
-# and the installer polls /sehat before a token exists.
-OPEN = [("GET", "/"), ("GET", "/sehat")]
+# Open on purpose: the page loads before a token exists, and the installer polls /health.
+OPEN = [("GET", "/"), ("GET", "/health")]
 
 # Anything that is not a refusal. A 404 or a 422 still means "you got through".
 ALLOWED = {200, 404, 422, 500}
@@ -144,14 +125,11 @@ async def main():
         status, _ = await call(method, path, REMOTE)
         check(f"{method} {path}", status in ALLOWED, f"  -> {status}")
 
-    # /sehat answers before any token exists, so it must not describe the
-    # installation to a stranger while doing so.
-    _, body = await call("GET", "/sehat", REMOTE)
-    check("/sehat dari jaringan tidak menyebut jalur database", b'"db"' not in body)
+    _, body = await call("GET", "/health", REMOTE)
+    check("/health dari jaringan tidak menyebut jalur database", b'"db"' not in body)
 
-    # One agent collecting answers must never swallow another server's.
-    status, _ = await call("GET", "/api/keputusan", LOCAL)
-    check("GET /api/keputusan tanpa ?server= ditolak", status == 422, f"  -> {status}")
+    status, _ = await call("GET", "/api/decision", LOCAL)
+    check("GET /api/decision tanpa ?server= ditolak", status == 422, f"  -> {status}")
 
     if failures:
         print(f"\n  GAGAL {len(failures)}:")
