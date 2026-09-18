@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
-"""Penghubung Yoru ke Gemini.
+"""Local bridge from Yoru to Google Gemini.
 
-Menerima permintaan bentuk OpenAI di 127.0.0.1, menempelkan kunci API, lalu
-meneruskannya ke Gemini. Yoru sendiri tidak pernah memegang kunci itu.
+Yoru speaks one shape - POST /v1/chat/completions, no credentials. This holds
+the API key and forwards. Yoru itself never sees it.
+
+Google issues two key formats and they do not authenticate the same way, so
+the upstream call is tried in three ways and the first that answers is kept:
+
+  openai-bearer   /v1beta/openai/chat/completions   Authorization: Bearer
+  openai-googkey  /v1beta/openai/chat/completions   x-goog-api-key
+  native          /v1beta/models/<model>:generateContent   x-goog-api-key
+
+Run with --diagnose to try all three once and print what each answered.
 """
 
 import json
@@ -12,23 +21,98 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-UPSTREAM = os.environ.get("GEMINI_BASE", "https://generativelanguage.googleapis.com/v1beta/openai")
+BASE = os.environ.get("GEMINI_BASE", "https://generativelanguage.googleapis.com")
 MAX_BODY = 256 * 1024
+TIMEOUT = 30
 
 API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
 HOST = os.environ.get("LISTEN_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LISTEN_PORT", "8080"))
 
+WAYS = ("openai-bearer", "openai-googkey", "native")
 
-def upstream(path, payload=None, timeout=30):
-    body = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(f"{UPSTREAM}{path}", data=body,
-                                 method="POST" if body else "GET")
-    req.add_header("Authorization", f"Bearer {API_KEY}")
+# Set once a way answers, so later requests skip the ones that failed.
+chosen = os.environ.get("GEMINI_WAY", "").strip() or None
+
+
+def post(url, headers, payload):
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(), method="POST")
     req.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.status, r.read()
+    for k, v in headers.items():
+        req.add_header(k, v)
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        return json.loads(r.read().decode("utf-8", "replace") or "{}")
+
+
+def to_native(payload):
+    """OpenAI chat body -> Gemini generateContent body."""
+    contents, system = [], []
+    for m in payload.get("messages") or []:
+        text = m.get("content") or ""
+        role = m.get("role")
+        if role == "system":
+            system.append(text)
+        else:
+            contents.append({"role": "model" if role == "assistant" else "user",
+                             "parts": [{"text": text}]})
+    body = {"contents": contents, "generationConfig": {}}
+    if system:
+        body["systemInstruction"] = {"parts": [{"text": "\n".join(system)}]}
+    if payload.get("temperature") is not None:
+        body["generationConfig"]["temperature"] = payload["temperature"]
+    if payload.get("max_tokens") is not None:
+        body["generationConfig"]["maxOutputTokens"] = payload["max_tokens"]
+    return body
+
+
+def from_native(answer):
+    """Gemini generateContent reply -> OpenAI chat reply."""
+    parts = (((answer.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
+    text = "".join(p.get("text") or "" for p in parts)
+    return {"choices": [{"message": {"role": "assistant", "content": text},
+                         "finish_reason": "stop"}],
+            "model": MODEL}
+
+
+def attempt(way, payload):
+    """One upstream call. Returns an OpenAI-shaped reply, or raises."""
+    body = dict(payload)
+    body["model"] = MODEL
+    body.pop("stream", None)
+    if way == "openai-bearer":
+        return post(f"{BASE}/v1beta/openai/chat/completions",
+                    {"Authorization": f"Bearer {API_KEY}"}, body)
+    if way == "openai-googkey":
+        return post(f"{BASE}/v1beta/openai/chat/completions",
+                    {"x-goog-api-key": API_KEY}, body)
+    return from_native(post(f"{BASE}/v1beta/models/{MODEL}:generateContent",
+                            {"x-goog-api-key": API_KEY}, to_native(body)))
+
+
+def describe(e):
+    if isinstance(e, urllib.error.HTTPError):
+        detail = e.read()[:400].decode("utf-8", "replace").replace("\n", " ")
+        return f"HTTP {e.code}: {detail}"
+    return f"{type(e).__name__}: {e}"
+
+
+def ask(payload):
+    """Try the remembered way first, then the rest. Returns (reply, notes)."""
+    global chosen
+    order = ([chosen] + [w for w in WAYS if w != chosen]) if chosen else list(WAYS)
+    notes = []
+    for way in order:
+        try:
+            reply = attempt(way, payload)
+        except Exception as e:  # noqa: BLE001 - every failure is reported, not guessed
+            notes.append((way, describe(e)))
+            continue
+        if chosen != way:
+            chosen = way
+            sys.stderr.write(f"cara yang dipakai: {way}\n")
+        return reply, notes
+    return None, notes
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -47,7 +131,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.rstrip("/") == "/health":
-            self.reply(200, {"status": "hidup", "model": MODEL})
+            self.reply(200, {"status": "hidup", "model": MODEL, "cara": chosen})
         else:
             self.reply(404, {"error": "hanya /v1/chat/completions"})
 
@@ -65,29 +149,58 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(400, {"error": "bukan JSON"})
             return
 
-        payload["model"] = MODEL
-        payload.pop("stream", None)
+        answer, notes = ask(payload)
+        if answer is None:
+            for way, why in notes:
+                sys.stderr.write(f"gemini menolak lewat {way}: {why}\n")
+            self.reply(502, {"error": "gemini menolak ketiga cara - lihat journalctl -u yoru-model"})
+            return
+        self.reply(200, answer)
 
+
+def diagnose():
+    if not API_KEY:
+        print("GEMINI_API_KEY kosong")
+        return 1
+    print(f"\n  Kunci   : {API_KEY[:4]}... ({len(API_KEY)} karakter)")
+    print(f"  Model   : {MODEL}\n")
+
+    probe = {"messages": [{"role": "user", "content": "Balas satu kata: siap"}],
+             "max_tokens": 20, "temperature": 0}
+    works = []
+    for way in WAYS:
         try:
-            status, raw = upstream("/chat/completions", payload)
-        except urllib.error.HTTPError as e:
-            detail = e.read()[:500].decode("utf-8", "replace")
-            sys.stderr.write(f"gemini menolak {e.code}: {detail}\n")
-            self.reply(502, {"error": f"gemini menolak ({e.code})"})
-            return
-        except (urllib.error.URLError, OSError) as e:
-            sys.stderr.write(f"gemini tidak terjangkau: {e}\n")
-            self.reply(502, {"error": "gemini tidak terjangkau"})
-            return
+            reply = attempt(way, probe)
+            text = (reply["choices"][0]["message"]["content"] or "").strip()[:60]
+            print(f"  ok    {way:15} -> {text!r}")
+            works.append(way)
+        except Exception as e:  # noqa: BLE001
+            print(f"  GAGAL {way:15} -> {describe(e)[:160]}")
 
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
+    print("\n  Model yang boleh dipakai kunci ini:")
+    for way, headers in (("openai", {"Authorization": f"Bearer {API_KEY}"}),
+                         ("goog", {"x-goog-api-key": API_KEY})):
+        try:
+            req = urllib.request.Request(f"{BASE}/v1beta/openai/models")
+            for k, v in headers.items():
+                req.add_header(k, v)
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                names = [m.get("id") for m in json.load(r).get("data", [])]
+            print("   ", ", ".join(n for n in names if n)[:300] or "(kosong)")
+            break
+        except Exception as e:  # noqa: BLE001
+            print(f"    lewat {way}: {describe(e)[:120]}")
+
+    if works:
+        print(f"\n  Pakai: GEMINI_WAY={works[0]}\n")
+        return 0
+    print("\n  Tidak ada cara yang jalan. Kunci atau nama modelnya salah.\n")
+    return 1
 
 
 def main():
+    if "--diagnose" in sys.argv:
+        return diagnose()
     if not API_KEY:
         sys.stderr.write("GEMINI_API_KEY kosong\n")
         return 1

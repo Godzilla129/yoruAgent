@@ -55,6 +55,17 @@ NAMA_SERVER=""
 #      yang memegang kuncinya di /etc/yoru/model.env, milik pengguna
 #      yoru-model. Agent tidak bisa membaca berkas itu.
 #
+#      Google punya dua bentuk kunci (AIza... dan AQ...) dan keduanya tidak
+#      diautentikasi dengan cara yang sama. Penghubungnya mencoba tiga cara
+#      lalu memakai yang menjawab, dan hasilnya disimpan sebagai GEMINI_WAY
+#      di model.env. Kalau macet, tanya langsung ke Google:
+#
+#          sudo -u yoru-model env $(sudo cat /etc/yoru/model.env | xargs) \
+#              /opt/yoru/bin/yoru-model-proxy --diagnose
+#
+#      Perintah itu mencetak jawaban asli Google untuk tiap cara, plus daftar
+#      model yang boleh dipakai kunci itu.
+#
 #   2. hermes proxy - kalau server ini punya Hermes dan kamu sudah login ke
 #      penyedianya:
 #          hermes proxy providers

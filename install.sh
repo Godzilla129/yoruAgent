@@ -472,6 +472,29 @@ install_gemini_connector() {  # install_gemini_connector <key> <model>
   install -o root -g root -m 755 "$SRC/bin/yoru-model-proxy" "$MODEL_BIN" \
     || { skip "gagal menyalin yoru-model-proxy"; return 1; }
 
+  # Google menerima dua bentuk kunci dan keduanya tidak diautentikasi sama.
+  # Diuji dulu sebelum layanannya dinyalakan: kalau gagal, yang tampil pesan
+  # asli dari Google, bukan "502".
+  local report way
+  report="$(GEMINI_API_KEY="$key" GEMINI_MODEL="$model" python3 "$MODEL_BIN" --diagnose 2>&1)"
+  way="$(printf '%s' "$report" | sed -n 's/.*GEMINI_WAY=\([a-z-]*\).*/\1/p' | head -1)"
+
+  if [ -z "$way" ] && [ "$model" != "gemini-2.5-flash" ]; then
+    skip "\"$model\" tidak jalan - dicoba lagi dengan gemini-2.5-flash"
+    model="gemini-2.5-flash"
+    sed -i 's|^GEMINI_MODEL=.*|GEMINI_MODEL=gemini-2.5-flash|' "$MODEL_ENV"
+    report="$(GEMINI_API_KEY="$key" GEMINI_MODEL="$model" python3 "$MODEL_BIN" --diagnose 2>&1)"
+    way="$(printf '%s' "$report" | sed -n 's/.*GEMINI_WAY=\([a-z-]*\).*/\1/p' | head -1)"
+  fi
+
+  if [ -z "$way" ]; then
+    skip "Gemini menolak semua cara. Ini jawabannya apa adanya:"
+    printf '%s\n' "$report" | sed 's/^/      /'
+    return 1
+  fi
+  ok "cara yang dipakai: $way"
+  printf 'GEMINI_WAY=%s\n' "$way" >> "$MODEL_ENV"
+
   cat > "$MODEL_UNIT" <<EOF
 [Unit]
 Description=Penghubung Yoru ke model Gemini
@@ -505,28 +528,10 @@ EOF
 
   local answer
   answer="$(model_probe "http://127.0.0.1:$port" "" "$model")"
-  # Salah ketik nama model itu kesalahan paling sering, dan yang sampai ke layar
-  # cuma "502". Coba sekali lagi dengan nama bawaan sebelum menyerah.
   case "$answer" in
     ERROR*|"")
-      if [ "$model" != "gemini-2.5-flash" ]; then
-        skip "\"$model\" ditolak - dicoba lagi dengan gemini-2.5-flash"
-        sed -i 's|^GEMINI_MODEL=.*|GEMINI_MODEL=gemini-2.5-flash|' "$MODEL_ENV"
-        systemctl restart yoru-model.service >/dev/null 2>&1
-        sleep 2
-        model="gemini-2.5-flash"
-        answer="$(model_probe "http://127.0.0.1:$port" "" "$model")"
-      fi ;;
-  esac
-
-  case "$answer" in
-    ERROR*|"")
-      skip "model belum menjawab: $answer"
-      local reason
-      reason="$(journalctl -u yoru-model -n 20 --no-pager 2>/dev/null \
-                 | grep -o 'gemini menolak .*' | tail -1)"
-      [ -n "$reason" ] && skip "  kata Gemini: $reason"
-      skip "  kunci yang benar diawali AIza, nama model harus nama resmi Gemini"
+      skip "penghubung hidup tapi belum menjawab: $answer"
+      skip "  lihat: journalctl -u yoru-model -n 20 --no-pager"
       return 1 ;;
     *) ok "model menjawab: $answer" ;;
   esac
