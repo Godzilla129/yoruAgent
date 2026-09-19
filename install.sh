@@ -151,13 +151,43 @@ ask() {  # ask <label> <variable-name> [secret]
 # =========================================================== 1. check the server
 # Nothing here writes. This whole section is what --check-only runs.
 
-lock_holder() {  # who is holding apt right now, by name, or nothing
-  local p
-  for p in unattended-upgrade apt.systemd.daily apt-get dpkg aptitude packagekitd; do
-    if pgrep -x "$p" >/dev/null 2>&1; then printf '%s' "$p"; return 0; fi
-  done
-  if pgrep -f unattended-upgrade >/dev/null 2>&1; then printf 'unattended-upgrades'; return 0; fi
-  return 1
+# Asked of the lock itself, not of the process list. Ubuntu keeps an
+# unattended-upgrade-shutdown process alive at all times, so matching on names
+# means waiting for a ghost on every single install. apt and dpkg lock with
+# fcntl, so that is what we test with.
+apt_locked() {
+  python3 - <<'PY'
+import fcntl, os, sys
+for path in ("/var/lib/dpkg/lock-frontend", "/var/lib/dpkg/lock",
+             "/var/cache/apt/archives/lock", "/var/lib/apt/lists/lock"):
+    try:
+        fd = os.open(path, os.O_RDWR)        # never created, only opened
+    except OSError:
+        continue
+    try:
+        fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.lockf(fd, fcntl.LOCK_UN)
+    except OSError:
+        sys.exit(0)                          # somebody holds it
+    finally:
+        os.close(fd)
+sys.exit(1)                                  # free
+PY
+}
+
+# Only for the wording. The decision is apt_locked's.
+lock_holder() {
+  local line
+  line="$(pgrep -a -f 'unattended-upgrade|apt-get|aptitude|packagekitd|/usr/bin/dpkg' 2>/dev/null \
+          | grep -v -e shutdown -e pgrep | head -1)"
+  case "$line" in
+    *unattended-upgrade*) printf 'unattended-upgrades' ;;
+    *apt-get*)            printf 'apt-get' ;;
+    *aptitude*)           printf 'aptitude' ;;
+    *dpkg*)               printf 'dpkg' ;;
+    *packagekit*)         printf 'PackageKit' ;;
+    *)                    printf 'another package manager' ;;
+  esac
 }
 
 # Answers with the program's name, "?" when it cannot look, or nothing when
@@ -222,9 +252,8 @@ check_apt() {
     stop "package database is broken - run 'sudo dpkg --configure -a' first, then try again"
   fi
 
-  local holder
-  if holder="$(lock_holder)"; then
-    warn "apt is busy right now ($holder) - the installer will wait for it to finish"
+  if apt_locked; then
+    warn "apt is busy right now ($(lock_holder)) - the installer will wait for it to finish"
   fi
 }
 
@@ -597,12 +626,12 @@ setup() {
 # ================================================================= 3. install
 
 wait_for_apt() {
-  local holder waited=0
-  holder="$(lock_holder)" || return 0
-  busy "apt is busy ($holder) - waiting, up to 5 minutes"
+  apt_locked || return 0
+  local waited=0
+  busy "apt is busy ($(lock_holder)) - waiting, up to 5 minutes"
   while [ "$waited" -lt 300 ]; do
-    sleep 10; waited=$((waited + 10))
-    if ! lock_holder >/dev/null; then
+    sleep 5; waited=$((waited + 5))
+    if ! apt_locked; then
       ok "apt is free again after ${waited}s"
       return 0
     fi
@@ -866,7 +895,7 @@ install_gemini() {
   picked="$(printf '%s' "$report" | sed -n 's/.*GEMINI_MODEL=\([A-Za-z0-9._-]*\).*/\1/p' | head -1)"
 
   if [ -z "$way" ]; then
-    warn "Google refused the key. Its own words:"
+    warn "no model answered. What came back:"
     printf '%s\n' "$report" | tail -n 6 | sed 's/^/        /'
     rm -f "$MODEL_ENV"
     return 1

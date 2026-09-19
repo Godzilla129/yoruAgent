@@ -15,7 +15,15 @@ Model names go stale - Google stops offering a model to new accounts while it
 still appears in listings. So a 404 is not fatal: the candidate list is walked
 until one answers, and the winner is reported.
 
+A reply with no text counts as a refusal too. Thinking models can spend the
+whole token budget reasoning and come back with a message that has no content
+at all, which is exactly as useless as an error - so it is reported the same
+way, with Google's own finish_reason attached.
+
   --diagnose   try everything once, print what Google actually said
+
+Its output is English: it is only ever read at install time or while
+troubleshooting, both of which happen at a terminal.
 """
 
 import json
@@ -36,6 +44,14 @@ HOST = os.environ.get("LISTEN_HOST", "127.0.0.1")
 PORT = int(os.environ.get("LISTEN_PORT", "8080"))
 
 WAYS = ("openai", "native")
+
+
+class Upstream(Exception):
+    """Google said no. Carries its words, already read off the response."""
+
+
+class NoText(Exception):
+    """Google said yes and sent nothing usable."""
 
 # Ranked when Google refuses the configured model. "-latest" first: those are
 # the aliases that do not go stale.
@@ -79,26 +95,62 @@ def to_native(payload):
 
 def from_native(answer, name):
     """Gemini generateContent reply -> OpenAI chat reply."""
-    parts = (((answer.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [])
+    first = (answer.get("candidates") or [{}])[0]
+    parts = ((first.get("content") or {}).get("parts") or [])
     return {"choices": [{"message": {"role": "assistant",
                                      "content": "".join(p.get("text") or "" for p in parts)},
-                         "finish_reason": "stop"}],
+                         "finish_reason": first.get("finishReason") or "stop"}],
             "model": name}
 
 
+def text_of(reply):
+    """(text, finish_reason) from an OpenAI-shaped reply. Never raises - a
+    crash here would break the very tool meant to explain what went wrong."""
+    if not isinstance(reply, dict):
+        return "", "reply was not a JSON object"
+    choices = reply.get("choices") or []
+    first = choices[0] if choices and isinstance(choices[0], dict) else {}
+    message = first.get("message") if isinstance(first.get("message"), dict) else {}
+    text = (message.get("content") or "").strip()
+    return text, str(first.get("finish_reason") or first.get("finishReason") or "?")
+
+
 def attempt(how, name, payload):
-    """One upstream call with one way and one model. Raises on failure."""
+    """One upstream call with one way and one model. Raises on failure, and a
+    reply with no text counts as one."""
     body = dict(payload)
     body["model"] = name
     body.pop("stream", None)
+
     if how == "openai":
-        return call(f"{BASE}/v1beta/openai/chat/completions",
-                    {"Authorization": f"Bearer {API_KEY}"}, body)
-    return from_native(call(f"{BASE}/v1beta/models/{name}:generateContent",
-                            {"x-goog-api-key": API_KEY}, to_native(body)), name)
+        url = f"{BASE}/v1beta/openai/chat/completions"
+        head = {"Authorization": f"Bearer {API_KEY}"}
+        # Google documents reasoning_effort on this endpoint, and "none" turns
+        # thinking off for 2.5 models. Without it a small token budget can be
+        # spent entirely on reasoning, and the answer comes back empty.
+        body.setdefault("reasoning_effort", "none")
+        try:
+            reply = call(url, head, body)
+        except urllib.error.HTTPError as e:
+            said = describe(e)
+            if e.code == 400 and "reasoning" in said.lower():
+                body.pop("reasoning_effort", None)
+                reply = call(url, head, body)
+            else:
+                raise Upstream(said) from None
+    else:
+        reply = from_native(call(f"{BASE}/v1beta/models/{name}:generateContent",
+                                 {"x-goog-api-key": API_KEY}, to_native(body)), name)
+
+    text, reason = text_of(reply)
+    if not text:
+        raise NoText(f"empty answer from Google (finish_reason={reason})")
+    return reply
 
 
 def describe(e):
+    if isinstance(e, (Upstream, NoText)):
+        return str(e)
     if isinstance(e, urllib.error.HTTPError):
         raw = e.read()[:900].decode("utf-8", "replace")
         try:
@@ -154,7 +206,7 @@ def ask(payload):
                 continue
             if (how, name) != (way, model):
                 way, model = how, name
-                sys.stderr.write(f"cara={how} model={name}\n")
+                sys.stderr.write(f"way={how} model={name}\n")
             return reply, notes
     return None, notes
 
@@ -175,58 +227,60 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.rstrip("/") == "/health":
-            self.reply(200, {"status": "hidup", "model": model, "cara": way})
+            self.reply(200, {"status": "ok", "model": model, "way": way})
         else:
-            self.reply(404, {"error": "hanya /v1/chat/completions"})
+            self.reply(404, {"error": "only /v1/chat/completions"})
 
     def do_POST(self):
         if self.path.rstrip("/") != "/v1/chat/completions":
-            self.reply(404, {"error": "hanya /v1/chat/completions"})
+            self.reply(404, {"error": "only /v1/chat/completions"})
             return
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0 or length > MAX_BODY:
-            self.reply(400, {"error": "badan permintaan tidak wajar"})
+            self.reply(400, {"error": "request body has an impossible size"})
             return
         try:
             payload = json.loads(self.rfile.read(length))
         except (ValueError, UnicodeDecodeError):
-            self.reply(400, {"error": "bukan JSON"})
+            self.reply(400, {"error": "not JSON"})
             return
 
         answer, notes = ask(payload)
         if answer is None:
             for how, name, why in notes:
-                sys.stderr.write(f"ditolak [{how} {name}]: {why}\n")
-            self.reply(502, {"error": "gemini menolak - lihat journalctl -u yoru-model"})
+                sys.stderr.write(f"refused [{how} {name}]: {why}\n")
+            self.reply(502, {"error": "gemini refused - see journalctl -u yoru-model"})
             return
         self.reply(200, answer)
 
 
 def diagnose():
     if not API_KEY:
-        print("GEMINI_API_KEY kosong")
+        print("GEMINI_API_KEY is empty")
         return 1
-    print(f"\n  Kunci : {API_KEY[:4]}... ({len(API_KEY)} karakter)")
-    print(f"  Model : {model}")
+    print(f"\n  Key    : {API_KEY[:4]}... ({len(API_KEY)} characters)")
+    print(f"  Model  : {model}")
 
     names = candidates()
-    print(f"  Coba  : {', '.join(names) or '(daftar model tidak terbaca)'}\n")
+    print(f"  Trying : {', '.join(names) or '(model list unreadable)'}\n")
 
+    # Not 20: on a thinking model that budget disappears into reasoning and
+    # the reply comes back with nothing in it.
     probe = {"messages": [{"role": "user", "content": "Balas satu kata: siap"}],
-             "max_tokens": 20, "temperature": 0}
+             "max_tokens": 512, "temperature": 0}
     for how in WAYS:
         for name in names:
             try:
                 reply = attempt(how, name, probe)
             except Exception as e:  # noqa: BLE001
-                print(f"  GAGAL {how:7} {name:26} {describe(e)[:400]}")
+                print(f"  no  {how:7} {name:26} {describe(e)[:400]}")
                 continue
-            text = (reply["choices"][0]["message"]["content"] or "").strip()[:60]
-            print(f"  ok    {how:7} {name:26} {text!r}")
-            print(f"\n  Pakai: GEMINI_WAY={how} GEMINI_MODEL={name}\n")
+            text, _ = text_of(reply)
+            print(f"  ok  {how:7} {name:26} {text[:60]!r}")
+            print(f"\n  Use: GEMINI_WAY={how} GEMINI_MODEL={name}\n")
             return 0
 
-    print("\n  Tidak ada yang jalan. Pesan di atas datang dari Google, bukan dari kami.\n")
+    print("\n  Nothing worked. The messages above are Google's words, not ours.\n")
     return 1
 
 
@@ -234,7 +288,7 @@ def main():
     if "--diagnose" in sys.argv:
         return diagnose()
     if not API_KEY:
-        sys.stderr.write("GEMINI_API_KEY kosong\n")
+        sys.stderr.write("GEMINI_API_KEY is empty\n")
         return 1
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
     return 0
