@@ -229,6 +229,125 @@ def save_decision(server: str, control: str, value: str, note: str) -> None:
                      (server, control, value, note[:500], time.time()))
 
 
+async def set_config(key: str, val: str) -> Dict[str, Any]:
+    """One config write, through yoructl. The dashboard runs as yoru-agent,
+    which is deliberately not allowed to write /etc/yoru/yoru.conf itself."""
+    cmd = ["sudo", "-n", YORUCTL, "konfigurasi", key, val]
+    if running_as_root():
+        cmd = [YORUCTL, "konfigurasi", key, val]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=30)
+    except (OSError, asyncio.TimeoutError) as e:
+        return {"status": "ERROR", "ok": False,
+                "message": f"tidak bisa menjalankan yoructl: {e or 'kehabisan waktu'}"}
+    for line in reversed([b for b in out.decode("utf-8", "replace").splitlines() if b.strip()]):
+        try:
+            return json.loads(line)
+        except json.JSONDecodeError:
+            continue
+    return {"status": "ERROR", "ok": False,
+            "message": (err.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
+
+
+BOT_HELP = ("Yoru - penjaga server.\n\n"
+            "/status   keadaan server sekarang\n"
+            "/help     pesan ini\n\n"
+            "Kalau ada yang perlu kamu putuskan, Yoru yang kirim duluan, "
+            "lengkap dengan tombolnya.")
+
+
+def status_text() -> str:
+    """The last report in a few plain lines. Never raises: this is what the
+    owner sees when they ask whether anything is wrong."""
+    with closing(db()) as conn:
+        row = conn.execute("SELECT body FROM report ORDER BY received DESC LIMIT 1").fetchone()
+    if not row:
+        return "Belum ada laporan sama sekali. Siklus hariannya belum jalan."
+    try:
+        report = json.loads(row["body"])
+    except ValueError:
+        return "Laporan terakhir tidak bisa dibaca."
+
+    s = report.get("summary") or {}
+    name = (report.get("server") or {}).get("name") or "Server ini"
+    lines = [f"{name} - skor {s.get('score', 0)}/100",
+             f"aman {s.get('passed', 0)}, perlu dibenahi {s.get('failed', 0)}, "
+             f"dilewati {s.get('skipped', 0)}",
+             f"diperiksa {report.get('time', '?')}"]
+
+    bad = [c for c in (report.get("controls") or []) if c.get("status") == "GAGAL"]
+    if bad:
+        lines += ["", "Belum beres:"]
+        lines += [f"  {c.get('id')}  {c.get('name')}" for c in bad[:8]]
+
+    asking = report.get("pending_decisions") or []
+    lines += ["", f"Nunggu jawabanmu: {len(asking) if asking else 'tidak ada'}"]
+    return "\n".join(lines)
+
+
+async def handle_message(msg: Dict[str, Any], token: str, config: Dict[str, str]) -> None:
+    """A typed message. Without this Yoru is deaf: it used to ask Telegram for
+    button presses only, so /start never even arrived."""
+    chat = str((msg.get("chat") or {}).get("id") or "")
+    kind = str((msg.get("chat") or {}).get("type") or "")
+    text = (msg.get("text") or "").strip()
+    if not chat or not text:
+        return
+
+    async def say(body: str) -> None:
+        await asyncio.to_thread(tg, "sendMessage", token,
+                                {"chat_id": chat, "text": body[:3500]})
+
+    parts = text.split()
+    word = parts[0].lower().split("@")[0]      # /status@yoru_bot -> /status
+    rest = parts[1:]
+    allowed = str(config.get("TELEGRAM_CHAT_ID", "")).strip()
+
+    if not allowed:
+        # A bot's username is public, so whoever sends /start first would
+        # otherwise own the approve buttons for someone else's server. The
+        # code the installer printed is what proves this is the owner.
+        if word not in ("/start", "/mulai"):
+            await say("Chat ini belum tersambung ke server mana pun.\n\n"
+                      "Kirim:  /start <kode>\n\n"
+                      "Kodenya ada di layar waktu installer selesai, "
+                      "dan juga di halaman Setelan dashboard.")
+            return
+        if kind != "private":
+            await say("Sambungannya harus lewat chat pribadi, bukan grup - "
+                      "tombol setuju di grup bisa dipencet siapa saja.")
+            return
+        code = str(config.get("TELEGRAM_PAIR_CODE", "")).strip()
+        if not code:
+            await say("Server ini belum punya kode sambung.\n\n"
+                      "Buka Setelan di dashboard, isi TELEGRAM_CHAT_ID dengan:\n" + chat)
+            return
+        if not rest or rest[0].strip().upper() != code.upper():
+            await say("Kode itu tidak cocok.\n\nKirim:  /start <kode>")
+            return
+
+        result = await set_config("TELEGRAM_CHAT_ID", chat)
+        if result.get("ok") is not True:
+            await say("Kode benar, tapi gagal disimpan:\n"
+                      + str(result.get("message") or "yoructl menolak"))
+            return
+        await say("Tersambung. Chat ini yang sekarang dipakai Yoru.\n\n" + status_text())
+        return
+
+    if chat != allowed:
+        await say("Chat ini bukan chat yang terdaftar untuk server ini.")
+        return
+
+    if word in ("/status", "/start", "/mulai"):
+        await say(status_text())
+    elif word in ("/help", "/bantuan"):
+        await say(BOT_HELP)
+    else:
+        await say("Belum ngerti yang itu. Coba /status atau /help.")
+
+
 async def handle_callback(cq: Dict[str, Any], token: str, config: Dict[str, str]) -> None:
     """A button press from Telegram. Only from the chat id this server stores.
 
@@ -287,7 +406,8 @@ def statusof(result: Dict[str, Any]) -> str:
 
 
 async def telegram_loop() -> None:
-    """Long-poll for button presses. Silent and harmless when no token is set."""
+    """Long-poll for button presses and typed messages. Silent and harmless
+    when no token is set."""
     offset = None
     while True:
         config = read_config()
@@ -296,18 +416,20 @@ async def telegram_loop() -> None:
             await asyncio.sleep(30)
             continue
         answer = await asyncio.to_thread(tg, "getUpdates", token, {
-            "offset": offset, "timeout": 25, "allowed_updates": ["callback_query"]})
+            "offset": offset, "timeout": 25,
+            "allowed_updates": ["callback_query", "message"]})
         if not answer or not answer.get("ok"):
             await asyncio.sleep(10)
             continue
         for update in answer.get("result") or []:
             offset = update.get("update_id", 0) + 1
-            cq = update.get("callback_query")
-            if cq:
-                try:
-                    await handle_callback(cq, token, config)
-                except Exception:  # noqa: BLE001 - one bad press must not stop the loop
-                    pass
+            try:
+                if update.get("callback_query"):
+                    await handle_callback(update["callback_query"], token, config)
+                elif update.get("message"):
+                    await handle_message(update["message"], token, config)
+            except Exception:  # noqa: BLE001 - one bad update must not stop the loop
+                pass
 
 
 # ------------------------------------------------------------------ endpoints
@@ -592,6 +714,8 @@ async def read_settings(req: Request, authorization: Optional[str] = Header(None
         # Secrets are never sent to the browser; only whether one is set.
         out[key] = {"set": bool(val), "value": "" if key in SECRET_KEYS else val}
     out["_berkas"] = str(CONFIG_FILE)
+    # Not settable, only shown: it is what the owner types at the bot once.
+    out["_kode_sambung"] = config.get("TELEGRAM_PAIR_CODE", "") if not config.get("TELEGRAM_CHAT_ID") else ""
     return out
 
 
@@ -605,25 +729,7 @@ async def write_setting(req: Request, payload: Dict[str, Any] = Body(...),
     val = str(payload.get("value") or "").strip()
     if key not in SETTABLE_KEYS:
         raise HTTPException(status_code=422, detail=f"kunci '{key}' tidak bisa disetel dari sini")
-
-    cmd = ["sudo", "-n", YORUCTL, "konfigurasi", key, val]
-    if running_as_root():
-        cmd = [YORUCTL, "konfigurasi", key, val]
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=30)
-    except (OSError, asyncio.TimeoutError) as e:
-        return {"status": "ERROR", "ok": False,
-                "message": f"tidak bisa menjalankan yoructl: {e or 'kehabisan waktu'}"}
-
-    for line in reversed([b for b in out.decode("utf-8", "replace").splitlines() if b.strip()]):
-        try:
-            return json.loads(line)
-        except json.JSONDecodeError:
-            continue
-    return {"status": "ERROR", "ok": False,
-            "message": (err.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
+    return await set_config(key, val)
 
 
 @app.get("/api/log")

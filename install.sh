@@ -137,6 +137,48 @@ config_set() {  # config_set <file> <key> <value>
   rm -f "$tmp"
 }
 
+# ------------------------------------------------------------------ asking
+# The questions come as whiptail boxes when the terminal can draw them - the
+# same look as installing a database - and as plain prompts when it cannot.
+# Everything after the questions stays plain text, so an error can still be
+# copied out of the scrollback.
+dialog_ready() {
+  [ "$INTERACTIVE" = yes ] || return 1
+  [ -r /dev/tty ] || return 1
+  [ -t 0 ] && [ -t 2 ] || return 1
+  case "${TERM:-dumb}" in dumb|"") return 1 ;; esac
+  command -v whiptail >/dev/null 2>&1
+}
+
+# whiptail answers on stderr, hence the 3>&1 1>&2 2>&3 dance.
+box_input() {  # box_input <title> <text> [default]
+  whiptail --backtitle "Yoru $VERSION" --title "$1" \
+           --inputbox "$2" 15 74 "${3-}" 3>&1 1>&2 2>&3
+}
+box_pass() {   # box_pass <title> <text>
+  whiptail --backtitle "Yoru $VERSION" --title "$1" \
+           --passwordbox "$2" 15 74 3>&1 1>&2 2>&3
+}
+box_msg() {    # box_msg <title> <text>
+  whiptail --backtitle "Yoru $VERSION" --title "$1" --msgbox "$2" 20 74
+}
+box_menu() {   # box_menu <title> <text> <tag> <label> ...
+  local title="$1" text="$2"; shift 2
+  whiptail --backtitle "Yoru $VERSION" --title "$title" \
+           --menu "$text" 17 74 3 "$@" 3>&1 1>&2 2>&3
+}
+box_yesno() {  # box_yesno <title> <text>
+  whiptail --backtitle "Yoru $VERSION" --title "$1" --yesno "$2" 20 74
+}
+
+# whiptail is Priority: important, so it is on almost every Ubuntu already.
+# When it is not, one quiet install - and if that fails, plain prompts.
+ensure_dialog() {
+  [ "$INTERACTIVE" = yes ] || return 0
+  command -v whiptail >/dev/null 2>&1 && return 0
+  supply cmd:whiptail whiptail >/dev/null 2>&1 || true
+}
+
 # From /dev/tty, not stdin: a redirected install would swallow its own answers.
 ask() {  # ask <label> <variable-name> [secret]
   local label="$1" __var="$2" mode="${3-}" answer=""
@@ -470,6 +512,7 @@ MODEL_NAME="gemini-flash-latest"
 MODEL_URL=""
 MODEL_TOKEN=""
 TG_TOKEN=""
+PAIR_CODE=""
 SSHKEY=""
 OWNER_HOME=""
 
@@ -493,29 +536,31 @@ ask_sshkey() {
   local file="$OWNER_HOME/.ssh/authorized_keys"
   [ -s "$file" ] && return 0
 
-  cat <<TEXT
+  local explain="$OWNER has no SSH key yet.
 
-  $OWNER has no SSH key yet. K02 turns password login off, so without a key
-  that works it would close your own only door - K02 refuses to run until
-  there is one.
+K02 turns password login off. Without a working key that
+would close your only door, so K02 stays blocked until
+there is one.
 
-  Make it on YOUR computer, not on this server:
+Make the key on YOUR computer, not here:
 
-      ssh-keygen -t ed25519
+    ssh-keygen -t ed25519
 
-  Then show the public half and paste the line below:
+Then copy the public half and paste it in the next box:
 
-      Windows   type %USERPROFILE%\\.ssh\\id_ed25519.pub
-      Linux     cat ~/.ssh/id_ed25519.pub
-      macOS     cat ~/.ssh/id_ed25519.pub
+    Linux, macOS  cat ~/.ssh/id_ed25519.pub
+    Windows       type %USERPROFILE%\\.ssh\\id_ed25519.pub
 
-  It must be the .pub one: a single line starting with ssh-ed25519 or
-  ssh-rsa. We never ask for a private key.
-
-TEXT
+We never ask for a private key."
 
   local key
-  ask "Public key (empty to skip)" key
+  if dialog_ready; then
+    box_msg "SSH key" "$explain"
+    key="$(box_input "SSH key" "Paste the public key line. Leave empty to skip." "")" || key=""
+  else
+    printf '\n%s\n\n' "$explain"
+    ask "Public key (empty to skip)" key
+  fi
   [ -n "$key" ] || { pending "no SSH key for $OWNER yet - K02 stays blocked until there is one"; return 0; }
 
   # A key that has crossed a screen and a shell history is no longer secret.
@@ -545,45 +590,96 @@ TEXT
 }
 
 ask_telegram() {
-  printf '\n  Telegram is optional. With a bot token you get alerts on your phone\n'
-  printf '  and approve buttons there. You can also add it later in Settings.\n\n'
-  ask "Telegram bot token (empty to skip)" TG_TOKEN secret
+  local explain="Telegram is optional.
+
+With a bot token you get alerts on your phone and approve buttons there.
+Make the bot with @BotFather, then paste the token it gives you.
+
+You can also add this later, in the dashboard's Settings page.
+
+Token (leave empty to skip):"
+
+  if dialog_ready; then
+    TG_TOKEN="$(box_pass "Telegram" "$explain")" || TG_TOKEN=""
+  else
+    printf '\n  Telegram is optional. With a bot token you get alerts on your phone\n'
+    printf '  and approve buttons there. You can also add it later in Settings.\n\n'
+    ask "Telegram bot token (empty to skip)" TG_TOKEN secret
+  fi
 }
 
 ask_model() {
   local hosts; hosts="$(model_hosts)"
 
-  printf '\n  Yoru works without an AI model - reports are still complete, the\n'
-  printf '  wording just comes from the catalog instead.\n\n'
-  printf '    1   Google Gemini - paste an API key\n'
-  printf '    2   Any OpenAI-compatible address you already run\n'
-  [ -n "$hosts" ] && printf '        (found on this server: %s)\n' "$hosts"
-  printf '    3   Skip\n\n'
+  local intro="Yoru works without an AI model - reports are still complete, the
+wording just comes from the catalog instead.
 
-  local pick; ask "Choose 1, 2 or 3 [3]" pick
+With one, Yoru explains findings in plain language."
+  [ -n "$hosts" ] && intro="$intro
+
+Found on this server: $hosts"
+
+  local pick
+  if dialog_ready; then
+    pick="$(box_menu "AI model" "$intro" \
+      "1" "Google Gemini - paste an API key" \
+      "2" "An OpenAI-compatible address you run" \
+      "3" "Skip - use the catalog wording")" || pick=3
+  else
+    printf '\n  %s\n\n' "$intro"
+    printf '    1   Google Gemini - paste an API key\n'
+    printf '    2   Any OpenAI-compatible address you already run\n'
+    printf '    3   Skip\n\n'
+    ask "Choose 1, 2 or 3 [3]" pick
+  fi
   case "$pick" in
     1)
       # Two key shapes are in circulation, AIza... and AQ... - both are valid.
-      ask "Gemini API key" MODEL_KEY secret
+      if dialog_ready; then
+        MODEL_KEY="$(box_pass "Google Gemini" "Paste the API key from Google AI Studio.
+
+It starts with AIza... or AQ... - both are valid.
+
+The key is stored where only root can read it, never in the file
+the agent is allowed to open.")" || MODEL_KEY=""
+      else
+        ask "Gemini API key" MODEL_KEY secret
+      fi
       MODEL_KEY="${MODEL_KEY#GEMINI_API_KEY=}"
       MODEL_KEY="$(printf '%s' "$MODEL_KEY" | tr -d '\r\n "')"
       [ -n "$MODEL_KEY" ] || { printf '  Empty key - skipping.\n'; return 0; }
-      ask "Model name (empty = gemini-flash-latest)" MODEL_NAME
+      if dialog_ready; then
+        MODEL_NAME="$(box_input "Google Gemini" "Model name. Leave it as it is unless you know you want another - the connector picks a live one if this is refused." "gemini-flash-latest")" || MODEL_NAME=""
+      else
+        ask "Model name (empty = gemini-flash-latest)" MODEL_NAME
+      fi
       MODEL_NAME="$(printf '%s' "$MODEL_NAME" | tr -d '\r\n ')"
       [ -n "$MODEL_NAME" ] || MODEL_NAME="gemini-flash-latest"
       MODEL_CHOICE="gemini"
       ;;
     2)
-      printf '  Anything that answers POST /v1/chat/completions works here -\n'
-      printf '  Ollama, an OpenAI-shaped gateway, or your own server.\n'
-      case " $hosts " in
-        *" ollama "*) printf '  Ollama is installed, so try: http://127.0.0.1:11434/v1\n' ;;
-      esac
-      ask "Address" MODEL_URL
+      local suggest=""
+      case " $hosts " in *" ollama "*) suggest="http://127.0.0.1:11434/v1" ;; esac
+      local where="Anything that answers POST /v1/chat/completions works here -
+Ollama, an OpenAI-shaped gateway, or your own server.
+
+Address:"
+      if dialog_ready; then
+        MODEL_URL="$(box_input "AI model" "$where" "$suggest")" || MODEL_URL=""
+      else
+        printf '  %s\n' "$where"
+        [ -n "$suggest" ] && printf '  Ollama is installed, so try: %s\n' "$suggest"
+        ask "Address" MODEL_URL
+      fi
       MODEL_URL="$(printf '%s' "$MODEL_URL" | tr -d '\r\n ')"
-      [ -n "$MODEL_URL" ] || { printf '  Empty address - skipping.\n'; return 0; }
-      ask "Token, if it needs one (empty to skip)" MODEL_TOKEN secret
-      ask "Model name (empty = default)" MODEL_NAME
+      [ -n "$MODEL_URL" ] || { printf '  No address given - skipping.\n'; return 0; }
+      if dialog_ready; then
+        MODEL_TOKEN="$(box_pass "AI model" "Token, if that address needs one. Leave empty if it does not.")" || MODEL_TOKEN=""
+        MODEL_NAME="$(box_input "AI model" "Model name, if that address needs one." "")" || MODEL_NAME=""
+      else
+        ask "Token, if it needs one (empty to skip)" MODEL_TOKEN secret
+        ask "Model name (empty = default)" MODEL_NAME
+      fi
       MODEL_NAME="$(printf '%s' "$MODEL_NAME" | tr -d '\r\n ')"
       MODEL_CHOICE="url"
       ;;
@@ -598,7 +694,7 @@ recap() {
     then item "Dashboard" "http://$WEB_HOST:$WEB_PORT"
     else item "Dashboard" "off (--no-dashboard)"
   fi
-  if [ -n "$TG_TOKEN" ]
+  if [ -n "$TG_TOKEN" ] || [ -n "$(config_get "$CONFIG_FILE" TELEGRAM_TOKEN)" ]
     then item "Telegram" "on"
     else item "Telegram" "off"
   fi
@@ -610,8 +706,36 @@ recap() {
   item "Install log" "$LOGFILE"
 }
 
+# Shown in the confirm box and printed plainly afterwards, so it survives
+# when the box disappears.
+setup_summary() {
+  local tg="off" model="off - wording comes from the catalog" web
+  [ -n "$TG_TOKEN" ] || [ -n "$(config_get "$CONFIG_FILE" TELEGRAM_TOKEN)" ] && tg="on"
+  case "$MODEL_CHOICE" in
+    gemini) model="Google Gemini" ;;
+    url)    model="$MODEL_URL" ;;
+  esac
+  if [ "$WITH_DASHBOARD" = yes ]
+    then web="http://$WEB_HOST:$WEB_PORT"
+    else web="off (--no-dashboard)"
+  fi
+  printf 'Owner       %s\nDashboard   %s\nTelegram    %s\nAI model    %s\n' \
+         "$OWNER" "$web" "$tg" "$model"
+}
+
+confirm_start() {
+  dialog_ready || return 0
+  box_yesno "Ready to install" "$(setup_summary)
+
+Nothing has been changed yet. From here it runs to the end on its own,
+in plain text, so anything that goes wrong can be copied out.
+
+Start?" || die "cancelled - nothing was changed"
+}
+
 setup() {
   resolve_owner
+  ensure_dialog
   if [ "$INTERACTIVE" = yes ] && [ -r /dev/tty ]; then
     # Existing settings are never re-asked; re-running the installer must not
     # be a way to lose an API key.
@@ -620,6 +744,7 @@ setup() {
     [ -n "$(config_get "$CONFIG_FILE" TELEGRAM_TOKEN)" ] || ask_telegram
     [ -n "$existing" ] || ask_model
   fi
+  confirm_start
   recap
 }
 
@@ -831,6 +956,18 @@ write_config() {
   fi
 
   [ -n "$TG_TOKEN" ] && config_set "$CONFIG_FILE" TELEGRAM_TOKEN "$TG_TOKEN"
+
+  if [ -n "$(config_get "$CONFIG_FILE" TELEGRAM_TOKEN)" ] \
+     && [ -z "$(config_get "$CONFIG_FILE" TELEGRAM_CHAT_ID)" ]; then
+    PAIR_CODE="$(config_get "$CONFIG_FILE" TELEGRAM_PAIR_CODE)"
+    if [ -z "$PAIR_CODE" ]; then
+      PAIR_CODE="$(python3 -c 'import secrets; print("".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6)))')"
+      config_set "$CONFIG_FILE" TELEGRAM_PAIR_CODE "$PAIR_CODE"
+    fi
+    ok "Telegram - waiting to be paired"
+    pending "open your bot and send:  /start $PAIR_CODE"
+  fi
+
   chown root:"$AGENT" "$CONFIG_FILE"; chmod 640 "$CONFIG_FILE"
 
   # Nobody was asked anything, so say what is still empty rather than assume.
@@ -1275,6 +1412,11 @@ summary() {
         printf '      %s\n' "$(config_get "$CONFIG_FILE" DASHBOARD_TOKEN)"
         pending "port $WEB_PORT is not in PORT_DIIZINKAN yet, so K05 will not turn the firewall on" ;;
     esac
+  fi
+
+  if [ -n "$PAIR_CODE" ]; then
+    printf '\n  %sConnect Telegram%s - open your bot and send this, once:\n' "$BOLD" "$RESET"
+    printf '      /start %s\n' "$PAIR_CODE"
   fi
 
   printf '\n  Check the server now\n'
