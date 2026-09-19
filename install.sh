@@ -224,7 +224,7 @@ check_apt() {
 
   local holder
   if holder="$(lock_holder)"; then
-    warn "apt is busy right now ($holder) - each install waits up to 60s for it"
+    warn "apt is busy right now ($holder) - the installer will wait for it to finish"
   fi
 }
 
@@ -596,6 +596,22 @@ setup() {
 
 # ================================================================= 3. install
 
+wait_for_apt() {
+  local holder waited=0
+  holder="$(lock_holder)" || return 0
+  busy "apt is busy ($holder) - waiting, up to 5 minutes"
+  while [ "$waited" -lt 300 ]; do
+    sleep 10; waited=$((waited + 10))
+    if ! lock_holder >/dev/null; then
+      ok "apt is free again after ${waited}s"
+      return 0
+    fi
+    [ $((waited % 60)) -eq 0 ] && note "still waiting for apt, ${waited}s"
+  done
+  warn "apt is still busy after 5 minutes - going ahead anyway"
+  return 0
+}
+
 APT_REFRESHED=no
 apt_refresh() {
   [ "$APT_REFRESHED" = yes ] && return 0
@@ -603,7 +619,7 @@ apt_refresh() {
   # An index that was never refreshed answers "Unable to locate package" for
   # names that do exist. A third-party repo can make this fail while our own
   # packages are perfectly reachable, so a failure here is only recorded.
-  run apt-get -o DPkg::Lock::Timeout=60 update || note "apt-get update reported errors"
+  run apt-get -o DPkg::Lock::Timeout=120 update || note "apt-get update reported errors"
 }
 
 # Each package goes in on its own: "apt-get install A B C" installs NOTHING
@@ -614,7 +630,7 @@ supply() {  # supply <probe> <package...>
   local pkg
   for pkg in "$@"; do
     run env DEBIAN_FRONTEND=noninteractive apt-get -y \
-      -o DPkg::Lock::Timeout=60 install "$pkg"
+      -o DPkg::Lock::Timeout=120 install "$pkg"
     have "$probe" && { printf '%s' "$pkg"; return 0; }
   done
   return 1
@@ -626,6 +642,7 @@ install_deps() {
     return 0
   fi
 
+  wait_for_apt
   busy "installing ${#MISSING[@]} package(s)"
   local line level probe pkgs why pkg added=0 lost=()
   for line in "${MISSING[@]}"; do
