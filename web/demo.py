@@ -54,7 +54,7 @@ def load_samples():
 
     conn = sqlite3.connect(DB_FILE)
     try:
-        existing = conn.execute("SELECT COUNT(*) FROM laporan").fetchone()[0]
+        existing = conn.execute("SELECT COUNT(*) FROM report").fetchone()[0]
         if existing:
             print(f"  --   database sudah berisi {existing} laporan, tidak diisi ulang")
             return
@@ -65,7 +65,7 @@ def load_samples():
                 continue
             report = json.loads(path.read_text(encoding="utf-8"))
             conn.execute(
-                "INSERT INTO laporan (server, waktu, siklus, skor, isi, diterima) VALUES (?,?,?,?,?,?)",
+                "INSERT INTO report (server, time, cycle, score, body, received) VALUES (?,?,?,?,?,?)",
                 (str((report.get("server") or {}).get("name") or "contoh"),
                  str(report.get("time")), str(report.get("cycle")),
                  int((report.get("summary") or {}).get("score") or 0),
@@ -83,17 +83,17 @@ def seed_history(conn):
     base = json.loads((REPO / "examples" / "report-watch.json").read_text(encoding="utf-8"))
     curve = [30, 30, 40, 50, 50, 60, 70, 70, 80, 80, 90, 90, 60, 90]
     now = time.time()
-    for days_ago, skor in enumerate(reversed(curve), start=1):
+    for days_ago, score in enumerate(reversed(curve), start=1):
         stamp = now - days_ago * 86400
         report = dict(base)
         report["time"] = time.strftime("%Y-%m-%dT%H:%M:%S+07:00", time.localtime(stamp))
         report["cycle"] = "penjagaan"
         report["contoh"] = True
-        report["summary"] = dict(base["summary"],
-                                   skor=skor, lulus=round(skor / 10), gagal=10 - round(skor / 10))
+        report["summary"] = dict(base["summary"], score=score,
+                                 passed=round(score / 10), failed=10 - round(score / 10))
         conn.execute(
-            "INSERT INTO laporan (server, waktu, siklus, skor, isi, diterima) VALUES (?,?,?,?,?,?)",
-            (base["server"]["name"], report["time"], "penjagaan", skor,
+            "INSERT INTO report (server, time, cycle, score, body, received) VALUES (?,?,?,?,?,?)",
+            (base["server"]["name"], report["time"], "penjagaan", score,
              json.dumps(report, ensure_ascii=False), stamp))
     print("  ok   riwayat contoh %d hari untuk %s" % (len(curve), base["server"]["name"]))
 

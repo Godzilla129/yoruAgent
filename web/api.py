@@ -16,7 +16,8 @@ import re
 import socket
 import sqlite3
 import time
-from contextlib import closing
+import urllib.request
+from contextlib import asynccontextmanager, closing
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -58,7 +59,18 @@ STATUS_MAP = {"LULUS": "LULUS", "GAGAL": "GAGAL", "DILEWATI": "DILEWATI",
               "DIKEMBALIKAN": "DILEWATI", "DITOLAK": "ERROR",
               "ERROR": "ERROR", "PERINGATAN": "ERROR", "MENUNGGU": "ERROR"}
 
-app = FastAPI(title="Yoru Dashboard", version="0.2.0")
+@asynccontextmanager
+async def lifespan(_app):
+    """The Telegram buttons need something listening. The agent runs once a day
+    and exits, so the listener lives here - this process is already long-lived."""
+    task = asyncio.create_task(telegram_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+
+
+app = FastAPI(title="Yoru Dashboard", version="0.2.0", lifespan=lifespan)
 
 
 def running_as_root() -> bool:
@@ -187,6 +199,115 @@ def read_config() -> Dict[str, str]:
 def local_server_name() -> str:
     """This machine's name, worked out as the agent does; buttons touch only this machine."""
     return (read_config().get("NAMA_SERVER") or "").strip() or socket.gethostname()
+
+
+# ------------------------------------------------------------------- telegram
+TELEGRAM_API = os.environ.get("TELEGRAM_API", "https://api.telegram.org")
+CALLBACK_RE = re.compile(r"^d\|(K(?:0[1-9]|10))\|([a-z]+)\|(.{1,100})$")
+
+
+def tg(method: str, token: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """One Telegram call, blocking. Runs in a thread so the loop stays free."""
+    body = json.dumps(data).encode()
+    req = urllib.request.Request(f"{TELEGRAM_API}/bot{token}/{method}",
+                                 data=body, method="POST")
+    req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=40) as r:
+            return json.loads(r.read().decode("utf-8", "replace") or "{}")
+    except Exception:  # noqa: BLE001 - a bot outage must not disturb the dashboard
+        return None
+
+
+def save_decision(server: str, control: str, value: str, note: str) -> None:
+    with closing(db()) as conn, conn:
+        conn.execute("""INSERT INTO decision (server, control, value, note, created, taken)
+                        VALUES (?,?,?,?,?,0)
+                        ON CONFLICT(server, control) DO UPDATE SET
+                          value=excluded.value, note=excluded.note,
+                          created=excluded.created, taken=0""",
+                     (server, control, value, note[:500], time.time()))
+
+
+async def handle_callback(cq: Dict[str, Any], token: str, config: Dict[str, str]) -> None:
+    """A button press from Telegram. Only from the chat id this server stores.
+
+    Without that check anyone who finds the bot's name could approve hardening
+    on someone else's server - the buttons are as powerful as the dashboard.
+    """
+    cid = str(cq.get("id") or "")
+    chat = str(((cq.get("message") or {}).get("chat") or {}).get("id") or "")
+    allowed = str(config.get("TELEGRAM_CHAT_ID", "")).strip()
+
+    async def reply(text: str) -> None:
+        await asyncio.to_thread(tg, "answerCallbackQuery", token,
+                                {"callback_query_id": cid, "text": text[:190]})
+
+    if not allowed or chat != allowed:
+        await reply("Chat ini tidak diizinkan menjawab untuk server ini.")
+        return
+
+    m = CALLBACK_RE.match(str(cq.get("data") or ""))
+    if not m:
+        await reply("Tombol tidak dikenal.")
+        return
+    control, value, server = m.group(1), m.group(2), m.group(3)
+    if value not in VALID_DECISIONS:
+        await reply("Jawaban tidak dikenal.")
+        return
+
+    with closing(db()) as conn:
+        known = conn.execute("SELECT 1 FROM report WHERE server=? LIMIT 1", (server,)).fetchone()
+    if not known:
+        await reply(f"Server {server} belum pernah melapor ke dashboard ini.")
+        return
+
+    save_decision(server, control, value, "dijawab lewat Telegram")
+
+    if value != "setuju":
+        await reply(f"{control}: dicatat, tidak akan diterapkan.")
+        return
+    if server != local_server_name():
+        await reply(f"{control}: disetujui. Agent di {server} yang menjalankannya.")
+        return
+
+    await reply(f"{control}: disetujui, sedang dijalankan…")
+    result = await run_yoructl(control, "terapkan")
+    if result.get("ok") is True:
+        refresh_stored_report(control, result)
+    line = (f"{control} {statusof(result)}"
+            + (f" — {result.get('value')}" if result.get("value") else "")
+            + (f"\n{result.get('message')}" if result.get("message") else ""))
+    await asyncio.to_thread(tg, "sendMessage", token, {"chat_id": chat, "text": line[:900]})
+
+
+def statusof(result: Dict[str, Any]) -> str:
+    s = str(result.get("status") or "ERROR")
+    return {"DITOLAK": "BELUM BISA", "MENUNGGU": "MASIH JALAN"}.get(s, s)
+
+
+async def telegram_loop() -> None:
+    """Long-poll for button presses. Silent and harmless when no token is set."""
+    offset = None
+    while True:
+        config = read_config()
+        token = config.get("TELEGRAM_TOKEN", "").strip()
+        if not token:
+            await asyncio.sleep(30)
+            continue
+        answer = await asyncio.to_thread(tg, "getUpdates", token, {
+            "offset": offset, "timeout": 25, "allowed_updates": ["callback_query"]})
+        if not answer or not answer.get("ok"):
+            await asyncio.sleep(10)
+            continue
+        for update in answer.get("result") or []:
+            offset = update.get("update_id", 0) + 1
+            cq = update.get("callback_query")
+            if cq:
+                try:
+                    await handle_callback(cq, token, config)
+                except Exception:  # noqa: BLE001 - one bad press must not stop the loop
+                    pass
 
 
 # ------------------------------------------------------------------ endpoints
@@ -340,6 +461,22 @@ async def decisions_for_agent(req: Request, server: Optional[str] = None,
 
 
 # -------------------------------------------------------- running via yoructl
+# A dispatcher older than this dashboard answers with the pre-rename keys.
+# Without this the page shows a status and a contradictory summary side by
+# side, which reads as a bug in the server rather than a version mismatch.
+OLD_KEYS = {"versi": "version", "tindakan": "action", "berhasil": "ok",
+            "nilai": "value", "pesan": "message"}
+
+
+def normalise(reply: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(reply, dict):
+        return reply
+    for old, new in OLD_KEYS.items():
+        if old in reply and new not in reply:
+            reply[new] = reply.pop(old)
+    return reply
+
+
 async def run_yoructl(kid: str, action: str) -> Dict[str, Any]:
     """One call to yoructl. One program, fixed arguments - no shell."""
     cmd = ["sudo", "-n", YORUCTL, kid, action]
@@ -367,7 +504,7 @@ async def run_yoructl(kid: str, action: str) -> Dict[str, Any]:
 
     for line in reversed([b for b in out.decode("utf-8", "replace").splitlines() if b.strip()]):
         try:
-            return json.loads(line)
+            return normalise(json.loads(line))
         except json.JSONDecodeError:
             continue
     return {"id": kid, "action": action, "status": "ERROR", "ok": False,

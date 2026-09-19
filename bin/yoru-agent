@@ -30,7 +30,7 @@ from pathlib import Path
 
 CONTRACT_VERSION = "1"
 
-TELEGRAM_API = "https://api.telegram.org"
+TELEGRAM_API = os.environ.get("TELEGRAM_API", "https://api.telegram.org")
 
 YORUCTL = "/opt/yoru/bin/yoructl"
 CATALOG_DIR = Path("/usr/share/yoru/catalog")
@@ -291,11 +291,11 @@ class Reasoner:
         return sorted(ids, key=lambda k: rank.get(k, 99))
 
     def explain(self, kid, catalog, result):
-        text = tidy(catalog.get(kid, {}).get("why"))
+        text = tidy(catalog.get(kid, {}).get("kenapa"))
         return text or f"Kontrol {kid} belum punya penjelasan di katalog."
 
     def consequence(self, kid, catalog):
-        text = tidy(catalog.get(kid, {}).get("breaks_if_applied"))
+        text = tidy(catalog.get(kid, {}).get("yang_rusak_kalau_diterapkan"))
         return text or "Belum ada catatan konsekuensi di katalog untuk kontrol ini."
 
     def drift_question(self, d):
@@ -375,13 +375,13 @@ def build_report(cycle, config, catalog, reasoner, checks, previous=None):
 
         controls.append({
             "id": kid,
-            "name": cat.get("name") or kid,
-            "category": cat.get("category") or "lain",
-            "cis_code": str(cat.get("cis_code") or "-"),
-            "risk": cat.get("risk") or ("BERISIKO" if risky else "AMAN"),
+            "name": cat.get("nama") or kid,
+            "category": cat.get("kategori") or "lain",
+            "cis_code": str(cat.get("kode_cis") or "-"),
+            "risk": cat.get("risiko") or ("BERISIKO" if risky else "AMAN"),
             "status": status,
             "observed": raw.get("value") or "tidak-terbaca",
-            "target": str(cat.get("target") or ""),
+            "target": str(cat.get("nilai_target") or ""),
             "why": reasoner.explain(kid, catalog, raw),
             "breaks_if_applied": reasoner.consequence(kid, catalog),
             "needs_approval": risky,
@@ -464,10 +464,16 @@ def save_report(report):
 
 
 def read_previous_report():
+    """The last cycle's report, or None. A file from before the field rename is
+    treated as absent: comparing it would silently find no drift at all."""
     try:
-        return json.loads(REPORT_FILE.read_text(encoding="utf-8"))
+        report = json.loads(REPORT_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+    if not isinstance(report, dict) or "controls" not in report:
+        say("laporan sebelumnya memakai bentuk lama - siklus ini tidak membandingkan drift")
+        return None
+    return report
 
 
 # ------------------------------------------------------------------ dashboard
@@ -563,6 +569,28 @@ def remember_chat_id(chat):
         say(f"chat id ketemu tapi gagal disimpan: {e}")
 
 
+# Telegram caps callback_data at 64 bytes, and the answer has to say which
+# server it is for: the dashboard may be collecting reports from several. A
+# name too long to fit simply gets no buttons - a button that answers for the
+# wrong server would be worse than no button at all.
+def decision_keyboard(report, asking):
+    server = (report.get("server") or {}).get("name") or ""
+    by_id = {k["id"]: k for k in report["controls"]}
+    rows = []
+    for kid in asking[:5]:
+        k = by_id.get(kid)
+        if not k:
+            continue
+        yes = f"d|{kid}|setuju|{server}"
+        no = f"d|{kid}|tolak|{server}"
+        if len(yes.encode()) > 64 or len(no.encode()) > 64:
+            return []
+        label = (k.get("name") or kid)[:28]
+        rows.append([{"text": f"Setujui {label}", "callback_data": yes},
+                     {"text": "Jangan", "callback_data": no}])
+    return rows
+
+
 def notify_telegram(report, config):
     """Sends only when something changed or needs an answer, never a daily all-clear."""
     token = config.get("TELEGRAM_TOKEN", "").strip()
@@ -614,6 +642,9 @@ def notify_telegram(report, config):
     # so stray Markdown can look ugly but cannot smuggle another message out.
     url = f"{TELEGRAM_API}/bot{token}/sendMessage"
     data = {"chat_id": chat, "text": "\n".join(lines), "parse_mode": "Markdown"}
+    keys = decision_keyboard(report, asking)
+    if keys:
+        data["reply_markup"] = {"inline_keyboard": keys}
     if http_json("POST", url, None, data) is None:
         say("Telegram tidak bisa dihubungi - laporan tetap tersimpan")
         return False

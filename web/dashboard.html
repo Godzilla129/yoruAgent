@@ -156,6 +156,10 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 .btn.danger:hover:not(:disabled){background:var(--fail-bg);border-color:var(--fail);color:var(--fail)}
 .btn.ghost{background:transparent}
 
+.btn.now { animation: rise .22s ease-out }
+@keyframes rise { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
+@media (prefers-reduced-motion: reduce) { .btn.now { animation: none } }
+
 /* ---------------------------------------------------------------- table */
 .scroll-x{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
@@ -281,6 +285,26 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
 .reply.bad{background:var(--fail-bg);color:var(--fail)}
 .reply.wait{background:var(--warn-bg);color:var(--warn)}
 
+/* --------------------------------------------------------- bulk & liveness */
+.steps li.done::before{content:"●";color:var(--pass)}
+.steps li.fail::before{content:"●";color:var(--fail)}
+.steps li.hold::before{content:"●";color:var(--warn)}
+.steps li .r{color:var(--muted);font-size:12px}
+.steps li.done .r{color:var(--pass)} .steps li.fail .r{color:var(--fail)}
+.steps li.hold .r{color:var(--warn)}
+
+.live{display:flex;gap:9px;align-items:center;padding:9px 16px;border-top:1px solid var(--line-soft);
+  font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;color:var(--muted);
+  overflow:hidden;white-space:nowrap}
+.live .beat{width:6px;height:6px;border-radius:50%;background:var(--pass);flex:none;
+  animation:beat 2.4s ease-in-out infinite}
+.live .l{overflow:hidden;text-overflow:ellipsis}
+@keyframes beat{0%,100%{opacity:.35}50%{opacity:1}}
+
+.delta{font-size:12px;font-weight:650;margin-left:7px}
+.delta.up{color:var(--pass)} .delta.down{color:var(--fail)}
+@media (prefers-reduced-motion: reduce){.live .beat{animation:none}}
+
 /* ---------------------------------------------------------------- narrow
    Below 900px the sidebar becomes a top bar, and below 760px the control
    table stops being a table: each row turns into a card with its own labels.
@@ -332,12 +356,8 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
     </div>
     <nav id="nav">
       <a data-h="dashboard" class="on"><span class="ic">▦</span>Dashboard</a>
-      <a data-h="checklist"><span class="ic">☰</span>CIS Checklist</a>
-      <a data-h="history"><span class="ic">▤</span>Riwayat Skor</a>
-      <a data-h="log"><span class="ic">◷</span>Audit Logs</a>
-      <a data-h="telegram"><span class="ic">✈</span>Telegram Bot</a>
-      <a data-h="llm"><span class="ic">✦</span>LLM Settings</a>
-      <a data-h="system"><span class="ic">⚙</span>System Settings</a>
+      <a data-h="history"><span class="ic">▤</span>Riwayat</a>
+      <a data-h="settings"><span class="ic">⚙</span>Setelan</a>
     </nav>
     <div class="foot">Semua tindakan lewat <b>yoructl</b>.<br>Agent tidak punya akses shell.</div>
   </aside>
@@ -414,6 +434,8 @@ let LOCAL = null;           // the server name of THIS machine, from /api/server
 // Bumped by every render. A page function re-checks it after awaiting a fetch
 // and gives up if it moved - the owner has navigated away since.
 let RENDER = 0;
+let LAST_SCORE = null;     // to show what the score just did, not only where it is
+let liveTimer = null;
 
 /* ------------------------------------------------------------------ theme
    Three states, and "ikut sistem" is one of them - it stores nothing and lets
@@ -483,9 +505,7 @@ async function get(url) {
 const TAG = {LULUS:['LULUS','p'], GAGAL:['GAGAL','f'], SEBAGIAN:['SEBAGIAN','n'],
              DILEWATI:['DILEWATI','x'], ERROR:['ERROR','x']};
 
-const PAGE_TITLE = {dashboard:'Dashboard', checklist:'CIS Checklist',
-                    history:'Riwayat Skor', log:'Audit Logs',
-                    telegram:'Telegram Bot', llm:'LLM Settings', system:'System Settings'};
+const PAGE_TITLE = {dashboard:'Dashboard', history:'Riwayat', settings:'Setelan'};
 
 const shorten = t => {
   const s = String(t || '');
@@ -539,33 +559,8 @@ function render() {
   drawPicker();
   markBadge();
 
-  if (PAGE === 'log')      return logPage(LOG_KID, gen);
-  if (PAGE === 'telegram') return settingsPage(gen, 'Telegram Bot',
-    'Yoru cuma mengirim kalau ada yang berubah atau ada yang perlu dijawab — bukan laporan harian yang isinya "semuanya masih aman". Yang mengirim itu agent di server, bukan halaman ini.',
-    [{key:'TELEGRAM_TOKEN', label:'Token bot', secret:true,
-      hint:'Dari @BotFather di Telegram: /newbot, lalu salin utuh barisnya. Bentuknya angka, titik dua, lalu huruf-angka.'},
-     {key:'TELEGRAM_CHAT_ID', label:'Chat ID (boleh dikosongkan)',
-      hint:'Kosongkan saja — Yoru mencarinya sendiri begitu kamu kirim /start ke botmu.'}]);
-  if (PAGE === 'llm')      return settingsPage(gen, 'LLM Settings',
-    'Yoru menanyakan sesuatu ke Hermes lewat alamat ini. Kunci API model TIDAK diisi di sini — kuncinya tinggal di Hermes, disetel sekali dengan "hermes setup". Kosongkan alamatnya kalau belum ada: laporan tetap keluar lengkap, kalimat penjelasannya diambil dari katalog.',
-    [{key:'HERMES_URL', label:'Alamat Hermes',
-      hint:'Bentuknya http://host:port. Nyalakan dulu "hermes api-server" di server ini, lalu cek portnya dengan "hermes api-server --help". Contoh: http://127.0.0.1:8080'},
-     {key:'AI_MODEL', label:'Nama model (boleh dikosongkan)',
-      hint:'Diteruskan apa adanya ke Hermes. Kosong = pakai model yang sudah dipilih di Hermes lewat "hermes model".'},
-     {key:'HERMES_TOKEN', label:'Token Hermes (boleh dikosongkan)', secret:true,
-      hint:'Cuma perlu kalau Hermes-mu minta token. Ini token layanan di 127.0.0.1, bukan kunci berbayar — kunci model tetap tinggal di Hermes.'}]);
-  if (PAGE === 'system')   return settingsPage(gen, 'System Settings',
-    'Semua ini disimpan di /etc/yoru/yoru.conf. Halaman ini tidak menulis berkas itu sendiri — dia menitipkannya ke yoructl, program yang sama yang dipakai agent.',
-    [{key:'NAMA_SERVER', label:'Nama server',
-      hint:'Nama yang muncul di dashboard dan bot. Kosong = pakai hostname.'},
-     {key:'PORT_DIIZINKAN', label:'Port yang boleh terbuka',
-      hint:'Dipisah spasi, contoh: 80 443 8000. Port SSH tidak perlu ditulis — Yoru mencarinya sendiri. Selama masih ada port terbuka yang belum ada di sini, K05 menolak menyalakan firewall.'},
-     {key:'LEWATI_KONTROL', label:'Kontrol yang dilewati',
-      hint:'Dipisah koma, contoh: K05,K06. Kosongkan kalau semua boleh dipertimbangkan.'},
-     {key:'JAM_PENJAGAAN', label:'Jam penjagaan harian',
-      hint:'Bentuk HH:MM. Timer systemd langsung ikut diganti begitu disimpan — pilih jam sepi.'},
-     {key:'ZONA_WAKTU', label:'Zona waktu',
-      hint:'Contoh: Asia/Jakarta. Dipakai untuk jam penjagaan dan semua jam di laporan.'}]);
+  if (PAGE !== 'dashboard') clearInterval(liveTimer);
+  if (PAGE === 'settings') return settingsPage(gen);
   if (PAGE === 'history')  return historyPage(gen);
 
   if (!DATA) return emptyState();
@@ -577,6 +572,7 @@ function render() {
     (PAGE === 'dashboard' ? statCards() + remoteNotice() + driftPanel() + attentionPanel() : '') +
     table();
   wireButtons();
+  watchLive();
 }
 
 // The red number beside "Dashboard": how many things wait on the owner.
@@ -615,10 +611,17 @@ function ring(pct) {
 function statCards() {
   const s = DATA.summary || {}, total = s.total || 10;
   const waiting = (DATA.pending_decisions || []).length + (DATA.drift || []).length;
+  // The score moving is the one thing worth pointing at, so the change since
+  // the previous load is shown next to it instead of being left to memory.
+  const now = s.score ?? 0;
+  const diff = (LAST_SCORE === null || LAST_SCORE === now) ? 0 : now - LAST_SCORE;
+  LAST_SCORE = now;
+  const deltaHtml = diff
+    ? `<span class="delta ${diff > 0 ? 'up' : 'down'}">${diff > 0 ? '+' : ''}${diff}</span>` : '';
   return `<div class="stats">
-    <div class="stat">${ring(s.score ?? 0)}
+    <div class="stat">${ring(now)}
       <div class="grow"><div class="lbl">Skor kepatuhan</div>
-        <div class="val">${s.score ?? 0}<span style="font-size:15px;color:var(--muted)">/100</span></div>
+        <div class="val">${now}<span style="font-size:15px;color:var(--muted)">/100</span>${deltaHtml}</div>
         <div class="sub">${esc(DATA.cycle || '-')}</div></div></div>
     <div class="stat"><div class="chip-ic pass">✓</div>
       <div class="grow"><div class="lbl">Sudah aman</div>
@@ -702,7 +705,7 @@ function pendingPorts() {
 }
 
 function attentionPanel() {
-  const {ports, catatan} = pendingPorts();
+  const {ports, note} = pendingPorts();
   const asking = DATA.pending_decisions || [];
   if (!ports.length && !asking.length) return '';
 
@@ -713,7 +716,7 @@ function attentionPanel() {
       <div style="color:var(--muted);font-size:13px;margin-top:4px;line-height:1.6">
         Selama masih ada yang belum dijawab, K05 menolak menyalakan firewall — Yoru tidak
         pernah menebak port mana yang boleh terbuka. Port SSH tidak ikut ditanya, itu dicari sendiri.</div>
-      ${catatan ? `<div class="said">${esc(catatan)}</div>` : ''}
+      ${note ? `<div class="said">${esc(note)}</div>` : ''}
       <div class="ports">${ports.map(p => `
         <div class="port" data-port="${esc(p.port)}">
           <span><span class="n">${esc(p.port)}</span>
@@ -728,9 +731,9 @@ function attentionPanel() {
     body += `<div class="panel-body">
       <b>${asking.length} kontrol menunggu persetujuanmu</b>
       <div style="color:var(--muted);font-size:13px;margin-top:4px;line-height:1.6">
-        Yang berisiko tidak pernah dijalankan Yoru sendiri. Jawabanmu dicatat di sini lalu
-        dikerjakan agent di server itu pada siklus berikutnya${isLocal()
-          ? ' — atau tekan Hardening di tabel bawah kalau mau sekarang juga' : ''}.</div>
+        Yang berisiko tidak pernah dijalankan Yoru sendiri.${isLocal()
+          ? ' Setelah kamu setujui, tombol untuk menjalankannya muncul di sini juga.'
+          : ' Jawabanmu dicatat, lalu dikerjakan agent di server itu pada pemindaian berikutnya.'}</div>
       <div style="margin-top:11px">${asking.map(kid => {
         const k = byId[kid] || {id: kid, name: kid};
         return `<div class="drift" data-kid="${esc(kid)}" style="padding-left:0;padding-right:0">
@@ -792,14 +795,19 @@ function table() {
       <thead><tr><th>No</th><th>Poin CIS hardening</th><th>Kode CIS</th><th>Status</th>
         <th>Nilai terbaca</th><th>Aksi</th></tr></thead>
       <tbody>${rows}</tbody>
-    </table></div></div>`;
+    </table></div>
+    <div class="live" id="liveStrip"><span class="beat"></span><span class="l">memuat jejak…</span></div>
+    </div>`;
 }
 
 /* --------------------------------------------------------------- history */
+// One page answers one question: what has happened here. The score line and
+// the action trail are two views of the same answer, so they share a page.
 async function historyPage(gen) {
   $('meta').textContent = PICKED || (DATA && DATA.server && DATA.server.name) || '';
   $('content').innerHTML = `<div class="panel"><div class="empty">memuat riwayat…</div></div>`;
-  const q = PICKED ? `?server=${encodeURIComponent(PICKED)}&batas=60` : '?limit=60';
+
+  const q = PICKED ? `?server=${encodeURIComponent(PICKED)}&limit=60` : '?limit=60';
   let rows = [];
   try {
     const r = await get('/api/history' + q);
@@ -807,10 +815,17 @@ async function historyPage(gen) {
   } catch (e) { /* drawn as empty below */ }
   if (gen !== RENDER) return;
 
+  const logHtml = await logPanel(LOG_KID, gen);
+  if (gen !== RENDER) return;
+
+  $('content').innerHTML = chartPanel(rows) + logHtml;
+  const all = $('allLogs'); if (all) all.onclick = () => { LOG_KID = null; render(); };
+}
+
+function chartPanel(rows) {
   if (!rows.length) {
-    $('content').innerHTML = `<div class="panel"><div class="empty">
+    return `<div class="panel"><div class="empty">
       <b>Belum ada riwayat.</b>Riwayat terisi sendiri setiap siklus penjagaan berjalan.</div></div>`;
-    return;
   }
 
   const data = rows.slice().reverse();
@@ -834,7 +849,7 @@ async function historyPage(gen) {
   const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '=';
   const colour = delta > 0 ? 'var(--pass)' : delta < 0 ? 'var(--fail)' : 'var(--muted)';
 
-  $('content').innerHTML = `<div class="panel">
+  return `<div class="panel">
     <div class="head"><h2>Skor ${n} laporan terakhir</h2>
       <span class="note">arahkan kursor ke batang untuk melihat tanggalnya</span></div>
     <div class="panel-body">
@@ -851,15 +866,14 @@ async function historyPage(gen) {
 }
 
 /* ------------------------------------------------------------------ logs */
-async function logPage(kid, gen) {
-  $('meta').textContent = kid ? kid : 'semua kontrol';
+async function logPanel(kid, gen) {
   const q = kid ? `?control=${encodeURIComponent(kid)}` : '';
   let d;
   try {
     const r = await get('/api/log' + q);
     d = r.ok ? await r.json() : {lines: [], message: 'perlu token untuk membaca jejak tindakan'};
   } catch (e) { d = {lines: []}; }
-  if (gen !== undefined && gen !== RENDER) return;
+  if (gen !== undefined && gen !== RENDER) return '';
 
   const body = (d.lines || []).length
     ? d.lines.map(b => `<div>
@@ -869,19 +883,53 @@ async function logPage(kid, gen) {
         <span class="msg">${esc(b.value ?? '')}${b.message ? ' — ' + esc(b.message) : ''}</span></div>`).join('')
     : `<div class="empty"><b>Belum ada catatan.</b>${esc(d.message || 'Jejak tindakan ditulis ke /var/log/yoru/ setiap kali sebuah kontrol dijalankan.')}</div>`;
 
-  $('content').innerHTML = `<div class="panel">
+  return `<div class="panel">
     <div class="head"><h2>Jejak tindakan${kid ? ' — ' + esc(kid) : ''}</h2>
       <span class="note">milik root · agent tidak bisa menyuntingnya</span>
       <div class="bulk">${kid ? '<button class="btn" id="allLogs">Lihat semua</button>' : ''}</div></div>
     <div class="logbox">${body}</div></div>`;
-  const all = $('allLogs'); if (all) all.onclick = () => { LOG_KID = null; render(); };
 }
 
 /* -------------------------------------------------------------- settings */
-async function settingsPage(gen, title, intro, fields) {
+// Three groups, one page, one Save each. Splitting them across three pages
+// meant three loads of the same config for a form most people touch once.
+const SETTINGS = [
+  {id: 'telegram', title: 'Bot Telegram',
+   intro: 'Yoru cuma mengirim kalau ada yang berubah atau ada yang perlu dijawab — bukan laporan harian yang isinya "semuanya masih aman". Yang mengirim itu agent di server, bukan halaman ini.',
+   fields: [
+     {key:'TELEGRAM_TOKEN', label:'Token bot', secret:true,
+      hint:'Dari @BotFather: /newbot, lalu salin utuh barisnya. Bentuknya angka, titik dua, lalu huruf-angka.'},
+     {key:'TELEGRAM_CHAT_ID', label:'Chat ID (boleh dikosongkan)',
+      hint:'Kosongkan saja — Yoru mencarinya sendiri begitu kamu kirim /start ke botmu.'}]},
+
+  {id: 'model', title: 'Model AI',
+   intro: 'Yoru bertanya ke sebuah server model di dalam server ini lewat alamat di bawah. Kunci API TIDAK disimpan di sini — dia tinggal di berkas lain yang tidak bisa dibaca agent. Kosong = Yoru tetap jalan, kalimat penjelasannya diambil dari katalog.',
+   fields: [
+     {key:'HERMES_URL', label:'Alamat server model',
+      hint:'Bentuknya http://host:port. Kalau dipasang lewat installer, biasanya sudah terisi http://127.0.0.1:8080.'},
+     {key:'AI_MODEL', label:'Nama model (boleh dikosongkan)',
+      hint:'Kosongkan saja — penghubungnya memilih model yang masih dilayani oleh kuncimu.'},
+     {key:'HERMES_TOKEN', label:'Token server model (boleh dikosongkan)', secret:true,
+      hint:'Cuma perlu kalau server modelmu minta token. Ini token layanan di 127.0.0.1, bukan kunci berbayar.'}]},
+
+  {id: 'sistem', title: 'Sistem',
+   intro: 'Semua ini disimpan di /etc/yoru/yoru.conf. Halaman ini tidak menulis berkas itu sendiri — dia menitipkannya ke yoructl, program yang sama yang dipakai agent.',
+   fields: [
+     {key:'NAMA_SERVER', label:'Nama server',
+      hint:'Nama yang muncul di dashboard dan bot. Kosong = pakai hostname.'},
+     {key:'PORT_DIIZINKAN', label:'Port yang boleh terbuka',
+      hint:'Dipisah spasi, contoh: 80 443 8000. Port SSH tidak perlu ditulis — Yoru mencarinya sendiri. Selama masih ada port terbuka yang belum ada di sini, K05 menolak menyalakan firewall.'},
+     {key:'LEWATI_KONTROL', label:'Kontrol yang dilewati',
+      hint:'Dipisah koma, contoh: K05,K06. Kosongkan kalau semua boleh dipertimbangkan.'},
+     {key:'JAM_PENJAGAAN', label:'Jam pemindaian harian',
+      hint:'Bentuk HH:MM. Timer systemd langsung ikut diganti begitu disimpan — pilih jam sepi.'},
+     {key:'ZONA_WAKTU', label:'Zona waktu',
+      hint:'Contoh: Asia/Jakarta. Dipakai untuk jam pemindaian dan semua jam di laporan.'}]},
+];
+
+async function settingsPage(gen) {
   $('meta').textContent = '';
-  $('content').innerHTML = `<div class="panel">
-    <div class="form" id="settingsForm"><div class="empty">memuat setelan…</div></div></div>`;
+  $('content').innerHTML = `<div class="panel"><div class="empty">memuat setelan…</div></div>`;
 
   let config = {}, failure = null;
   try {
@@ -892,55 +940,65 @@ async function settingsPage(gen, title, intro, fields) {
 
   if (gen !== RENDER) return;   // the owner has already gone somewhere else
   if (failure) {
-    $('settingsForm').innerHTML = `<div class="note bad">Setelan tidak bisa dibaca.
-      Kalau dashboard dibuka dari komputer lain, muat ulang halaman ini supaya
-      tokennya diminta.</div>`;
+    $('content').innerHTML = `<div class="panel"><div class="panel-body">
+      <div class="note bad">Setelan tidak bisa dibaca. Kalau dashboard dibuka dari
+      komputer lain, muat ulang halaman ini supaya tokennya diminta.</div></div></div>`;
     return;
   }
 
-  $('settingsForm').innerHTML =
-    `<p class="intro">${esc(intro)}</p>` +
-    fields.map(f => {
-      const cur = config[f.key] || {};
-      const val = f.secret ? '' : (cur.value || '');
-      const mark = f.secret && cur.set ? ' — sudah terisi, kosongkan kalau tidak mau diganti' : '';
-      return `<div class="field">
-        <label for="f_${f.key}">${esc(f.label)}<span class="mark">${esc(mark)}</span></label>
-        <input id="f_${f.key}" ${f.secret ? 'type="password" autocomplete="off"' : 'type="text"'}
-               value="${esc(val)}" placeholder="${f.secret && cur.set ? '••••••••••••' : ''}">
-        <div class="hint">${esc(f.hint)}</div>
-      </div>`;
-    }).join('') +
-    `<div class="form-actions"><button class="btn primary" id="saveSettings">Simpan</button></div>
-     <div class="note" id="settingsNote"></div>
-     <div class="footnote">Berkasnya: <code>${esc(config._berkas || '')}</code>
+  $('content').innerHTML = SETTINGS.map(sec => `
+    <div class="panel">
+      <div class="head"><h2>${esc(sec.title)}</h2></div>
+      <div class="form">
+        <p class="intro">${esc(sec.intro)}</p>
+        ${sec.fields.map(f => fieldHtml(f, config[f.key] || {})).join('')}
+        <div class="form-actions"><button class="btn primary" data-save="${sec.id}">Simpan</button></div>
+        <div class="note" id="note_${sec.id}"></div>
+      </div>
+    </div>`).join('') +
+    `<div class="footnote">Berkasnya: <code>${esc(config._berkas || '')}</code>
       (root:yoru-agent 640). Kunci dashboard dan kunci model sengaja tidak bisa diubah dari sini.</div>`;
 
-  $('saveSettings').onclick = async () => {
-    const btn = $('saveSettings'), note = $('settingsNote');
-    btn.disabled = true; note.className = 'note busy'; note.textContent = 'menyimpan…';
-    const failed = [];
-    let saved = 0, said = '';
-    for (const f of fields) {
-      const el = $('f_' + f.key);
-      const val = el.value.trim();
-      // Empty secret field means "do not change", not "clear it" - otherwise
-      // opening this page and pressing Save would wipe a stored token.
-      if (f.secret && val === '') continue;
-      const r = await post('/api/config', {key: f.key, value: val});
-      let d; try { d = await r.json(); } catch (e) { d = {}; }
-      if (r.ok && d.ok === true) {
-        saved++;
-        if (f.secret) el.value = '';
-        // Schedule keys change a systemd timer too, so report what yoructl did.
-        if (d.message && !/^tersimpan di /.test(d.message)) said = d.message;
-      } else failed.push(`${f.label}: ${d.message || d.detail || 'ditolak'}`);
-    }
-    btn.disabled = false;
-    if (failed.length) { note.className = 'note bad'; note.textContent = failed.join(' · '); }
-    else { note.className = 'note ok';
-           note.textContent = `${saved} setelan tersimpan.${said ? ' ' + said + '.' : ''}`; }
-  };
+  $('content').querySelectorAll('[data-save]').forEach(btn => {
+    btn.onclick = () => saveSection(SETTINGS.find(s => s.id === btn.dataset.save), btn);
+  });
+}
+
+function fieldHtml(f, cur) {
+  const val = f.secret ? '' : (cur.value || '');
+  const mark = f.secret && cur.set ? ' — sudah terisi, kosongkan kalau tidak mau diganti' : '';
+  return `<div class="field">
+    <label for="f_${f.key}">${esc(f.label)}<span class="mark">${esc(mark)}</span></label>
+    <input id="f_${f.key}" ${f.secret ? 'type="password" autocomplete="off"' : 'type="text"'}
+           value="${esc(val)}" placeholder="${f.secret && cur.set ? '••••••••••••' : ''}">
+    <div class="hint">${esc(f.hint)}</div>
+  </div>`;
+}
+
+async function saveSection(sec, btn) {
+  const note = $('note_' + sec.id);
+  btn.disabled = true; note.className = 'note busy'; note.textContent = 'menyimpan…';
+  const failed = [];
+  let saved = 0, said = '';
+  for (const f of sec.fields) {
+    const el = $('f_' + f.key);
+    const val = el.value.trim();
+    // Empty secret field means "do not change", not "clear it" - otherwise
+    // opening this page and pressing Save would wipe a stored token.
+    if (f.secret && val === '') continue;
+    const r = await post('/api/config', {key: f.key, value: val});
+    let d; try { d = await r.json(); } catch (e) { d = {}; }
+    if (r.ok && d.ok === true) {
+      saved++;
+      if (f.secret) el.value = '';
+      // Schedule keys change a systemd timer too, so report what yoructl did.
+      if (d.message && !/^tersimpan di /.test(d.message)) said = d.message;
+    } else failed.push(`${f.label}: ${d.message || d.detail || 'ditolak'}`);
+  }
+  btn.disabled = false;
+  if (failed.length) { note.className = 'note bad'; note.textContent = failed.join(' · '); }
+  else { note.className = 'note ok';
+         note.textContent = `${saved} setelan tersimpan.${said ? ' ' + said + '.' : ''}`; }
 }
 
 /* --------------------------------------------------------------- actions */
@@ -966,8 +1024,9 @@ async function decide(control, value, slot, buttons) {
         : value === 'sah'
         ? 'dicatat sebagai perubahan yang kamu sengaja'
         : value === 'setuju'
-        ? 'disetujui — agent akan menerapkannya pada siklus berikutnya'
+        ? (isLocal() ? 'disetujui — tinggal jalankan' : 'disetujui — agent di server itu yang menjalankan')
         : 'dicatat — kontrol ini tidak akan diterapkan');
+      if (value === 'setuju' && isLocal()) offerApply(control, slot);
     } else {
       slotSay(slot, 'bad', d.detail || `gagal disimpan (HTTP ${r.status})`);
       buttons.forEach(b => b.disabled = false);
@@ -976,6 +1035,21 @@ async function decide(control, value, slot, buttons) {
     slotSay(slot, 'bad', 'API tidak bisa dihubungi');
     buttons.forEach(b => b.disabled = false);
   }
+}
+
+// An approval that leads nowhere feels like nothing happened. On this machine
+// the button that finishes the job appears right where the answer was given.
+function offerApply(control, slot) {
+  const box = slot.closest('[data-kid]');
+  const acts = box && box.querySelector('.acts');
+  if (!acts || acts.querySelector('[data-a="terapkan"]')) return;
+  acts.innerHTML = '';
+  const go = document.createElement('button');
+  go.className = 'btn primary now';
+  go.dataset.a = 'terapkan';
+  go.textContent = 'Terapkan sekarang';
+  go.onclick = () => confirmApply(control, go);
+  acts.appendChild(go);
 }
 
 async function vouchPort(port, btn, slot) {
@@ -1005,27 +1079,41 @@ function wireButtons() {
   document.querySelectorAll('tbody button[data-a]').forEach(b => {
     b.onclick = () => {
       const tr = b.closest('tr'), kid = tr.dataset.kid;
-      if (b.dataset.a === 'log') { PAGE = 'log'; LOG_KID = kid; render(); return; }
+      if (b.dataset.a === 'log') { PAGE = 'history'; LOG_KID = kid; render(); return; }
       if (b.dataset.a === 'terapkan' && b.dataset.approval === '1') return confirmApply(kid, b);
       run(kid, b.dataset.a, b);
     };
   });
-  // bulk
+  // bulk - same dialog as a single row, ten lines filling in one by one. It
+  // used to run silently, which looked exactly like nothing happening.
   document.querySelectorAll('button[data-bulk]').forEach(b => {
     b.onclick = async () => {
       const action = b.dataset.bulk;
       if (action !== 'periksa' &&
           !confirm(`Jalankan ${action} untuk SEMUA kontrol?\n\nYang berisiko tetap ditanya satu per satu.`)) return;
       b.disabled = true;
+      openBulk(action);
+      let done = 0, held = 0, broke = 0;
       for (const tr of document.querySelectorAll('tbody tr')) {
+        const kid = tr.dataset.kid;
         const btn = tr.querySelector(`button[data-a="${action}"]`);
-        if (!btn || btn.disabled) continue;
+        if (!btn) continue;
+        if (btn.disabled && !(action === 'terapkan' && btn.dataset.approval === '1')) {
+          bulkMark(kid, 'hold', 'dilewati'); held++; continue;
+        }
         if (action === 'terapkan' && btn.dataset.approval === '1') {
           slotSay(tr.querySelector('[data-slot]'), 'busy', 'dilewati — butuh persetujuan');
-          continue;
+          bulkMark(kid, 'hold', 'butuh persetujuanmu'); held++; continue;
         }
-        await run(tr.dataset.kid, action, btn, true);
+        bulkMark(kid, 'on', 'berjalan…');
+        const d = await run(kid, action, btn, true);
+        const ok = d && d.ok === true;
+        const waiting = d && (d.status === 'DITOLAK' || d.status === 'MENUNGGU');
+        bulkMark(kid, ok ? 'done' : waiting ? 'hold' : 'fail',
+                 `${statusLabel((d || {}).status || 'ERROR')}${d && d.value ? ' — ' + d.value : ''}`);
+        if (ok) done++; else if (waiting) held++; else broke++;
       }
+      closeBulk(done, held, broke);
       b.disabled = false;
       load();
     };
@@ -1078,6 +1166,48 @@ const statusLabel = s => s === 'DITOLAK' ? 'BELUM BISA'
 
 let runTimer = null;
 
+function openBulk(action) {
+  $('runTitle').textContent = `${ACTION_LABEL[action]} semua`;
+  $('runKid').textContent = `sudo -n yoructl <kontrol> ${action}`;
+  $('runCmd').textContent = '';
+  $('runCmd').hidden = true;
+  $('runReply').hidden = true;
+  $('runLog').hidden = true;
+  $('runClose').textContent = 'Batal tampilkan';
+  $('runSteps').innerHTML = (DATA.controls || []).map(k =>
+    `<li data-bulk="${esc(k.id)}">${esc(k.id)} · ${esc(k.name)} <span class="r"></span></li>`).join('');
+
+  const started = Date.now();
+  clearInterval(runTimer);
+  $('runClock').textContent = 'berjalan… 0 detik';
+  runTimer = setInterval(() => {
+    $('runClock').textContent = `berjalan… ${Math.round((Date.now() - started) / 1000)} detik`;
+  }, 1000);
+  const d = $('dlgRun');
+  d.onclose = null;
+  if (!d.open) d.showModal();
+}
+
+function bulkMark(kid, cls, text) {
+  const li = $('runSteps').querySelector(`[data-bulk="${CSS.escape(kid)}"]`);
+  if (!li) return;
+  li.className = cls;
+  li.querySelector('.r').textContent = text ? '— ' + text : '';
+  li.scrollIntoView({block: 'nearest'});
+}
+
+function closeBulk(done, held, broke) {
+  clearInterval(runTimer);
+  $('runClock').textContent = 'selesai';
+  const box = $('runReply');
+  box.className = 'reply ' + (broke ? 'bad' : held ? 'wait' : 'ok');
+  box.textContent = `${done} beres` + (held ? `, ${held} berhenti sendiri` : '')
+                                    + (broke ? `, ${broke} gagal` : '') + '.';
+  box.hidden = false;
+  $('runCmd').hidden = false;
+  $('runClose').textContent = 'Tutup';
+}
+
 function openRun(kid, action) {
   const k = (DATA?.controls || []).find(x => x.id === kid) || {};
   $('runTitle').textContent = `${ACTION_LABEL[action] || action} — ${k.name || kid}`;
@@ -1085,6 +1215,7 @@ function openRun(kid, action) {
   $('runSteps').innerHTML = (STEPS[action] || []).map((s, i) =>
     `<li class="${i === 0 ? 'on' : ''}">${esc(s)}</li>`).join('');
   $('runCmd').textContent = `sudo yoructl ${kid} ${action}`;
+  $('runCmd').hidden = false;
   $('runReply').hidden = true;
   $('runLog').hidden = true;
   $('runClose').textContent = 'Batal tampilkan';
@@ -1114,13 +1245,16 @@ function closeRun(kid, d) {
   $('runClose').textContent = 'Tutup';
   $('runLog').hidden = false;
   $('dlgRun').onclose = () => {
-    if ($('dlgRun').returnValue === 'log') { PAGE = 'log'; LOG_KID = kid; render(); }
+    if ($('dlgRun').returnValue === 'log') { PAGE = 'history'; LOG_KID = kid; render(); }
   };
 }
 
+// Works from the control table and from the approval panel alike: the scope is
+// whatever element carries data-kid, not a table row.
 async function run(kid, action, btn, quiet) {
-  const tr = btn.closest('tr'), slot = tr.querySelector('[data-slot]');
-  tr.querySelectorAll('button').forEach(b => b.disabled = true);
+  const scope = btn.closest('[data-kid]') || btn.parentElement;
+  const slot = scope.querySelector('[data-slot]');
+  scope.querySelectorAll('button').forEach(b => b.disabled = true);
   slotSay(slot, 'busy', 'menjalankan…');
   if (!quiet) openRun(kid, action);
   let d;
@@ -1137,7 +1271,7 @@ async function run(kid, action, btn, quiet) {
   const waiting = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
   slotSay(slot, ok ? 'ok' : waiting ? 'wait' : 'bad',
     `${statusLabel(d.status)}${d.value ? ' — ' + d.value : ''}${d.message ? ' — ' + d.message : ''}`);
-  tr.querySelectorAll('button').forEach(b => {
+  scope.querySelectorAll('button').forEach(b => {
     if (!(b.dataset.a === 'terapkan' && b.title)) b.disabled = false;
   });
   // Including after Audit: the cards used to move only on apply or rollback,
@@ -1150,15 +1284,37 @@ async function run(kid, action, btn, quiet) {
 $('nav').onclick = e => {
   const a = e.target.closest('a[data-h]'); if (!a) return;
   PAGE = a.dataset.h;
-  if (PAGE === 'log') LOG_KID = null;   // the menu means "all controls"
+  if (PAGE === 'history') LOG_KID = null;   // the menu means "all controls"
   render();
 };
 
 (async () => { await loadServers(); await load(); })();
 
+// The newest line of the action trail, so the page has a pulse while the agent
+// works. One line, one request - a full log on a loop would be noise.
+async function beat() {
+  const el = $('liveStrip'); if (!el) return;
+  try {
+    const r = await get('/api/log?limit=1');
+    if (!r.ok) return;
+    const b = ((await r.json()).lines || [])[0];
+    el.querySelector('.l').textContent = b
+      ? `${(b.time || '').replace('T', ' ').slice(0, 19)}  ${b.id || ''} ${b.action || ''} ${b.status || ''}`
+        + (b.value ? ' — ' + b.value : '')
+      : 'belum ada tindakan yang tercatat';
+  } catch (e) { /* the strip is decoration; a failure here must stay silent */ }
+}
+
+function watchLive() {
+  clearInterval(liveTimer);
+  if (PAGE !== 'dashboard') return;
+  beat();
+  liveTimer = setInterval(beat, 6000);
+}
+
 // Only live-state pages auto-refresh; reloading a form would discard typing.
 setInterval(() => {
-  if (PAGE === 'dashboard' || PAGE === 'checklist') load();
+  if (PAGE === 'dashboard') load();
 }, 30000);
 </script>
 </body>
