@@ -7,7 +7,7 @@
 # Installer tidak akan menimpa berkas yang sudah ada.
 #
 # ---------------------------------------------------------------------
-# CARA BACA - untuk Lane 3
+# CARA BACA - untuk yang menulis kode
 # ---------------------------------------------------------------------
 # Bentuknya KUNCI="nilai" satu per baris, # untuk komentar.
 #
@@ -66,13 +66,11 @@ NAMA_SERVER=""
 #      Perintah itu mencetak jawaban asli Google untuk tiap cara, plus daftar
 #      model yang boleh dipakai kunci itu.
 #
-#   2. hermes proxy - kalau server ini punya Hermes dan kamu sudah login ke
-#      penyedianya:
-#          hermes proxy providers
-#          hermes proxy start --provider nous --port 8645
-#      Isi HERMES_URL dengan alamat itu, dan HERMES_TOKEN dengan token bebas
-#      (hermes proxy menerima token apa pun; kredensial aslinya dia yang
-#      tempel).
+#   2. Alamat lain yang bicara format OpenAI, misalnya Ollama
+#      (http://127.0.0.1:11434) atau hermes proxy
+#      (hermes proxy start --provider nous --port 8645). Isi HERMES_URL
+#      dengan alamat dasarnya saja, tanpa /v1, dan HERMES_TOKEN kalau
+#      layanannya minta token.
 #
 # HERMES_TOKEN itu token layanan di 127.0.0.1, bukan kunci berbayar.
 #
@@ -92,9 +90,9 @@ AI_MODEL=""
 # ======================= TELEGRAM (opsional) ===========================
 # Kosongkan kalau tidak dipakai.
 #
-# TELEGRAM_CHAT_ID boleh kosong walau tokennya diisi - Yoru nyari sendiri.
-# Pemilik cukup kirim /start ke botnya. "Chat id" itu istilah kita, bukan
-# istilah dia.
+# TELEGRAM_CHAT_ID boleh kosong walau tokennya diisi. Pemilik cukup kirim
+# /start <kode> ke botnya sekali, lalu Yoru mengisinya sendiri. Kodenya
+# (TELEGRAM_PAIR_CODE) ditulis installer dan tampil di halaman Setelan.
 
 TELEGRAM_TOKEN=""
 TELEGRAM_CHAT_ID=""
@@ -114,7 +112,7 @@ TELEGRAM_CHAT_ID=""
 # server melakukan hal baru. Jangan pernah membalik arah ini.
 #
 # Isi lengkap dengan http:// atau https://. Kalau dashboardnya satu mesin
-# dengan agent: http://127.0.0.1:8080
+# dengan agent: http://127.0.0.1:8000
 
 DASHBOARD_URL=""
 DASHBOARD_TOKEN=""
@@ -137,13 +135,9 @@ ZONA_WAKTU="Asia/Jakarta"
 # Gunanya untuk keadaan yang cuma diketahui pemiliknya, misalnya kontrol yang
 # bentrok dengan cara kerja panel tertentu.
 #
-# CATATAN: sampai yoructl 0.1.4, di sini tertulis bahwa server ber-aaPanel
-# atau CyberPanel harus mengisi LEWATI_KONTROL="K05" karena K05 cuma membuka
-# port 22. Itu sudah tidak berlaku. Sejak 0.1.5, K05 membaca port SSH dari
-# sshd sendiri dan menolak menyala selama masih ada port terbuka yang belum
-# dijawab pemilik - lihat PORT_DIIZINKAN di bawah. Melewati K05 berarti
-# server itu tidak punya firewall sama sekali, jadi jangan dipakai kecuali
-# memang terpaksa.
+# Server ber-panel tidak perlu melewati K05: cukup daftarkan port panelnya
+# di PORT_DIIZINKAN di bawah. Melewati K05 berarti server itu tidak punya
+# firewall sama sekali.
 LEWATI_KONTROL=""
 
 # Port yang boleh tetap terbuka dari internet selain port SSH, dipisah spasi.
@@ -160,8 +154,8 @@ LEWATI_KONTROL=""
 # Contoh isi:  PORT_DIIZINKAN="80 443 8888"
 #              80/443 web, 8888 aaPanel
 #
-# Boleh juga dikosongkan di sini dan dijawab pemilik lewat dashboard atau
-# Telegram; jawaban itu dicatat agent ke /var/lib/yoru/port-disetujui, satu
+# Boleh juga dikosongkan di sini dan dijawab pemilik lewat dashboard;
+# jawaban itu dicatat agent ke /var/lib/yoru/port-disetujui, satu
 # port per baris. Dua-duanya dibaca. Yang ditulis di berkas ini lebih kuat
 # karena agent tidak bisa menyuntingnya.
 PORT_DIIZINKAN=""

@@ -5,10 +5,10 @@
 # purpose: two demo implementations kept in parallel will behave differently
 # one day, and the person who finds the difference is usually mid-presentation.
 #
-#   bash demo.sh            nyalakan di http://127.0.0.1:8000
-#   bash demo.sh 9000       ganti port
-#   bash demo.sh --bersih   hapus database demo, mulai dari nol
-#   bash demo.sh --luar     biar bisa dibuka dari komputer lain
+#   bash demo.sh            start at http://127.0.0.1:8000
+#   bash demo.sh 9000       another port
+#   bash demo.sh --bersih   wipe the demo database first
+#   bash demo.sh --luar     reachable from other computers too
 #
 # Windows has no bash. This does the same thing:
 #   cd web

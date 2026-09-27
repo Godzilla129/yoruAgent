@@ -24,7 +24,7 @@ mengecek apakah masih seperti yang disepakati.
 ```mermaid
 flowchart TD
     P["Pemilik server"] <--> UI["Dashboard / Bot Telegram"]
-    UI <--> A["Agent Hermes<br/>menimbang dan menjelaskan"]
+    UI <--> A["Agent (yoru-agent)<br/>menimbang dan menjelaskan"]
     A -- baca --> K["Katalog YAML<br/>10 kontrol, milik root"]
     A -- minta tindakan --> D["yoructl<br/>satu-satunya jalur ke root"]
     D -- periksa / terapkan --> S["Server"]
@@ -70,7 +70,7 @@ benar-benar aktif.
 | `K06` | Cuma port yang dipakai yang boleh terbuka | BERISIKO | 2.1.22 (sebagian) |
 | `K07` | Pembaruan keamanan otomatis | AMAN | 1.2.2.1 (sebagian) |
 | `K08` | Jejak audit aktif (auditd) | AMAN | Level 2, bukan L1 |
-| `K09` | Log tersimpan permanen dan tidak membanjiri disk | AMAN | 6.1.2.4, 6.1.2.3, 6.1.1.3 |
+| `K09` | Log tersimpan permanen dan tidak membanjiri disk | AMAN | 6.1.2.4, 6.1.2.3, 6.1.1.3, 6.1.1.1 |
 | `K10` | Setelan kernel jaringan | AMAN | 3.3.3 sampai 3.3.6, 3.3.8 sampai 3.3.11 |
 
 Nomor CIS di atas dicocokkan satu per satu ke berkas audit
@@ -326,7 +326,8 @@ installer tidak menanyakan apa pun, lalu di akhir menyebut apa saja yang
 masih kosong, misalnya token Telegram atau model AI.
 
 Flag lama yang berbahasa Indonesia (`--pemilik`, `--tanpa-dashboard`,
-`--tanpa-tanya`, `--copot`) masih diterima, jadi skrip lama tidak rusak.
+`--tanpa-tanya`, `--periksa-saja`, `--copot`) masih diterima, jadi skrip lama
+tidak rusak.
 
 Kalau kamu perhatikan, tidak ada cara pasang model `curl ... | sudo bash`.
 Itu memang lebih ringkas, tapi ini alat keamanan. Menyuruh orang menyalurkan
@@ -460,9 +461,9 @@ menyunting catatan tindakannya sendiri.
 
 ## Catatan untuk yang membaca kodenya
 
-Bahasanya memang masih campur. Nama fungsi dan variabel pakai bahasa
-Inggris, begitu juga kolom SQLite dan sebagian besar field di laporan JSON.
-Yang masih bahasa Indonesia:
+Bahasanya memang masih campur. Nama fungsi, variabel, dan komentar di kode
+pakai bahasa Inggris, begitu juga kolom SQLite dan sebagian besar field di
+laporan JSON. Yang masih bahasa Indonesia:
 
 - Empat nama tindakan: `periksa`, `terapkan`, `kembalikan`, `verifikasi`.
 - Kata status: `LULUS`, `GAGAL`, `DILEWATI`, `DITOLAK`, `DIKEMBALIKAN`,
@@ -474,10 +475,15 @@ Yang masih bahasa Indonesia:
 - Sebagian kunci di `/etc/yoru/yoru.conf`: `NAMA_SERVER`, `JAM_PENJAGAAN`,
   `ZONA_WAKTU`, `LEWATI_KONTROL`, `PORT_DIIZINKAN`.
 - Pilihan baris perintah `yoru-agent` (`--siklus`, `--kering`, dan
-  lainnya) dan `--paksa` di `yoructl`.
+  lainnya), serta `konfigurasi` dan `--paksa` di `yoructl`.
 - Beberapa nama file: `/etc/yoru/pemilik`, `/var/log/yoru/tindakan.log`,
-  `/var/lib/yoru/port-disetujui`.
-- Semua kalimat yang dibaca pemilik server.
+  `/var/lib/yoru/laporan-terakhir.json`, `/var/lib/yoru/port-disetujui`,
+  dan isi `/var/backups/yoru/` (`tercatat`, `keadaan.json`, `berkas/`).
+- Komentar di `examples/yoru.conf.example`, unit systemd, aturan sudoers,
+  dan `.gitattributes`.
+- Seluruh `examples/api_yoructl.py`, termasuk nama fungsi dan variabelnya.
+- Semua kalimat yang dibaca pemilik server, kecuali keluaran installer dan
+  penghubung Gemini, yang bahasa Inggris.
 
 Nama tindakan, kata status, dan field JSON dipakai bareng oleh `yoructl`,
 agent, dan dashboard, dan bentuknya tertulis di `contract/report.md`. Kalau
@@ -505,8 +511,8 @@ Ini masih versi awal. Yang belum ada, ditulis apa adanya:
   berpengaruh karena kernel memakai nilai maksimum antara `all` dan
   per-kartu, dan mode ketat bisa memutus lalu lintas yang jalurnya tidak
   simetris.
-- **Model baru dipakai di satu tempat.** Yoru menyambung ke Hermes lewat
-  `HERMES_URL`, dan sejauh ini modelnya cuma dipakai untuk satu hal: menilai
+- **Model baru dipakai di satu tempat.** Agent menyambung ke model lewat
+  alamat di `HERMES_URL`, dan sejauh ini modelnya cuma dipakai untuk satu hal: menilai
   port terbuka yang belum dijawab pemilik. Sisa kalimat di laporan masih diambil
   apa adanya dari katalog. Itu disengaja untuk sekarang: laporan tidak boleh
   gagal keluar cuma karena satu panggilan API, jadi tiap tambahan harus punya
@@ -514,6 +520,11 @@ Ini masih versi awal. Yang belum ada, ditulis apa adanya:
 - **Notifikasi Telegram belum diuji dengan bot sungguhan.** Kodenya jalan dan
   sudah diuji dengan server tiruan, tapi belum pernah dikirim ke Telegram
   beneran.
+- **Jawaban di panel drift belum dikerjakan dengan benar.** "Ini memang
+  saya" baru disimpan, belum dijadikan patokan baru, jadi kontrolnya tetap
+  tercatat GAGAL. "Kembalikan" menjalankan `yoructl kembalikan`, yang
+  membatalkan setelan Yoru, padahal maksud tombolnya memasang lagi setelan
+  yang aman.
 - **`kembalikan` pada K05 mengosongkan firewall, bukan memulihkannya.**
   Perintahnya `ufw reset`, jadi aturan yang dipasang sendiri oleh pemilik
   server ikut terhapus. ufw mengarsipkan berkasnya lebih dulu ke

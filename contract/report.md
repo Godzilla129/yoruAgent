@@ -174,9 +174,12 @@ yang jadi bukti cuma pembacaan ulang keadaan efektif.
 kalau memang tidak ada jejaknya.
 
 `owner_decision` isinya `null` (belum dijawab), `"sah"` (berarti ini
-perubahan yang disengaja, jadikan patokan baru), atau `"kembalikan"`.
+perubahan yang disengaja, jadikan patokan baru), atau `"kembalikan"` (pasang
+lagi setelan yang aman).
 
-Jawaban di field inilah yang memperbarui baseline. Ini engsel yang
+Jawaban di field inilah yang memperbarui baseline. **Belum sesuai kode:**
+agent belum pernah mengisi field ini, jawaban `sah` baru disimpan, dan
+`kembalikan` masih menjalankan `yoructl kembalikan`. Ini engsel yang
 menyambungkan Siklus Perbaikan dengan Siklus Penjagaan. Tanpa itu, Yoru
 cuma jadi alarm yang bunyi terus dan lama-lama diabaikan.
 
