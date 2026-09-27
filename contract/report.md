@@ -1,15 +1,14 @@
 # Kontrak Laporan Yoru, versi 1
 
-Dokumen ini menjelaskan satu-satunya bentuk data yang dipakai bersama oleh
-tiga lane. Selama bentuknya stabil, kita bertiga bisa kerja sendiri-sendiri
-tanpa server bersama dan tanpa saling menunggu jawaban.
+Dokumen ini menjelaskan bentuk laporan yang dipakai bersama oleh tiga bagian
+Yoru:
 
-- **Lane 3 (agent)** yang menghasilkan file ini
-- **Lane 2 (dashboard + bot)** yang membacanya
-- **Lane 1 (dispatcher)** yang mengisi `observed` dan `result`
+- **agent** (`bin/yoru-agent`) yang menyusunnya
+- **yoructl** (`bin/yoructl`) yang jawabannya mengisi `observed` dan `result`
+- **dashboard dan bot** (`web/`) yang membacanya
 
-Kalau ada field yang kurang atau artinya membingungkan, bahas di grup dulu.
-Mengubahnya sendiri berarti memecahkan kode dua orang lain tanpa mereka tahu.
+Kalau satu field berubah, ketiganya harus ikut berubah. Karena itu bentuknya
+ditulis di sini, bukan cuma di kode.
 
 ---
 
@@ -17,7 +16,7 @@ Mengubahnya sendiri berarti memecahkan kode dua orang lain tanpa mereka tahu.
 
 ```
 /var/lib/yoru/laporan-terakhir.json     selalu ditimpa, ini yang dibaca dashboard
-/var/lib/yoru/riwayat/<ISO8601>.json    arsip, tidak dihapus otomatis
+/var/lib/yoru/history/<ISO8601>.json    arsip, tidak dihapus otomatis
 ```
 
 Kedua folder itu dibuat oleh `install.sh` dan dimiliki `yoru-agent` dengan izin
@@ -30,15 +29,16 @@ Kalau ada proses lain di server yang perlu membaca laporan langsung dari
 disk, masukkan penggunanya ke grup `yoru-agent`. Jangan melonggarkan izin
 foldernya.
 
-Selama pengembangan, Lane 2 cukup pakai dua contoh ini di repo:
+Untuk mencoba tampilan tanpa server, pakai dua contoh ini:
 
 ```
 examples/report-fix.json      siklus perbaikan, server sakit, skor 10
 examples/report-watch.json    siklus penjagaan, server sehat, ada satu drift
 ```
 
-Jangan menunggu server nyata untuk mulai membangun tampilan. Bentuknya sudah
-sama persis.
+Field-nya sama dengan laporan dari server sungguhan. Isinya dibuat tangan,
+jadi beberapa nilai `observed` ditulis lebih rapi daripada keluaran yoructl,
+dan status `SEBAGIAN` di situ belum pernah keluar dari server sungguhan.
 
 ---
 
@@ -49,7 +49,7 @@ sama persis.
 | Field | Tipe | Arti |
 |---|---|---|
 | `contract_version` | string | `"1"` untuk sekarang. Naik kalau bentuknya berubah |
-| `yoru_version` | string | Versi paket, misal `"0.1.0"` |
+| `yoru_version` | string | Versi yoructl yang memeriksa, misal `"0.2.0"` |
 | `server` | objek | Identitas mesin |
 | `time` | string | ISO 8601 **berikut zona waktunya** |
 | `cycle` | string | `"perbaikan"` atau `"penjagaan"` |
@@ -83,13 +83,14 @@ dicatat di katalog, misalnya aaPanel yang butuh port 8888 tetap terbuka.
 `score` dihitung dari `lulus / total × 100`, dibulatkan. Ini angka besar yang
 pertama kali dilihat orang saat membuka dashboard.
 
-### `kontrol[]`
+### `controls[]`
 
 | Field | Tipe | Arti |
 |---|---|---|
 | `id` | string | `"K01"` sampai `"K10"` |
 | `name` | string | Nama kontrol, apa adanya dari katalog |
-| `category` | string | `ssh`, `firewall`, `jaringan`, `log`, `audit`, `pembaruan` |
+| `cis_code` | string | Nomor CIS dari katalog, atau `TIDAK_ADA_DI_CIS_L1...` |
+| `category` | string | `ssh`, `firewall`, `jaringan`, `log`, `audit`, `pembaruan` (atau `lain` kalau katalog tidak menyebut) |
 | `risk` | string | `AMAN`, `BERISIKO`, `BERBAHAYA` |
 | `status` | string | `LULUS`, `GAGAL`, `SEBAGIAN`, `DILEWATI`, `ERROR` |
 | `observed` | string | Yang benar-benar ada di server sekarang |
@@ -98,6 +99,7 @@ pertama kali dilihat orang saat membuka dashboard.
 | `breaks_if_applied` | string | Konsekuensinya. Harus terlihat sebelum tombol setuju |
 | `needs_approval` | bool | `true` untuk BERISIKO dan BERBAHAYA |
 | `blockers` | array | Kosong kalau aman. Kalau terisi, kontrol ini tidak boleh ditawarkan |
+| `ai_note` | string / `null` | Kalimat dari model AI. Sekarang cuma untuk K05, dan cuma ditampilkan |
 | `result` | objek / `null` | Baru terisi setelah kontrolnya dijalankan |
 
 Contoh satu entri:
@@ -106,20 +108,22 @@ Contoh satu entri:
 {
   "id": "K01",
   "name": "Root tidak bisa login lewat SSH",
+  "cis_code": "5.1.20",
   "category": "ssh",
   "risk": "BERISIKO",
-  "status": "SEBAGIAN",
+  "status": "GAGAL",
   "observed": "without-password",
   "target": "no",
   "why": "Kalau akun root bisa login langsung dari internet, penyerang cuma perlu menebak satu password untuk menguasai seluruh server.",
   "breaks_if_applied": "Script otomatis yang selama ini login sebagai root akan berhenti jalan, misalnya tool backup atau deploy.",
   "needs_approval": true,
   "blockers": [],
+  "ai_note": null,
   "result": null
 }
 ```
 
-### `kontrol[].hasil` (terisi setelah dijalankan)
+### `controls[].result` (terisi setelah dijalankan)
 
 ```json
 {
@@ -134,9 +138,11 @@ Contoh satu entri:
 }
 ```
 
-`action` isinya `"terapkan"`, `"kembalikan"`, atau `"lewati"`.
+`action` isinya `"terapkan"`, `"kembalikan"`, atau `"lewati"`. Bentuk di atas
+yang ditulis agent. Kalau tindakannya dijalankan dari tombol dashboard, isinya
+lebih pendek: `action`, `status`, `message`, dan `time`.
 
-Satu hal yang tidak bisa ditawar: **`berhasil: true` hanya boleh diisi kalau
+Satu hal yang tidak bisa ditawar: **`ok: true` hanya boleh diisi kalau
 `diverifikasi: true`.** Kalau verifikasinya tidak dijalankan atau gagal,
 `ok` wajib `false`.
 
@@ -200,8 +206,8 @@ boleh dipercaya menyentuh server orang.
 
 ## Kalau kontrak ini perlu berubah
 
-Naikkan `contract_version`, kabari dua lane lain, dan simpan contoh JSON versi
-lama di `examples/`. Jangan mengganti arti sebuah field tanpa menaikkan versi.
+Naikkan `contract_version`, ubah agent dan dashboard di commit yang sama, dan
+simpan contoh JSON versi lama di `examples/`. Jangan mengganti arti sebuah field tanpa menaikkan versi.
 
 ---
 
@@ -209,23 +215,25 @@ lama di `examples/`. Jangan mengganti arti sebuah field tanpa menaikkan versi.
 
 ### Satu perintah, dua argumen
 
-Tidak ada 40 skrip terpisah. Ada satu dispatcher, dan pemetaannya sudah 1:1:
+Tidak ada 40 skrip terpisah. Ada satu dispatcher. Tombol di dashboard
+memanggil `POST /api/run`, dan API meneruskannya apa adanya:
 
 ```
-POST /kontrol/K01/periksa      →   yoructl K01 periksa
-POST /kontrol/K01/terapkan     →   yoructl K01 terapkan
-POST /kontrol/K01/kembalikan   →   yoructl K01 kembalikan
-POST /kontrol/K01/verifikasi   →   yoructl K01 verifikasi
+{"control": "K01", "action": "periksa"}      →   yoructl K01 periksa
+{"control": "K01", "action": "terapkan"}     →   yoructl K01 terapkan
+{"control": "K01", "action": "kembalikan"}   →   yoructl K01 kembalikan
+{"control": "K01", "action": "verifikasi"}   →   yoructl K01 verifikasi
 ```
 
-Kontrolnya `K01` sampai `K10`, tindakannya empat itu saja. Keluarannya satu
-baris JSON, langsung bisa diteruskan sebagai isi respons.
+Kontrolnya `K01` sampai `K10`, tindakannya empat itu saja. `action` juga
+menerima nama tombolnya: `audit`, `hardening`, dan `rollback`. Keluaran
+yoructl satu baris JSON, dan itu yang dikirim balik sebagai respons.
 
 Sengaja satu berkas, bukan empat puluh. Alasannya ada tiga: logika bersamanya
 tidak perlu diduplikasi empat puluh kali, izin sudoers tetap satu baris yang
 bisa dibaca siapa pun, dan pemeriksaan-diri dispatcher cukup dijalankan
-sekali. Satu bug yang kami temukan minggu ini butuh satu perbaikan. Kalau
-sudah terpecah, butuh empat puluh, dan kemungkinan besar hanya ketemu di satu.
+sekali. Satu bug cukup diperbaiki di satu tempat. Kalau dipecah, perbaikannya
+harus diulang empat puluh kali, dan biasanya yang ketemu cuma satu.
 
 ### Satu tindakan menulis pada satu waktu
 
@@ -296,8 +304,8 @@ belum pernah dijawab pemilik, berikut nama prosesnya:
 Port SSH tidak pernah muncul di sini (dicari sendiri dari `sshd -T`), begitu
 juga port yang cuma mendengar di `127.0.0.1` atau `[::1]`.
 
-**Yang harus dikerjakan agent:** tanyakan tiap port ke pemilik (misalnya "port
-8888 terbuka dipakai python3, itu panel kamu?"), lalu tulis yang dijawab "iya" ke:
+**Jalan jawabannya:** pemilik menekan "Punya saya" di dashboard, lalu agent
+mengambil jawaban itu di siklus berikutnya dan menuliskannya ke:
 
 ```
 /var/lib/yoru/port-disetujui      satu port per baris, boleh diberi "# keterangan"
@@ -327,7 +335,7 @@ baris tanpa perlu menebak format. Berkas per kontrol ada supaya "riwayat K05"
 tidak perlu menyaring berkas gabungan.
 
 ```json
-{"time":"2026-09-07T13:22:11+07:00","version":"0.1.3","caller":"yoru-agent",
+{"time":"2026-09-07T13:22:11+07:00","version":"0.2.0","caller":"yoru-agent",
  "id":"K05","action":"terapkan","status":"LULUS","ok":true,
  "value":"active","message":null}
 ```
@@ -337,16 +345,16 @@ tidak perlu menyaring berkas gabungan.
 | `time` | ISO 8601 berikut zona |
 | `version` | versi yoructl yang menjalankan |
 | `caller` | pengguna yang memanggil lewat sudo |
-| `id` | `K01` sampai `K10` |
-| `action` | `periksa`, `terapkan`, `kembalikan`, `verifikasi` |
-| `status` | `LULUS`, `GAGAL`, `DIKEMBALIKAN`, `DILEWATI`, `DITOLAK`, `ERROR`, `PERINGATAN` |
+| `id` | `K01` sampai `K10`, atau `konfigurasi` untuk perubahan setelan |
+| `action` | `periksa`, `terapkan`, `kembalikan`, `verifikasi`, atau `set` untuk setelan |
+| `status` | `LULUS`, `GAGAL`, `DIKEMBALIKAN`, `DILEWATI`, `DITOLAK`, `ERROR`, `PERINGATAN`, `DISIMPAN` |
 | `ok` | bool. `false` berarti perintahnya sendiri bermasalah |
 | `value` | keadaan yang terbaca, atau `null` |
 | `message` | keterangan, atau `null` |
 
-Folder ini milik root dan agent tidak bisa menulis ke sini, karena alat
-keamanan tidak boleh bisa menyunting jejaknya sendiri. Berkasnya `640`, jadi bacanya
-lewat root.
+Foldernya `root:yoru-agent` dengan izin `2750`, berkasnya `640`. Agent dan
+dashboard (yang jalan sebagai agent) bisa membacanya, tapi tidak bisa
+menulisnya, karena alat keamanan tidak boleh bisa menyunting jejaknya sendiri.
 
 ### Rekaman keadaan asal
 
