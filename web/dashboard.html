@@ -261,6 +261,7 @@ tr:hover td.actions .btn:not(:disabled){border-color:var(--line-soft)}
 .form-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
 .note{margin-top:12px;font-size:12.5px;line-height:1.6}
 .note.ok{color:var(--pass)} .note.bad{color:var(--fail)} .note.busy{color:var(--muted)}
+.note.wait{color:var(--warn)} .note.status{margin:0 0 16px}
 .footnote{padding-top:16px;margin-top:16px;border-top:1px solid var(--line-soft);
   font-size:11.5px;color:var(--faint);line-height:1.6}
 
@@ -908,7 +909,7 @@ const SETTINGS = [
      {key:'TELEGRAM_TOKEN', label:'Token bot', secret:true,
       hint:'Dari @BotFather: /newbot, lalu salin utuh barisnya. Bentuknya angka, titik dua, lalu huruf-angka.'},
      {key:'TELEGRAM_CHAT_ID', label:'Chat ID (boleh dikosongkan)',
-      hint:'Kosongkan saja — Yoru mencarinya sendiri begitu kamu kirim /start ke botmu.'}]},
+      hint:'Biasanya terisi sendiri begitu kamu kirim /start beserta kode sambung ke botmu. Isi manual cuma kalau botnya yang meminta.'}]},
 
   {id: 'model', title: 'Model AI',
    intro: 'Yoru bertanya ke sebuah server model di dalam server ini lewat alamat di bawah. Kunci API TIDAK disimpan di sini — dia tinggal di berkas lain yang tidak bisa dibaca agent. Kosong = Yoru tetap jalan, kalimat penjelasannya diambil dari katalog.',
@@ -935,6 +936,19 @@ const SETTINGS = [
       hint:'Contoh: Asia/Jakarta. Dipakai untuk jam pemindaian dan semua jam di laporan.'}]},
 ];
 
+// The bot points an unpaired owner at this page for the code, so it must be
+// shown here - not only on an installer screen that has long scrolled away.
+function telegramStatus(config) {
+  if (!(config.TELEGRAM_TOKEN || {}).set) return '';
+  const chat = (config.TELEGRAM_CHAT_ID || {}).value || '';
+  const code = config._kode_sambung || '';
+  if (chat) return `<div class="note ok status">Tersambung ke chat <code>${esc(chat)}</code>.</div>`;
+  if (code) return `<div class="note wait status">Belum tersambung. Buka bot kamu di Telegram, lalu kirim sekali:
+    <code>/start ${esc(code)}</code></div>`;
+  return `<div class="note wait status">Belum tersambung. Kirim <code>/start</code> ke bot kamu —
+    dia akan membalas dengan chat ID yang perlu diisi di bawah.</div>`;
+}
+
 async function settingsPage(gen) {
   $('meta').textContent = '';
   $('content').innerHTML = `<div class="panel"><div class="empty">memuat setelan…</div></div>`;
@@ -959,6 +973,7 @@ async function settingsPage(gen) {
       <div class="head"><h2>${esc(sec.title)}</h2></div>
       <div class="form">
         <p class="intro">${esc(sec.intro)}</p>
+        ${sec.id === 'telegram' ? telegramStatus(config) : ''}
         ${sec.fields.map(f => fieldHtml(f, config[f.key] || {})).join('')}
         <div class="form-actions"><button class="btn primary" data-save="${sec.id}">Simpan</button></div>
         <div class="note" id="note_${sec.id}"></div>
