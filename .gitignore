@@ -1,10 +1,11 @@
 __pycache__/
 *.pyc
 .env
+.venv/
+.venv-*/
 *.log
 var/
 web/yoru.db
 web/yoru.db-*
-__pycache__/
-Claude outputs/
 web/yoru-demo.conf
+Claude outputs/
