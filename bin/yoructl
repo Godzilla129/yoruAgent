@@ -15,11 +15,8 @@ LOG_FILE="$LOG_DIR/tindakan.log"
 # state from before Yoru touched anything; /var/backups is root-owned.
 BASELINE_DIR=/var/backups/yoru
 
-# ------------------------------------------------------------------- lock
-# two writers on one control race: in K06 one process writes the file and
-# restarts mariadb while the other deletes it and restarts, and both report
-# success. one lock for all ten - the controls share files (K01-K04 write
-# sshd_config.d, K05 and K10 both edit /etc/default/ufw). /run/lock is tmpfs.
+# one lock for all ten: two writers race and both report success, and the controls
+# share files (K01-K04 sshd_config.d, K05 and K10 /etc/default/ufw). /run/lock is tmpfs.
 LOCK_FILE=/run/lock/yoru.lock
 LOCK_WAIT=120
 
@@ -33,7 +30,7 @@ take_lock() {
   return 0
 }
 
-# ------------------------------------------------------------------ output
+# output
 value=""; message=""
 
 finish() {  # finish <status> <ok> [value] [message]
@@ -78,7 +75,6 @@ append_log() {  # append_log <file> <line>
 
 refuse() { KID="${KID:-?}"; ACTION="${ACTION:-?}"; finish "DITOLAK" "false" "" "$1"; }
 
-# --------------------------------------------------------------- self check
 # writable by non-root = the agent could rewrite it and run it through sudo.
 root_owned_only() {
   local path="$1" owner mode
@@ -99,10 +95,8 @@ self_check() {
   done
 }
 
-# ------------------------------------------------------------------ helpers
-# without /run/sshd, both `sshd -T` and `sshd -t` refuse to run. on ubuntu 24.04
-# ssh.socket starts sshd but /run/sshd comes from ssh.service RuntimeDirectory,
-# so a freshly booted box has none and K01-K05 all report ERROR.
+# sshd -T and sshd -t refuse to run without /run/sshd, which on ubuntu 24.04 only
+# ssh.service creates - a fresh boot has none and K01-K05 would all report ERROR.
 ensure_run_sshd() {
   [ -d /run/sshd ] && return 0
   command -v sshd >/dev/null 2>&1 || return 1
@@ -111,8 +105,7 @@ ensure_run_sshd() {
   chmod 0755 /run/sshd 2>/dev/null
 }
 
-# sshd's own failure reason, not a guess: an earlier version guessed
-# "openssh-server not installed" and was wrong in the common case.
+# sshd's own failure reason, never a guess about it.
 sshd_error_reason() {
   command -v sshd >/dev/null 2>&1 || {
     printf 'sshd tidak ada - openssh-server belum terpasang'; return 0; }
@@ -149,9 +142,8 @@ remove_ssh_dropin() {
 
 sshd_get() { sshd -T 2>/dev/null | awk -v k="^$1\$" '$1 ~ k {print $2; exit}'; }
 
-# do NOT rewrite as "cmd | grep -q text": under pipefail grep -q closes the pipe
-# on match, upstream dies of SIGPIPE (141), and a successful match reads as
-# failure. matching is literal, not regex - patterns hold "(" and "." (K02.yaml).
+# never "cmd | grep -q": under pipefail the early close kills cmd (141) and a
+# match reads as failure. literal match, not regex - patterns hold "(" and ".".
 output_has() {  # output_has <literal-text> <command...>
   local text="$1"; shift
   local out
@@ -173,7 +165,6 @@ install_pkg() {  # install_pkg <package>
   return 1
 }
 
-# ------------------------------------------------------- hard preconditions
 # re-checked here even though the agent checks too; the agent is not a boundary.
 other_sudo_user_exists() {
   local user members
@@ -222,7 +213,6 @@ ssh_key_blocker() {
     return 0; }
 }
 
-# ---------------------------------------------------------- everyone on the box
 # turning off password login also locks out every other account without a key.
 
 # whole setting, not just the first word - allowusers can hold many names. works
@@ -280,10 +270,8 @@ users_without_key() {
   done < <(getent passwd)
 }
 
-# ------------------------------------------------------- baseline recording
-# on the first terapkan, copy the files the control touches and read the live
-# state. kembalikan restores our default, not this server's original value -
-# this closes that gap. files, not a database: readable from an emergency shell.
+# first terapkan per control: copy the files it touches and record the live state.
+# kembalikan does not restore from here yet. plain files, readable from a rescue shell.
 
 control_paths() {  # the files each control touches
   case "$1" in
@@ -338,11 +326,8 @@ record_baseline() {
   return 0
 }
 
-# ---------------------------------------------------------------- idempotence
-# terapkan twice must not repeat the work - K06 restarts mariadb on every call.
-# skip only when BOTH hold: our own drop-in has exactly the expected content,
-# AND the effective state matches. condition 2 alone is a hole - the right value
-# may come from someone else's file that later disappears. one setting, one owner.
+# terapkan twice must not redo the work (K06 restarts mariadb). skip only when our own
+# file matches AND the live state does - the value may come from a file that later goes.
 file_is() {  # file_is <file> <expected-content>
   [ -f "$1" ] || return 1
   [ "$(cat "$1" 2>/dev/null)" = "$2" ]
@@ -361,7 +346,7 @@ SystemMaxUse=500M
 SystemKeepFree=1G
 MaxRetentionSec=1month"
 
-# --------------------------------------------------------------- the controls
+# the ten controls
 k01() { case "$1" in
   periksa|verifikasi) value=$(sshd_get permitrootlogin)
     require_sshd_value "$value"
@@ -434,11 +419,10 @@ k04() { local weak; case "$1" in
     finish DIKEMBALIKAN true "mac_sha1=$(sshd -T 2>/dev/null | grep -E '^macs ' | grep -c 'sha1')" ;;
 esac }
 
-# the SSH port is read from sshd, never assumed to be 22 - providers move it
-# (CloudBaik uses 4422). sshd -T prints one "port <n>" line per port.
+# the SSH port is read from sshd, never assumed to be 22 - many providers move it.
+# sshd -T prints one "port <n>" line per port.
 ssh_ports() { sshd -T 2>/dev/null | awk '/^port /{print $2}'; }
 
-# ---------------------------------------------------------- other open ports
 # a deny-all firewall also closes web and panel ports. the numbers are not
 # memorised (8888 aaPanel, 8090 CyberPanel) - they are read from ss, like ssh.
 
@@ -536,7 +520,7 @@ k05() { local p ports heard approved pending other; case "$1" in
   periksa|verifikasi)
     command -v ufw >/dev/null 2>&1 || finish ERROR false "" "ufw tidak terpasang - tidak bisa diperiksa"
 
-    # the unanswered-port list rides along in "message" - Hermes asks the owner.
+    # the unanswered-port list rides along in "message" - the agent asks the owner.
     pending="$(unapproved_ports "$(ssh_ports)" "$(approved_ports)")"
     [ -z "$pending" ] || pending="port terbuka belum dijawab pemilik: $pending"
 
@@ -659,8 +643,8 @@ k08() { local n; case "$1" in
 esac }
 
 K09_FILE=/etc/systemd/journald.conf.d/99-yoru-k09.conf
-# journald prints whatever unit fits - M here, G on a big-disk server. matching
-# only M made the reading come back empty on a large VPS and read as a verdict.
+# journald prints whatever unit fits (M, or G on a big disk); matching only M
+# came back empty on large servers and read as a verdict.
 k09_journal_cap() { journalctl -b -t systemd-journald --no-pager 2>/dev/null | grep -oE 'max [0-9.]+[KMGT]' | tail -1; }
 k09() { case "$1" in
   periksa|verifikasi) value=$(k09_journal_cap)
@@ -718,9 +702,8 @@ k10() { case "$1" in
     file_is "$K10_FILE" "$K10_BODY" && k10_ok "$(k10_read)" && output_has '#yoru-k10#IPT_SYSCTL=' cat /etc/default/ufw \
       && finish DILEWATI true "$(k10_read)" "sudah diterapkan - sysctl tidak dimuat ulang"
     printf '%s\n' "$K10_BODY" > "$K10_FILE"; chmod 644 "$K10_FILE"
-    # ufw re-applies its own sysctl on every start and puts log_martians back to
-    # 0, so ufw is taken out of the sysctl business. the marker goes in FRONT and
-    # nothing is appended - the original value is all kembalikan has to restore.
+    # ufw re-applies its own sysctl on start and resets log_martians, so its line is
+    # commented out behind a marker; kembalikan only has to strip the marker.
     if grep -q '^IPT_SYSCTL=' /etc/default/ufw 2>/dev/null; then
       sed -i 's|^IPT_SYSCTL=|#yoru-k10#IPT_SYSCTL=|' /etc/default/ufw
     fi
@@ -742,9 +725,8 @@ k10() { case "$1" in
     finish DIKEMBALIKAN true "$(k10_read)" ;;
 esac }
 
-# ------------------------------------------------------ settings from the web
-# only the keys listed below may be set from here, each shape-checked: the same
-# file holds DASHBOARD_TOKEN. the value is never logged, only the key name.
+# settings from the dashboard: only the keys below, each shape-checked, since the
+# same file holds DASHBOARD_TOKEN. the value is never logged, only the key name.
 config_set_line() {  # config_set_line <file> <key> <value>
   local file="$1" key="$2" val="$3" tmp
   tmp=$(mktemp) || return 1
@@ -768,9 +750,8 @@ config_set_line() {  # config_set_line <file> <key> <value>
   rm -f "$tmp"
 }
 
-# the schedule lives in the config file AND in the systemd timer; writing only
-# the file leaves the timer firing at the old hour with nothing to say so. only
-# the OnCalendar= line is rewritten - the rest of the unit belongs to install.sh.
+# the schedule is in the config AND the timer; writing only the config leaves the
+# timer firing at the old hour. only OnCalendar= is rewritten, the rest is install.sh's.
 TIMER_UNIT=/etc/systemd/system/yoru-watch.timer
 
 apply_schedule() {  # apply_schedule -> prints what happened, never fails the write
@@ -780,9 +761,8 @@ apply_schedule() {  # apply_schedule -> prints what happened, never fails the wr
   [ -n "$tz" ] || tz="$(timedatectl show -p Timezone --value 2>/dev/null)"
   [ -n "$tz" ] || tz="UTC"
 
-  # re-checked: these came back out of a file that can be hand-edited between
-  # the write and this read. awk -v expands escape sequences, so a backslash-n
-  # in ZONA_WAKTU would land in the unit file as another systemd directive.
+  # re-checked: the file may be hand-edited, and a backslash-n in ZONA_WAKTU would
+  # land in the unit as another systemd directive.
   [[ "$at" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || {
     printf 'nilai tersimpan, tapi JAM_PENJAGAAN di berkas ("%s") bukan bentuk HH:MM - timer dibiarkan' "$at"
     return 0; }
@@ -874,7 +854,7 @@ set_config() {  # set_config <KEY> <value>
   finish DISIMPAN true "$key" "tersimpan di $file"
 }
 
-# ---------------------------------------------------------------------- main
+# main
 KID=""; ACTION=""; FORCE=0
 
 # settings path first: it takes three arguments and arg 2 is a key, not an action.
@@ -908,7 +888,7 @@ fi
 self_check
 ensure_run_sshd
 
-# the lock covers writing actions only - the daily watch cycle is all periksa.
+# only writing actions take the lock; periksa and verifikasi just read.
 case "$ACTION" in
   terapkan|kembalikan)
     take_lock

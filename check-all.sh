@@ -1,7 +1,6 @@
 #!/bin/bash
-# check-all.sh - check all ten Yoru controls at once
-# Run: sudo bash check-all.sh
-# This is the first version of Yoru's periksa() functions, still by hand.
+# check-all.sh - check all ten Yoru controls at once, with nothing installed
+# Run: sudo bash check-all.sh. Read-only; yoructl periksa is the real check.
 
 if [ "$EUID" -ne 0 ]; then echo "Harus dijalankan dengan sudo."; exit 1; fi
 
@@ -87,11 +86,8 @@ echo "  ------------------------------------------------------------"
 printf '  LULUS %d   GAGAL %d   DILEWATI %d\n' "$passed" "$failed" "$skipped"
 echo
 
-# Bonus drift signal: did the server die unexpectedly?
-#
-# No pipe into grep -q, on purpose. This script does not use pipefail yet, but
-# if anyone ever adds it, "command | grep -q" would read as a failure exactly
-# when the thing it looks for is found. yoructl already got bitten by that.
+# Extra: did the previous boot end without a clean shutdown?
+# No "| grep -q" on purpose - under pipefail a match would read as failure.
 last_boot=$(journalctl -b -1 -n 30 --no-pager 2>/dev/null)
 case "$last_boot" in
   *Stopping*|*"Shutting down"*|*"Reached target"*Shutdown*|*"Reached target"*Power*)

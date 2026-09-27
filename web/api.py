@@ -33,7 +33,7 @@ TOKEN = os.environ.get("YORU_TOKEN", "").strip()
 
 YORUCTL = os.environ.get("YORUCTL", "/opt/yoru/bin/yoructl")
 
-# K07/K08 run apt; on a slow link the download plus dpkg-lock wait exceeds the old 200s.
+# K07/K08 run apt; on a slow link the download plus the dpkg-lock wait takes minutes.
 TIME_LIMIT = int(os.environ.get("YORU_BATAS_WAKTU", "600"))
 
 LOG_DIR = Path(os.environ.get("YORU_LOG", "/var/log/yoru"))
@@ -78,7 +78,7 @@ def running_as_root() -> bool:
     return getattr(os, "geteuid", lambda: -1)() == 0
 
 
-# -------------------------------------------------------------------- storage
+# storage
 def db():
     conn = sqlite3.connect(DB_FILE, timeout=10)
     conn.row_factory = sqlite3.Row
@@ -143,7 +143,7 @@ def init_db():
 init_db()
 
 
-# ------------------------------------------------------------------- identity
+# identity
 def check_token(given: Optional[str]):
     if not TOKEN:
         return
@@ -201,7 +201,7 @@ def local_server_name() -> str:
     return (read_config().get("NAMA_SERVER") or "").strip() or socket.gethostname()
 
 
-# ------------------------------------------------------------------- telegram
+# telegram
 TELEGRAM_API = os.environ.get("TELEGRAM_API", "https://api.telegram.org")
 CALLBACK_RE = re.compile(r"^d\|(K(?:0[1-9]|10))\|([a-z]+)\|(.{1,100})$")
 
@@ -288,8 +288,7 @@ def status_text() -> str:
 
 
 async def handle_message(msg: Dict[str, Any], token: str, config: Dict[str, str]) -> None:
-    """A typed message. Without this Yoru is deaf: it used to ask Telegram for
-    button presses only, so /start never even arrived."""
+    """A typed message: /start with the pairing code, /status or /help."""
     chat = str((msg.get("chat") or {}).get("id") or "")
     kind = str((msg.get("chat") or {}).get("type") or "")
     text = (msg.get("text") or "").strip()
@@ -306,9 +305,8 @@ async def handle_message(msg: Dict[str, Any], token: str, config: Dict[str, str]
     allowed = str(config.get("TELEGRAM_CHAT_ID", "")).strip()
 
     if not allowed:
-        # A bot's username is public, so whoever sends /start first would
-        # otherwise own the approve buttons for someone else's server. The
-        # code the installer printed is what proves this is the owner.
+        # A bot's name is public: without the installer's code, whoever sends
+        # /start first would own the approve buttons for someone else's server.
         if word not in ("/start", "/mulai"):
             await say("Chat ini belum tersambung ke server mana pun.\n\n"
                       "Kirim:  /start <kode>\n\n"
@@ -432,7 +430,7 @@ async def telegram_loop() -> None:
                 pass
 
 
-# ------------------------------------------------------------------ endpoints
+# endpoints
 @app.post("/api/report")
 async def receive_report(req: Request, report: Dict[str, Any] = Body(...),
                          authorization: Optional[str] = Header(None)):
@@ -582,10 +580,8 @@ async def decisions_for_agent(req: Request, server: Optional[str] = None,
             "approved_ports": [r["port"] for r in ports]}
 
 
-# -------------------------------------------------------- running via yoructl
+# running via yoructl
 # A dispatcher older than this dashboard answers with the pre-rename keys.
-# Without this the page shows a status and a contradictory summary side by
-# side, which reads as a bug in the server rather than a version mismatch.
 OLD_KEYS = {"versi": "version", "tindakan": "action", "berhasil": "ok",
             "nilai": "value", "pesan": "message"}
 
@@ -614,9 +610,8 @@ async def run_yoructl(kid: str, action: str) -> Dict[str, Any]:
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=TIME_LIMIT)
     except asyncio.TimeoutError:
-        # Process deliberately NOT killed: it may be apt (K07/K08), and killing it
-        # mid-install leaves dpkg half-done. Message is set explicitly because
-        # str(asyncio.TimeoutError()) is empty.
+        # Not killed on purpose: it may be apt (K07/K08), and killing it leaves dpkg
+        # half-done. str(asyncio.TimeoutError()) is empty, hence the explicit message.
         return {"id": kid, "action": action, "status": "MENUNGGU", "ok": False,
                 "value": None,
                 "message": f"sudah {TIME_LIMIT} detik dan belum selesai - biasanya apt "
@@ -703,7 +698,7 @@ def refresh_stored_report(kid: str, result: Dict[str, Any]):
         return
 
 
-# ------------------------------------------------------------------- settings
+# settings
 @app.get("/api/config")
 async def read_settings(req: Request, authorization: Optional[str] = Header(None)):
     require_access(req, authorization)

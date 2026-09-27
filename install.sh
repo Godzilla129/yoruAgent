@@ -1,16 +1,10 @@
 #!/bin/bash
 # install.sh - the Yoru installer
 #
-# It runs in five parts: check this server, ask what is needed, install,
-# verify, report. Every question comes before anything is written, so once
-# the install starts it runs to the end without stopping to ask.
+# Five parts: check, ask, install, verify, report. Every question comes before
+# anything is written. Safe to run again: each step looks at the current state.
 #
-# This script is deliberately NOT designed for "curl ... | sudo bash". We are a
-# security product; telling people to pipe a script from the internet straight
-# into sudo bash is the exact habit we are trying to end. Download it, read it,
-# then run it.
-#
-# Safe to run again - every step looks at the current state first.
+# Not meant for "curl ... | sudo bash". Download it, read it, then run it.
 
 set -uo pipefail
 umask 022
@@ -19,7 +13,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 SRC="$(dirname "$(readlink -f "$0")")"
 
-# Read from the dispatcher, not repeated here - the two numbers drifted apart.
+# Read from the dispatcher, so the two version numbers cannot drift apart.
 VERSION="$(awk -F'"' '/^VERSION=/ {print $2; exit}' "$SRC/bin/yoructl" 2>/dev/null)"
 [ -n "$VERSION" ] || VERSION="unknown"
 
@@ -42,10 +36,8 @@ MODEL_ENV="$ETC_DIR/model.env"
 MODEL_BIN="$BIN_DIR/yoru-model-proxy"
 MODEL_UNIT="$SYSTEMD_DIR/yoru-model.service"
 
-# ------------------------------------------------------------------- printing
-# Four markers, nothing else: ok, !, x, and .. for something in progress. They
-# read the same with colour stripped, because half of these runs end up in a
-# pipe or a support ticket.
+# Four markers only - ok, !, x, and .. for work in progress - so the output still
+# reads with the colour stripped, in a pipe or a support ticket.
 if [ -t 1 ]; then
   RESET=$'\033[0m'; GREEN=$'\033[32m'; RED=$'\033[31m'
   AMBER=$'\033[33m'; BOLD=$'\033[1m'; DIM=$'\033[2m'
@@ -92,7 +84,6 @@ open_log() {
   note "--- yoru $VERSION $(date -Is 2>/dev/null) ---"
 }
 
-# ------------------------------------------------------------ read/write config
 # Never `source`: a value containing $(...) would run. Do not use -F= and then
 # edit $1 either - awk rebuilds $0 with spaces and every "=" on the line goes.
 config_get() {  # config_get <file> <key>
@@ -137,11 +128,8 @@ config_set() {  # config_set <file> <key> <value>
   rm -f "$tmp"
 }
 
-# ------------------------------------------------------------------ asking
-# The questions come as whiptail boxes when the terminal can draw them - the
-# same look as installing a database - and as plain prompts when it cannot.
-# Everything after the questions stays plain text, so an error can still be
-# copied out of the scrollback.
+# Questions come as whiptail boxes when the terminal can draw them, plain prompts
+# otherwise. Everything after them stays plain text, so errors can be copied out.
 dialog_ready() {
   [ "$INTERACTIVE" = yes ] || return 1
   [ -r /dev/tty ] || return 1
@@ -190,13 +178,10 @@ ask() {  # ask <label> <variable-name> [secret]
   printf -v "$__var" '%s' "$answer"
 }
 
-# =========================================================== 1. check the server
-# Nothing here writes. This whole section is what --check-only runs.
+# 1. Check the server. Nothing here writes; this is all --check-only runs.
 
-# Asked of the lock itself, not of the process list. Ubuntu keeps an
-# unattended-upgrade-shutdown process alive at all times, so matching on names
-# means waiting for a ghost on every single install. apt and dpkg lock with
-# fcntl, so that is what we test with.
+# Asked of the lock itself (fcntl, as apt and dpkg use), not the process list:
+# Ubuntu keeps an unattended-upgrade-shutdown process alive at all times.
 apt_locked() {
   python3 - <<'PY'
 import fcntl, os, sys
@@ -502,9 +487,7 @@ verdict() {
   exit 1
 }
 
-# ================================================================== 2. setup
-# Every question lives here, before a single byte is written. After this the
-# install runs to the end on its own.
+# 2. Setup. Every question lives here, before a single byte is written.
 
 MODEL_CHOICE="skip"
 MODEL_KEY=""
@@ -750,7 +733,7 @@ setup() {
   recap
 }
 
-# ================================================================= 3. install
+# 3. Install
 
 wait_for_apt() {
   apt_locked || return 0
@@ -772,9 +755,8 @@ APT_REFRESHED=no
 apt_refresh() {
   [ "$APT_REFRESHED" = yes ] && return 0
   APT_REFRESHED=yes
-  # An index that was never refreshed answers "Unable to locate package" for
-  # names that do exist. A third-party repo can make this fail while our own
-  # packages are perfectly reachable, so a failure here is only recorded.
+  # A never-refreshed index answers "Unable to locate package" for real names. A
+  # broken third-party repo can fail this while ours is fine, so it is only logged.
   run apt-get -o DPkg::Lock::Timeout=120 update || note "apt-get update reported errors"
 }
 
@@ -838,10 +820,8 @@ create_agent_user() {
     useradd --system --shell /usr/sbin/nologin --no-create-home "$AGENT" \
       || die "could not create the $AGENT user"
   fi
-  # In the sudo group it would inherit full rights and the sudoers restriction
-  # would mean nothing. No pipe, on purpose: under pipefail "id -nG | grep -qx
-  # sudo" reads as failure when grep matches and closes the pipe, so the check
-  # would PASS exactly when the agent really is in the sudo group.
+  # In the sudo group the sudoers restriction means nothing. No pipe: under pipefail
+  # "id -nG | grep -qx sudo" reads as failure exactly when grep matches.
   local groups
   groups=" $(id -nG "$AGENT" 2>/dev/null) "
   case "$groups" in
@@ -854,9 +834,8 @@ create_dirs() {
   install -d -o root -g root -m 755 "$BIN_DIR" "$CATALOG_DIR" "$ETC_DIR" \
     || die "could not create the program folders"
 
-  # 2750: setgid, so logs root writes here inherit the yoru-agent group and the
-  # dashboard - which runs as the agent - can READ the trail. No group write
-  # bit, so the agent still cannot edit or delete its own record.
+  # 2750: setgid, so root's logs here get the yoru-agent group and the dashboard
+  # (running as the agent) can read them; no group write, so it cannot edit them.
   install -d -o root -g "$AGENT" -m 2750 "$LOG_DIR" || die "could not create $LOG_DIR"
   # Older installs wrote root:root, and setgid does not apply retroactively.
   chgrp "$AGENT" "$LOG_DIR"/*.log 2>/dev/null || true
@@ -878,8 +857,8 @@ create_dirs() {
   ok "folders and permissions"
 }
 
-# Before 0.1.3 the action log was free text, now one JSON object per line. Mixed
-# in one file the dashboard's parser breaks, so old lines are moved aside.
+# Very old installs logged free text; mixed with JSON lines it breaks the
+# dashboard's parser, so those lines are moved aside.
 migrate_old_log() {
   local file="$LOG_DIR/tindakan.log" dest tmp text_lines
   [ -s "$file" ] || return 0
@@ -979,9 +958,8 @@ write_config() {
   return 0
 }
 
-# ------------------------------------------------------------------- AI model
-# Yoru speaks one shape: POST /v1/chat/completions on 127.0.0.1. The API key
-# never reaches yoru.conf - that is the one file the agent is allowed to read.
+# AI model. Yoru speaks one shape, POST /v1/chat/completions. The API key never
+# reaches yoru.conf, the one file the agent is allowed to read.
 model_probe() {  # model_probe <url> <token> <model>
   python3 - "$1" "$2" "$3" <<'PY'
 import json, sys, urllib.request
@@ -1174,11 +1152,8 @@ install_timer() {
   WATCH_AT="$at"; WATCH_TZ="$tz"
 }
 
-# ----------------------------------------------------------------- dashboard
-# A venv is only usable once pip is inside it. Checking bin/python is not
-# enough: a failed "python3 -m venv" still leaves the directory behind with a
-# python symlink and no pip, and the next run then reports a missing file
-# instead of the missing package.
+# A venv counts as ready only with its own pip inside: a failed "python3 -m venv"
+# still leaves a python symlink behind, and then pip errors look like missing files.
 venv_ready() {
   [ -x "$WEB_DIR/venv/bin/python" ] || return 1
   local out
@@ -1323,8 +1298,7 @@ seed_dashboard() {
     --siklus penjagaan --kering --konfigurasi "$CONFIG_FILE"
 
   # Counted before and after: a reinstall always finds older reports, and the
-  # exit code proves nothing either - the agent exits 0 even when the dashboard
-  # is unreachable.
+  # agent exits 0 even when the dashboard is unreachable.
   if [ "$(count_reports)" -gt "$before" ]; then
     ok "first report is in the dashboard"
   else
@@ -1348,7 +1322,7 @@ install_all() {
   seed_dashboard
 }
 
-# ================================================================== 4. verify
+# 4. Verify
 
 verify() {
   phase "Verifying"
@@ -1394,7 +1368,7 @@ verify() {
   esac
 }
 
-# ================================================================= 5. finished
+# 5. Report
 
 summary() {
   local addr web
@@ -1452,7 +1426,7 @@ summary() {
   printf '\n'
 }
 
-# ================================================================= uninstall
+# uninstall
 
 uninstall() {
   phase "Removing Yoru"
@@ -1516,7 +1490,7 @@ server and writes nothing.
 TEXT
 }
 
-# ====================================================================== main
+# main
 
 OWNER=""
 INTERACTIVE="yes"

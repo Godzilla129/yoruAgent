@@ -1,10 +1,8 @@
 #!/bin/bash
 # yoru-watch - what the daily systemd timer calls.
 #
-# It does not run the watch cycle itself; that is the agent's job. It only
-# makes sure the agent is called under the right conditions, and says why when
-# it cannot be. Everything it prints goes to the journal, and the journal is
-# persistent thanks to K09.
+# Calls the agent under the right conditions, and says why when it cannot. Its
+# output goes to the journal, which K09 makes persistent.
 
 set -uo pipefail
 umask 027
@@ -27,12 +25,8 @@ fail() { printf '%s\n' "$*" >&2; exit "${2:-1}"; }
 
 [ -r "$CONFIG_FILE" ] || fail "berhenti: $CONFIG_FILE tidak ada. Jalankan 'sudo bash install.sh'."
 
-# Read as text, never sourced - a value containing $(...) would otherwise run
-# in a process holding the tokens.
-#
-# Do not use -F= and then edit $1. Touching $1 makes awk rebuild $0 with
-# spaces, and every "=" on that line disappears. It passes on a tidy file and
-# breaks on one with spaces around the key.
+# Read as text, never sourced - a value with $(...) would run. Never -F= and then
+# edit $1: awk rebuilds the line and every "=" on it disappears.
 config_get() {  # config_get <KEY>
   awk -v k="$1" '
     {
@@ -51,9 +45,8 @@ SERVER_NAME="$(config_get NAMA_SERVER)"
 SKIPPED="$(config_get LEWATI_KONTROL)"
 [ -n "$SERVER_NAME" ] || SERVER_NAME="$(hostname)"
 
-# No agent: exit FAILED, not success. A unit that finishes quietly every day
-# while doing nothing is the kind of breakage that stays hidden longest. Let
-# it show red in systemctl.
+# No agent: exit FAILED, not success, so a unit that does nothing every day
+# shows red in systemctl instead of staying hidden.
 [ -x "$AGENT_BIN" ] || fail "berhenti: agent belum terpasang di $AGENT_BIN" 69
 
 # Two cycles must not overlap. A fix cycle from the dashboard can land on top

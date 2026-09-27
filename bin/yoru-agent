@@ -100,7 +100,7 @@ def say(*a):
     print("[yoru-agent]", *a, file=sys.stderr, flush=True)
 
 
-# --------------------------------------------------------------------- config
+# config
 def read_config(path):
     """Read as TEXT, never sourced: `source` or `exec` would turn the config
     file into a place to put commands that run as root, uninspected."""
@@ -147,7 +147,7 @@ def tidy(text):
     return re.sub(r"\s+", " ", str(text)).strip()
 
 
-# ------------------------------------------------------------------ execution
+# execution
 def call_yoructl(kid, action, timeout=180):
     """One program, two arguments. No shell, no assembled strings."""
     if kid not in ALL_CONTROLS or action not in {
@@ -189,7 +189,7 @@ def run_output(cmd, timeout=10):
         return ""
 
 
-# ---------------------------------------------------------------- server info
+# server info
 def detect_panel():
     for path, name in (
         ("/www/server/panel", "aapanel"),
@@ -232,7 +232,7 @@ def server_info(config=None):
     }
 
 
-# -------------------------------------------------------------------- reasoner
+# reasoner
 class Reasoner:
     """Judgement layer; still answers with no model. Explanations come from the
     catalog. Fixed work order: safe controls first, risky ones least-disruptive first."""
@@ -241,19 +241,17 @@ class Reasoner:
 
     def __init__(self, config):
         self.config = config
-        # OpenAI-shaped API at POST {base}/v1/chat/completions. HERMES_TOKEN is a
-        # local-service token; the provider API key stays in Hermes' own config,
-        # deliberately not in yoru.conf.
+        # OpenAI-shaped API at POST {base}/v1/chat/completions. HERMES_TOKEN is only
+        # a local-service token; the provider's API key never lives in yoru.conf.
         self.base = config.get("HERMES_URL", "").strip().rstrip("/")
         self.model = config.get("AI_MODEL", "").strip() or "hermes"
         self.token = config.get("HERMES_TOKEN", "").strip()
         self.enabled = bool(self.base)
 
     def ask(self, instruction, material, limit=400):
-        """Ask Hermes for prose; None on any failure. The answer is only ever
-        DISPLAYED - never a command, control id or action; no model, no network
-        or bad JSON falls back to the catalog; short timeout so the daily cycle
-        cannot hang on a slow model."""
+        """Ask the model for prose; None on any failure. The answer is only ever
+        DISPLAYED, never a command, control id or action. Short timeout, so a
+        slow model cannot hang the daily cycle."""
         if not self.enabled:
             return None
         answer = http_json("POST", f"{self.base}/v1/chat/completions", self.token, {
@@ -306,7 +304,7 @@ class Reasoner:
         )
 
 
-# ---------------------------------------------------------------- audit trail
+# audit trail
 def audit_trail(kid, catalog):
     """Who changed it, when, with what - from auditd (K08). Often empty: with
     auditd off there is no trail, and inventing a culprit is worse than null."""
@@ -339,7 +337,7 @@ def audit_trail(kid, catalog):
             "evidence_source": "auditd"}
 
 
-# --------------------------------------------------------------------- report
+# report
 def build_report(cycle, config, catalog, reasoner, checks, previous=None):
     controls = []
     needs_decision = []
@@ -367,8 +365,8 @@ def build_report(cycle, config, catalog, reasoner, checks, previous=None):
         if kid == "K05" and raw.get("message"):
             blockers = [tidy(raw["message"])]
 
-        # Sengaja cuma K05: hasilnya bergantung pada layanan yang kebetulan jalan
-        # di server ini, sisanya jawabannya sudah pasti dan ada di katalog.
+        # Only K05: its answer depends on whichever services happen to run here;
+        # the other controls' answers are fixed and already in the catalog.
         note = None
         if kid == "K05" and blockers and reasoner.enabled:
             note = reasoner.judge_ports(blockers[0])
@@ -476,7 +474,7 @@ def read_previous_report():
     return report
 
 
-# ------------------------------------------------------------------ dashboard
+# dashboard
 def http_json(method, url, token, data=None, timeout=15, label="dashboard"):
     if not url:
         return None
@@ -540,7 +538,7 @@ def record_ports(ports):
         say(f"port-disetujui tidak bisa ditulis: {e}")
 
 
-# ------------------------------------------------------------------- telegram
+# telegram
 def find_chat_id(token, code):
     """The private chat that sent "/start <code>", same rule as the dashboard's
     bot: a bot's name is public, so the first stranger to write must not win."""
@@ -585,10 +583,8 @@ def remember_chat_id(chat):
         say(f"chat id ketemu tapi gagal disimpan: {e}")
 
 
-# Telegram caps callback_data at 64 bytes, and the answer has to say which
-# server it is for: the dashboard may be collecting reports from several. A
-# name too long to fit simply gets no buttons - a button that answers for the
-# wrong server would be worse than no button at all.
+# Telegram caps callback_data at 64 bytes and the answer must name its server.
+# A name too long to fit gets no buttons, never a button for the wrong server.
 def decision_keyboard(report, asking):
     server = (report.get("server") or {}).get("name") or ""
     by_id = {k["id"]: k for k in report["controls"]}
@@ -699,11 +695,10 @@ def test_telegram(config):
     return True
 
 
-# ------------------------------------------------------------------- applying
+# applying
 def apply_one(kid):
-    """Apply, then verify; berhasil=true ONLY when verification passed. We have
-    had a control write its file, pass `sshd -t` and reload cleanly while the
-    setting did not change - only reading the state back is evidence."""
+    """Apply, then verify; ok=true ONLY when verification passed. A file can be
+    written, pass `sshd -t` and reload cleanly while the setting stays the same."""
     started = time.time()
     applied = call_yoructl(kid, "terapkan")
     elapsed = round(time.time() - started, 1)
@@ -803,7 +798,7 @@ def refresh(report, catalog, reasoner, done):
     return report
 
 
-# ----------------------------------------------------------------------- main
+# main
 def main():
     ap = argparse.ArgumentParser(description="Yoru agent")
     ap.add_argument("--siklus", choices=["perbaikan", "penjagaan"], default="penjagaan")
@@ -818,9 +813,8 @@ def main():
                     help="kirim satu pesan uji ke Telegram lalu berhenti")
     args = ap.parse_args()
 
-    # Same rule as yoru-watch. As root the agent bypasses sudoers, making every
-    # restriction on it decorative, and leaves the report owned by root - which
-    # the next daily cycle then fails to overwrite, silently.
+    # Same rule as yoru-watch: as root the agent bypasses sudoers, and leaves a
+    # root-owned report the next daily cycle silently fails to overwrite.
     if os.geteuid() == 0:
         say("berhenti: harus berjalan sebagai yoru-agent, bukan root")
         say("coba: sudo -u yoru-agent /opt/yoru/bin/yoru-agent "

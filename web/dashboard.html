@@ -6,14 +6,8 @@
 <title>Yoru · CIS Agent</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b1220'/%3E%3Cpath d='M16 6l7 3v5.5c0 4.2-2.8 7.6-7 8.9-4.2-1.3-7-4.7-7-8.9V9z' fill='none' stroke='%2334d399' stroke-width='1.8'/%3E%3C/svg%3E">
 <style>
-/* ---------------------------------------------------------------- theme
-   Every colour is a token defined on bare :root, so the light palette is the
-   complete one. Dark only REDEFINES tokens - it never introduces a colour that
-   light does not have, which is what keeps a control from going invisible in
-   one theme after somebody edits the other.
-
-   Three states, not two: an explicit choice stamps data-theme, and "ikut
-   sistem" stamps nothing at all and lets prefers-color-scheme decide. */
+/* theme: every colour is a token on :root. Dark only redefines tokens, never adds
+   one, so a control cannot vanish in one theme. No data-theme = follow the OS. */
 :root{
   color-scheme: light;
   --bg:#f4f6fb;        --surface:#ffffff;   --surface-2:#f8fafc;
@@ -66,7 +60,7 @@ body{margin:0;background:var(--bg);color:var(--text);
 button{font:inherit;color:inherit}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
 
-/* ---------------------------------------------------------------- shell */
+/* shell */
 .wrap{display:flex;min-height:100vh}
 
 .sidebar{width:224px;flex:none;background:var(--side);color:var(--side-text);
@@ -107,13 +101,12 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
   box-shadow:var(--shadow);font-size:15px;line-height:1}
 .icon-btn:hover{border-color:var(--brand)}
 
-/* ---------------------------------------------------------------- cards */
+/* cards */
 .stats{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
   margin-bottom:13px}
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
   padding:12px 14px;box-shadow:var(--shadow);display:flex;gap:11px;align-items:center}
-/* Sentence case, not shouting: four all-caps labels in a row is the loudest
-   thing on a page whose job is to be calm until something is wrong. */
+/* Sentence case: four all-caps labels in a row would shout on a calm page. */
 .stat .lbl{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:0}
 .stat .val{font-size:22px;font-weight:670;letter-spacing:-.02em;margin-top:2px;line-height:1.15}
 .stat .sub{font-size:12px;color:var(--muted);margin-top:2px}
@@ -128,7 +121,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 .chip-ic.fail{background:var(--fail-bg);color:var(--fail)}
 .chip-ic.info{background:var(--info-bg);color:var(--info)}
 
-/* ---------------------------------------------------------------- panels */
+/* panels */
 .panel{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--radius);
   box-shadow:var(--shadow);margin-bottom:13px;overflow:hidden}
 .panel > .head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
@@ -145,7 +138,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 .empty code{background:var(--surface-2);border:1px solid var(--line);
   padding:3px 7px;border-radius:6px;display:inline-block;margin-top:9px}
 
-/* ---------------------------------------------------------------- buttons */
+/* buttons */
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:7px;
   padding:4px 10px;font-size:12px;font-weight:550;cursor:pointer;
   transition:border-color .12s,background .12s,color .12s;white-space:nowrap}
@@ -161,7 +154,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 @keyframes rise { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
 @media (prefers-reduced-motion: reduce) { .btn.now { animation: none } }
 
-/* ---------------------------------------------------------------- table */
+/* table */
 .scroll-x{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 thead th{text-align:left;font-size:11px;letter-spacing:.035em;text-transform:uppercase;
@@ -199,7 +192,7 @@ tr:hover td.actions .btn:not(:disabled){border-color:var(--line-soft)}
 .result.ok{color:var(--pass)} .result.bad{color:var(--fail)}
 .result.wait{color:var(--warn)} .result.busy{color:var(--muted)}
 
-/* ---------------------------------------------------------------- drift */
+/* drift */
 .drift{display:flex;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line-soft);
   flex-wrap:wrap;align-items:flex-start}
 .drift:last-child{border-bottom:0}
@@ -217,7 +210,7 @@ tr:hover td.actions .btn:not(:disabled){border-color:var(--line-soft)}
   border-left:2px solid var(--line);padding-left:9px}
 .drift .acts{display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap}
 
-/* ---------------------------------------------------------------- ports */
+/* ports */
 .ports{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
 .port{display:flex;align-items:center;gap:8px;background:var(--surface-2);
   border:1px solid var(--line);border-radius:10px;padding:7px 9px 7px 11px}
@@ -225,7 +218,7 @@ tr:hover td.actions .btn:not(:disabled){border-color:var(--line-soft)}
 .port .proc{font-size:12px;color:var(--muted)}
 .said{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.6}
 
-/* ---------------------------------------------------------------- history */
+/* history */
 .chart{width:100%;height:190px;display:block}
 .chart .bar{fill:var(--brand);opacity:.85}
 .chart .bar:hover{opacity:1}
@@ -234,7 +227,7 @@ tr:hover td.actions .btn:not(:disabled){border-color:var(--line-soft)}
 .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);
   padding:0 16px 14px}
 
-/* ---------------------------------------------------------------- logs */
+/* logs */
 .logbox{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   font-size:12px;line-height:1.75;max-height:65vh;overflow:auto;padding:10px 4px}
 .logbox > div{padding:5px 12px;border-bottom:1px solid var(--line-soft);
@@ -248,7 +241,7 @@ tr:hover td.actions .btn:not(:disabled){border-color:var(--line-soft)}
 .logbox .s.DITOLAK,.logbox .s.PERINGATAN{background:var(--warn-bg);color:var(--warn)}
 .logbox .msg{color:var(--muted);flex:1;min-width:180px}
 
-/* ---------------------------------------------------------------- forms */
+/* forms */
 .form{padding:16px;max-width:660px}
 .form .intro{margin:0 0 18px;color:var(--muted);font-size:13px;line-height:1.65}
 .field{margin-bottom:15px}
@@ -265,7 +258,7 @@ tr:hover td.actions .btn:not(:disabled){border-color:var(--line-soft)}
 .footnote{padding-top:16px;margin-top:16px;border-top:1px solid var(--line-soft);
   font-size:11.5px;color:var(--faint);line-height:1.6}
 
-/* ---------------------------------------------------------------- dialogs */
+/* dialogs */
 dialog{border:0;padding:0;background:transparent;max-width:min(560px,92vw)}
 dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
 .dlg{background:var(--surface);color:var(--text);border:1px solid var(--line);
@@ -294,7 +287,7 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
 .reply.bad{background:var(--fail-bg);color:var(--fail)}
 .reply.wait{background:var(--warn-bg);color:var(--warn)}
 
-/* --------------------------------------------------------- bulk & liveness */
+/* bulk & liveness */
 .steps li.done::before{content:"●";color:var(--pass)}
 .steps li.fail::before{content:"●";color:var(--fail)}
 .steps li.hold::before{content:"●";color:var(--warn)}
@@ -314,10 +307,8 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
 .delta.up{color:var(--pass)} .delta.down{color:var(--fail)}
 @media (prefers-reduced-motion: reduce){.live .beat{animation:none}}
 
-/* ---------------------------------------------------------------- narrow
-   Below 900px the sidebar becomes a top bar, and below 760px the control
-   table stops being a table: each row turns into a card with its own labels.
-   A ten-column grid on a phone is unreadable no matter how much it scrolls. */
+/* narrow: below 900px the sidebar becomes a top bar; below 760px each table row
+   becomes a card, since ten columns are unreadable on a phone. */
 @media (max-width: 900px){
   .wrap{flex-direction:column}
   .sidebar{width:auto;height:auto;position:static;flex-direction:row;align-items:center;
@@ -446,9 +437,7 @@ let RENDER = 0;
 let LAST_SCORE = null;     // to show what the score just did, not only where it is
 let liveTimer = null;
 
-/* ------------------------------------------------------------------ theme
-   Three states, and "ikut sistem" is one of them - it stores nothing and lets
-   the OS decide, which is what most people actually want. */
+/* theme: three states; "sistem" stores nothing and lets the OS decide. */
 const THEMES = ['sistem', 'terang', 'gelap'];
 const THEME_ICON = {sistem: '◐', terang: '☀', gelap: '☾'};
 const THEME_NAME = {sistem: 'ikut sistem', terang: 'terang', gelap: 'gelap'};
@@ -471,10 +460,8 @@ $('themeBtn').onclick = () => {
   if (PAGE === 'history') render();   // the chart is drawn with theme colours
 };
 
-/* ------------------------------------------------------------------ token
-   From 127.0.0.1 a token is never requested, so on the server itself this box
-   never appears. Anyone opening it from another machine is asked once, and the
-   answer is gone when the tab closes. */
+/* token: never asked from 127.0.0.1. From another machine it is asked once and
+   forgotten when the tab closes. */
 let TOKEN = (() => { try { return sessionStorage.getItem('yoru-token') || ''; } catch (e) { return ''; } })();
 
 function askToken() {
@@ -510,7 +497,6 @@ async function get(url) {
   return r;
 }
 
-/* ------------------------------------------------------------- small stuff */
 const TAG = {LULUS:['LULUS','p'], GAGAL:['GAGAL','f'], SEBAGIAN:['SEBAGIAN','n'],
              DILEWATI:['DILEWATI','x'], ERROR:['ERROR','x']};
 
@@ -527,7 +513,7 @@ const when = t => String(t || '').replace('T', ' ').slice(0, 16);
 // Audit/Hardening/Rollback buttons mean anything - they run yoructl HERE.
 const isLocal = () => !LOCAL || !DATA || (DATA.server && DATA.server.name === LOCAL);
 
-/* --------------------------------------------------------------- loading */
+/* loading */
 async function loadServers() {
   try {
     const r = await get('/api/servers');
@@ -559,7 +545,7 @@ function drawPicker() {
 }
 $('serverSelect').onchange = e => { PICKED = e.target.value; load(); };
 
-/* ---------------------------------------------------------------- render */
+/* render */
 function render() {
   const gen = ++RENDER;
   $('pageTitle').textContent = PAGE_TITLE[PAGE];
@@ -606,7 +592,7 @@ function emptyState() {
     <code>sudo -u yoru-agent /opt/yoru/bin/yoru-agent --siklus perbaikan</code></div></div>`;
 }
 
-/* ------------------------------------------------------------ stat cards */
+/* stat cards */
 function ring(pct) {
   const r = 20, c = 2 * Math.PI * r;
   return `<svg class="ring" width="52" height="52" viewBox="0 0 52 52">
@@ -662,9 +648,7 @@ function remoteNotice() {
     </div></div></div></div>`;
 }
 
-/* ----------------------------------------------------------------- drift
-   The heart of the watch cycle, and until now it was computed, stored, sent to
-   Telegram - and never shown on the one screen built for looking at it. */
+/* drift: the heart of the watch cycle. */
 function driftPanel() {
   const drift = DATA.drift || [];
   if (!drift.length) return '';
@@ -699,11 +683,8 @@ function driftPanel() {
     ${rows}</div>`;
 }
 
-/* ----------------------------------------------------------------- ports
-   K05 refuses to switch the firewall on while any open port is unanswered, and
-   the list of those ports rides along in prasyarat_gagal. There was no way to
-   answer from this page at all: POST /api/port existed and nothing called it,
-   so the only route was editing PORT_DIIZINKAN by hand. */
+/* ports: K05 will not switch the firewall on while an open port is unanswered;
+   the ports ride along in K05's blockers. */
 function pendingPorts() {
   const k05 = (DATA.controls || []).find(k => k.id === 'K05');
   const raw = (k05 && (k05.blockers || [])[0]) || '';
@@ -761,7 +742,7 @@ function attentionPanel() {
     <span class="note">Yoru berhenti di sini sampai dijawab</span></div>${body}</div>`;
 }
 
-/* ----------------------------------------------------------------- table */
+/* table */
 function table() {
   const needsApproval = new Set(DATA.pending_decisions || []);
   const local = isLocal();
@@ -809,7 +790,7 @@ function table() {
     </div>`;
 }
 
-/* --------------------------------------------------------------- history */
+/* history */
 // One page answers one question: what has happened here. The score line and
 // the action trail are two views of the same answer, so they share a page.
 async function historyPage(gen) {
@@ -874,7 +855,7 @@ function chartPanel(rows) {
     </div></div>`;
 }
 
-/* ------------------------------------------------------------------ logs */
+/* logs */
 async function logPanel(kid, gen) {
   const q = kid ? `?control=${encodeURIComponent(kid)}` : '';
   let d;
@@ -899,9 +880,8 @@ async function logPanel(kid, gen) {
     <div class="logbox">${body}</div></div>`;
 }
 
-/* -------------------------------------------------------------- settings */
-// Three groups, one page, one Save each. Splitting them across three pages
-// meant three loads of the same config for a form most people touch once.
+/* settings */
+// Three groups on one page, one Save each, so the config is loaded once.
 const SETTINGS = [
   {id: 'telegram', title: 'Bot Telegram',
    intro: 'Yoru cuma mengirim kalau ada yang berubah atau ada yang perlu dijawab. Tidak ada laporan harian yang isinya "semuanya masih aman". Yang mengirim itu agent di server, bukan halaman ini.',
@@ -1024,7 +1004,7 @@ async function saveSection(sec, btn) {
          note.textContent = `${saved} setelan tersimpan.${said ? ' ' + said + '.' : ''}`; }
 }
 
-/* --------------------------------------------------------------- actions */
+/* actions */
 function slotSay(slot, cls, text) {
   if (!slot) return;
   slot.className = 'result ' + cls;
@@ -1107,8 +1087,7 @@ function wireButtons() {
       run(kid, b.dataset.a, b);
     };
   });
-  // bulk - same dialog as a single row, ten lines filling in one by one. It
-  // used to run silently, which looked exactly like nothing happening.
+  // bulk: the same dialog as one row, ten lines filling in one by one.
   document.querySelectorAll('button[data-bulk]').forEach(b => {
     b.onclick = async () => {
       const action = b.dataset.bulk;
@@ -1297,13 +1276,12 @@ async function run(kid, action, btn, quiet) {
   scope.querySelectorAll('button').forEach(b => {
     if (!(b.dataset.a === 'terapkan' && b.title)) b.disabled = false;
   });
-  // Including after Audit: the cards used to move only on apply or rollback,
-  // so a freshly passing row never changed the score.
+  // After Audit too, so a row that now passes moves the score.
   if (ok && !quiet) setTimeout(load, 600);
   return d;
 }
 
-/* ------------------------------------------------------------------ boot */
+/* boot */
 $('nav').onclick = e => {
   const a = e.target.closest('a[data-h]'); if (!a) return;
   PAGE = a.dataset.h;
