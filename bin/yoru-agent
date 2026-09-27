@@ -541,19 +541,35 @@ def record_ports(ports):
 
 
 # ------------------------------------------------------------------- telegram
-def find_chat_id(token):
-    """A bot cannot start a conversation: the owner sends /start, the next cycle
-    picks the id up from getUpdates. Hence TELEGRAM_CHAT_ID may be left empty."""
-    answer = http_json("GET", f"{TELEGRAM_API}/bot{token}/getUpdates?limit=10",
+def find_chat_id(token, code):
+    """The private chat that sent "/start <code>", same rule as the dashboard's
+    bot: a bot's name is public, so the first stranger to write must not win."""
+    if not code:
+        return ""
+    answer = http_json("GET", f"{TELEGRAM_API}/bot{token}/getUpdates?limit=50",
                        None, timeout=15, label="Telegram")
     if not isinstance(answer, dict) or not answer.get("ok"):
         return ""
     for update in reversed(answer.get("result") or []):
-        for key in ("message", "edited_message", "channel_post"):
-            chat = ((update.get(key) or {}).get("chat") or {}).get("id")
-            if chat is not None:
-                return str(chat)
+        msg = update.get("message") or {}
+        chat = msg.get("chat") or {}
+        words = str(msg.get("text") or "").split()
+        if (chat.get("type") == "private" and chat.get("id") is not None
+                and len(words) >= 2
+                and words[0].lower().split("@")[0] in ("/start", "/mulai")
+                and words[1].upper() == code.upper()):
+            return str(chat["id"])
     return ""
+
+
+def not_paired_yet(config):
+    code = config.get("TELEGRAM_PAIR_CODE", "").strip()
+    if code:
+        say(f"Telegram belum tersambung - kirim /start {code} ke botmu, "
+            "sekali saja, lalu jalankan siklus ini lagi")
+    else:
+        say("Telegram belum tersambung - isi TELEGRAM_CHAT_ID di halaman "
+            "Setelan dashboard, atau di /etc/yoru/yoru.conf")
 
 
 def remember_chat_id(chat):
@@ -599,10 +615,9 @@ def notify_telegram(report, config):
 
     chat = config.get("TELEGRAM_CHAT_ID", "").strip()
     if not chat:
-        chat = find_chat_id(token)
+        chat = find_chat_id(token, config.get("TELEGRAM_PAIR_CODE", "").strip())
         if not chat:
-            say("chat id Telegram belum ketemu - kirim /start ke botmu, "
-                "lalu jalankan siklus ini lagi")
+            not_paired_yet(config)
             return False
         remember_chat_id(chat)
 
@@ -661,10 +676,9 @@ def test_telegram(config):
 
     chat = config.get("TELEGRAM_CHAT_ID", "").strip()
     if not chat:
-        chat = find_chat_id(token)
+        chat = find_chat_id(token, config.get("TELEGRAM_PAIR_CODE", "").strip())
         if not chat:
-            say("Belum ada yang pernah mengirim pesan ke bot ini.")
-            say("Buka botmu di Telegram, tekan Start, lalu ulangi perintah ini.")
+            not_paired_yet(config)
             return False
         remember_chat_id(chat)
 
