@@ -139,11 +139,11 @@ lalu agent di server yang bersangkutan yang mengambil dan mengerjakannya pada
 siklus berikutnya. Karena itu dua panel ini bekerja untuk server mana pun yang
 pernah mengirim laporan ke sini, bukan cuma mesin tempat dashboard dipasang.
 
-Kalau ada lebih dari satu server, pemilih server muncul di kanan atas. Baris
-milik mesin ini ditandai **MESIN INI**, dan untuk server lain tombol Audit,
-Hardening dan Rollback dimatikan. Ketiganya menjalankan `yoructl` di mesin
-tempat dashboard dipasang, jadi kalau ditekan untuk server lain, yang
-dikeraskan malah server yang salah.
+Kalau ada lebih dari satu server, pemilih server muncul di kanan atas. Kalau
+yang dipilih mesin ini sendiri, di sebelahnya muncul tanda **MESIN INI**.
+Untuk server lain tombol Audit, Hardening dan Rollback dimatikan. Ketiganya
+menjalankan `yoructl` di mesin tempat dashboard dipasang, jadi kalau ditekan
+untuk server lain, yang dikeraskan malah server yang salah.
 
 Selain halaman utama, cuma ada dua halaman lagi.
 
