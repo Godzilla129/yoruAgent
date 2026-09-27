@@ -1,7 +1,7 @@
 # Yoru
 
 AI agent yang mengeraskan konfigurasi keamanan server, lalu menjaganya tetap
-begitu — untuk developer dan UMKM yang tidak punya tim IT.
+begitu. Dibuat untuk developer dan UMKM yang tidak punya tim IT.
 
 *Server kamu tidur. Yoru nggak.*
 
@@ -40,7 +40,7 @@ istilah teknis.
 
 **Katalog yang menyimpan fakta.** Perintah persisnya apa, berkasnya di mana,
 bagaimana cara mengembalikannya kalau gagal. Agent tidak boleh mengarang
-perintah — kalau kontrolnya tidak ada di katalog, jawabannya "tidak tahu",
+perintah. Kalau kontrolnya tidak ada di katalog, jawabannya "tidak tahu",
 bukan menebak.
 
 **`yoructl` yang bertindak.** Satu-satunya jalur agent ke hak root, dan dia
@@ -51,7 +51,7 @@ yang bisa dia lakukan tetap salah satu dari 40 tindakan yang sudah ditulis
 dan diuji manusia.
 
 Setiap kontrol punya empat fungsi: `periksa`, `terapkan`, `kembalikan`,
-`verifikasi`. Yang terakhir itu yang paling penting — Yoru tidak pernah
+`verifikasi`. Yang terakhir itu yang paling penting: Yoru tidak pernah
 menganggap sebuah kontrol berhasil hanya karena berkasnya berhasil ditulis
 dan layanannya reload tanpa error. Dia membaca ulang keadaan yang
 benar-benar aktif.
@@ -63,45 +63,43 @@ benar-benar aktif.
 | | Kontrol | Risiko | CIS Ubuntu 24.04 v1.0.0 |
 |---|---|---|---|
 | `K01` | Root tidak bisa login lewat SSH | BERISIKO | 5.1.20 |
-| `K02` | Login pakai password dimatikan (SSH key saja) | BERISIKO | — tidak ada di CIS |
+| `K02` | Login pakai password dimatikan (SSH key saja) | BERISIKO | tidak ada di CIS |
 | `K03` | Batasi percobaan login SSH | AMAN | 5.1.16, 5.1.13 |
 | `K04` | Buang algoritma kripto yang lemah di SSH | BERISIKO | 5.1.6, 5.1.15, 5.1.12 |
 | `K05` | Firewall aktif, tolak semua koneksi masuk | BERISIKO | 4.2.1, 4.2.3, 4.2.7 |
 | `K06` | Cuma port yang dipakai yang boleh terbuka | BERISIKO | 2.1.22 (sebagian) |
 | `K07` | Pembaruan keamanan otomatis | AMAN | 1.2.2.1 (sebagian) |
-| `K08` | Jejak audit aktif (auditd) | AMAN | — Level 2, bukan L1 |
+| `K08` | Jejak audit aktif (auditd) | AMAN | Level 2, bukan L1 |
 | `K09` | Log tersimpan permanen dan tidak membanjiri disk | AMAN | 6.1.2.4, 6.1.2.3, 6.1.1.3 |
-| `K10` | Setelan kernel jaringan | AMAN | 3.3.3–3.3.6, 3.3.8–3.3.11 |
+| `K10` | Setelan kernel jaringan | AMAN | 3.3.3 sampai 3.3.6, 3.3.8 sampai 3.3.11 |
 
 Nomor CIS di atas dicocokkan satu per satu ke berkas audit
 `CIS_Ubuntu_Linux_24.04_LTS_v1.0.0_L1_Server` terbitan Tenable, bukan ke PDF
-CIS aslinya — jadi kami menulisnya begitu, bukan "sesuai CIS".
+CIS aslinya. Karena itu kami tidak menyebut Yoru "sesuai CIS".
 
 Tiga baris yang tidak berisi nomor juga sengaja ditulis apa adanya. **K02
 tidak ada padanannya di CIS**: seluruh bagian SSH sudah diperiksa dan tidak
 ada satu pun rekomendasi tentang mematikan login password. Itu pilihan kami,
 karena sasaran Yoru satu server milik satu orang, bukan armada perusahaan
 yang belum tentu bisa pakai kunci SSH di semua mesin. **K08 ada di CIS Level
-2**, bukan Level 1 — jadi menyertakannya di paket dasar itu kelebihan, bukan
-kekurangan. Dan yang bertanda *sebagian* memang belum menutup seluruh isi
-item CIS-nya.
+2**, bukan Level 1, jadi di paket dasar ini K08 itu tambahan. Yang bertanda
+*sebagian* memang belum menutup seluruh isi item CIS-nya.
 
 **AMAN** berarti Yoru boleh menjalankannya sendiri. **BERISIKO** berarti dia
 harus minta izin per item, dan menampilkan dulu apa yang bisa rusak sebelum
 tombol setuju bisa ditekan.
 
 Setiap kontrol dijalankan manual dan rollbacknya diuji sungguhan sebelum
-masuk katalog. Bukan disalin dari checklist. Kolom `rollback_teruji` di tiap
-berkas YAML itu janji, bukan hiasan.
+masuk katalog. Kolom `rollback_teruji` di tiap berkas YAML mencatat hasil uji
+itu.
 
-Dan janji itu diuji dua kali, lewat dua jalur yang berbeda. Sepuluh kontrol
-dikali empat fungsi berarti 40 tindakan — keempat puluhnya sudah pernah
-benar-benar dijalankan lewat `yoructl`, bukan cuma lewat tangan. Itu bukan
-formalitas: dari situ ketemu empat bug yang tidak akan pernah muncul kalau
-kami hanya menjalankan `periksa`. Salah satunya membuat K02 tidak pernah bisa
-diterapkan sama sekali — dan cara gagalnya berupa penolakan yang terdengar
-bijaksana, jenis kerusakan yang paling sulit dicurigai. Ceritanya lengkap ada
-di `catalog/K02.yaml`.
+Setelah itu semuanya diuji sekali lagi lewat `yoructl`. Sepuluh kontrol
+dikali empat fungsi berarti 40 tindakan, dan keempat puluhnya sudah pernah
+benar-benar dijalankan lewat jalur yang dipakai agent. Dari situ ketemu empat
+bug yang tidak akan pernah muncul kalau kami cuma menjalankan `periksa`.
+Salah satunya bikin K02 tidak pernah bisa diterapkan sama sekali, dan cara
+gagalnya berupa penolakan yang terdengar masuk akal. Kerusakan seperti itu
+yang paling susah dicurigai. Ceritanya lengkap ada di `catalog/K02.yaml`.
 
 ---
 
@@ -109,9 +107,10 @@ di `catalog/K02.yaml`.
 
 ![Dashboard Yoru](docs/images/dashboard-report.png)
 
-Sepuluh kontrol dalam satu tabel: kode CIS-nya, statusnya, dan tiga tombol —
-Audit, Hardening, Rollback. Ketiganya memanggil `yoructl`, program yang sama
-yang dipakai agent. Tidak ada jalur lain ke hak root.
+Sepuluh kontrol dalam satu tabel: kode CIS-nya, statusnya, nilai yang
+terbaca, dan empat tombol: Audit, Hardening, Rollback, dan Log. Tiga yang
+pertama memanggil `yoructl`, program yang sama yang dipakai agent. Tidak ada
+jalur lain ke hak root. Log cuma membuka catatan tindakan untuk kontrol itu.
 
 Untuk kontrol yang berisiko, tombol Hardening **tidak langsung jalan**. Dia
 menampilkan dulu apa yang bakal ikut berubah:
@@ -125,14 +124,15 @@ Di atas tabel itu ada dua panel yang cuma muncul kalau memang ada isinya.
 
 **Yang berubah sejak pemeriksaan terakhir.** Inti Siklus Penjagaan: kontrol
 yang dulu lulus dan sekarang tidak. Ditampilkan berikut nilai lamanya, nilai
-barunya, dan — kalau auditd (K08) aktif — siapa yang mengubahnya, kapan, dan
-lewat perintah apa. Kalau auditd mati, yang tertulis adalah bahwa memang tidak
+barunya, dan kalau auditd (K08) aktif, juga siapa yang mengubahnya, kapan,
+dan lewat perintah apa. Kalau auditd mati, yang tertulis adalah bahwa memang tidak
 ada catatannya. Yoru tidak menebak nama orang.
 
-**Butuh jawaban kamu.** Dua hal berkumpul di sini. Port yang terbuka ke
-internet dan belum kamu jawab — K05 menolak menyalakan firewall selama masih
-ada yang menggantung, dan tiap port ditampilkan berikut nama prosesnya dengan
-satu tombol "Punya saya". Lalu kontrol berisiko yang menunggu persetujuan.
+**Butuh jawaban kamu.** Dua hal berkumpul di sini. Pertama, port yang
+terbuka ke internet dan belum kamu jawab. K05 menolak menyalakan firewall
+selama masih ada yang menggantung, jadi tiap port ditampilkan berikut nama
+prosesnya dengan satu tombol "Punya saya". Kedua, kontrol berisiko yang
+menunggu persetujuan.
 
 Jawaban di dua panel itu **tidak dijalankan halaman ini**. Dia menuliskannya,
 lalu agent di server yang bersangkutan yang mengambil dan mengerjakannya pada
@@ -141,23 +141,25 @@ pernah mengirim laporan ke sini, bukan cuma mesin tempat dashboard dipasang.
 
 Kalau ada lebih dari satu server, pemilih server muncul di kanan atas. Baris
 milik mesin ini ditandai **MESIN INI**, dan untuk server lain tombol Audit,
-Hardening dan Rollback dimatikan — ketiganya menjalankan `yoructl` di mesin
-tempat dashboard dipasang, jadi menekannya untuk server lain akan mengeraskan
-server yang salah.
+Hardening dan Rollback dimatikan. Ketiganya menjalankan `yoructl` di mesin
+tempat dashboard dipasang, jadi kalau ditekan untuk server lain, yang
+dikeraskan malah server yang salah.
 
-Menu **Riwayat Skor** menggambar skor laporan-laporan terakhir, jadi kelihatan
-apakah server ini membaik atau justru pelan-pelan mundur.
+Selain halaman utama, cuma ada dua halaman lagi.
 
-Menu **Audit Logs** membaca `/var/log/yoru/` — jejak milik root yang tidak bisa
-disunting agent.
+**Riwayat** menggambar skor dari laporan-laporan terakhir, jadi kelihatan
+apakah server ini membaik atau pelan-pelan mundur. Di bawahnya ada catatan
+tindakan dari `/var/log/yoru/`, jejak milik root yang tidak bisa disunting
+agent.
 
-Menu **Telegram Bot** dan **System Settings** menulis ke
-`/etc/yoru/yoru.conf`, jadi pemilik server tidak perlu membuka terminal lagi
-setelah pemasangan. Halamannya sendiri tidak punya izin menulis berkas itu —
-dia menitipkannya ke `yoructl konfigurasi`, dengan daftar kunci tertutup dan
+**Setelan** mengatur bot Telegram, model AI, dan setelan sistem seperti port
+yang boleh terbuka dan jam pemindaian harian. Semuanya tersimpan di
+`/etc/yoru/yoru.conf`, jadi pemilik server tidak perlu buka terminal lagi
+setelah pemasangan. Halamannya sendiri tidak punya izin menulis berkas itu.
+Dia menitipkannya ke `yoructl konfigurasi`, dengan daftar kunci tertutup dan
 setiap nilai diperiksa bentuknya. `DASHBOARD_TOKEN` sengaja tidak ada di
-daftar itu: dashboard yang boleh mengganti tokennya sendiri berarti dashboard
-yang jebol bisa mengunci pemiliknya di luar.
+daftar itu: kalau dashboard boleh mengganti tokennya sendiri, dashboard yang
+jebol bisa mengunci pemiliknya di luar.
 
 ### Mencoba tanpa server
 
@@ -171,8 +173,8 @@ Buka `http://127.0.0.1:8000`. Datanya dari `examples/`, tidak ada mesin yang
 disentuh. Di Linux dan macOS, `bash demo.sh` sama saja.
 
 Isinya dua server: `yoru-a` yang sehat tapi ada satu setelan berubah, dan
-`yoru-b` yang sakit dengan dua port belum dijawab — supaya panel drift, panel
-port, dan pemilih server ada isinya, bukan kotak kosong.
+`yoru-b` yang sakit dengan dua port belum dijawab. Jadi panel drift, panel
+port, dan pemilih server langsung ada isinya.
 
 Siapa yang boleh menjangkau endpoint mana diperiksa, bukan diyakini:
 
@@ -192,12 +194,12 @@ perlu karena aturannya memang beda di dua tempat itu.
 ### Yang perlu disiapkan
 
 Server atau VM dengan **Ubuntu Server 24.04**, dan akun biasa yang punya
-akses `sudo`. Bukan root — Yoru justru perlu tahu siapa manusia pemilik
-servernya.
+akses `sudo`. Jangan pakai root, soalnya Yoru justru perlu tahu siapa
+manusia pemilik servernya.
 
 Sebaiknya kunci SSH kamu sudah terpasang dan sudah pernah dipakai login.
 Kalau belum, pemasangan tetap jalan, cuma nanti K02 akan menolak berjalan
-sampai kuncinya ada. Itu memang disengaja — K02 mematikan login password,
+sampai kuncinya ada. Itu memang disengaja. K02 mematikan login password,
 dan tanpa kunci yang terbukti bekerja, itu sama saja menutup satu-satunya
 pintu masuk kamu sendiri.
 
@@ -208,8 +210,8 @@ di situ juga, bukan nanti pas kamu sudah tidak bisa masuk.
 
 Yang tidak akan dia lakukan: **membuatkan kunci privat**. Kunci privat yang
 dibuat di server berarti kunci privat yang pernah ada di server, dan untuk
-sampai ke laptop pemiliknya dia harus lewat terminal atau salinan berkas —
-persis kebiasaan yang bikin server orang jebol duluan. Kunci privat lahir di
+sampai ke laptop pemiliknya dia harus lewat terminal atau salinan berkas.
+Itu persis kebiasaan yang bikin server orang jebol duluan. Kunci privat lahir di
 mesin pemiliknya. Salah tempel kunci privat ke pertanyaan itu pun dihentikan,
 dan kamu diberitahu bahwa kunci itu sudah tidak bisa dianggap rahasia lagi.
 
@@ -221,15 +223,76 @@ berbahaya, tapi karena enak bisa balik ke titik nol kapan pun.
 ```bash
 git clone https://github.com/Godzilla129/yoruAgent.git
 cd yoruAgent
+sudo bash install.sh --check-only
 sudo bash install.sh
 ```
 
-Satu perintah itu memasang semuanya: dispatcher, katalog sepuluh kontrol,
-agent, siklus penjagaan harian, dan dashboard. Selesai memasang, dashboard
-sudah jalan di `http://127.0.0.1:8000` dan sudah ada isinya — servernya
-diperiksa sekali di akhir pemasangan, tanpa mengubah satu setelan pun.
+Perintah pertama cuma membaca server, tidak mengubah apa pun. Dia memeriksa
+versi Ubuntu, systemd, apt, ruang disk, port dashboard, dan setelan SSH, lalu
+bilang apa yang kurang sebelum ada satu berkas pun yang ditulis. Kalau
+hasilnya siap, baru jalankan perintah kedua.
 
-Kalau dashboardnya mau dibuka dari komputer lain:
+Perintah kedua memasang semuanya: dispatcher, katalog sepuluh kontrol,
+agent, siklus penjagaan harian, dan dashboard. Selesai memasang, dashboard
+sudah jalan di `http://127.0.0.1:8000` dan sudah ada isinya, karena servernya
+diperiksa sekali di akhir pemasangan tanpa mengubah satu setelan pun.
+
+#### Yang ditanyakan
+
+Semua pertanyaan muncul di awal, sebelum ada yang dipasang. Kalau terminalnya
+mendukung, pertanyaannya muncul sebagai kotak dialog.
+
+1. **Kunci SSH publik**, kalau akun pemilik belum punya. Penjelasannya ada di
+   bagian sebelum ini.
+2. **Token bot Telegram.** Boleh dilewati dan diisi belakangan di halaman
+   Setelan.
+3. **Model AI.** Pilihannya Google Gemini (tempel kunci API), alamat lain yang
+   memakai format OpenAI (misalnya Ollama), atau dilewati. Tanpa model, Yoru
+   tetap jalan dan kalimat penjelasannya diambil dari katalog.
+
+Kalau pakai kotak dialog, sesudahnya muncul ringkasan, dan pemasangan baru
+mulai kalau kamu setuju. Dari situ sampai selesai tidak ada pertanyaan lagi.
+Yang sudah diisi di pemasangan sebelumnya tidak ditanya ulang.
+
+Kunci Gemini tidak ditulis ke `/etc/yoru/yoru.conf`. Kuncinya disimpan di
+`/etc/yoru/model.env` dan dipakai oleh penghubung kecil yang berjalan sebagai
+pengguna tersendiri. Agent tidak bisa membaca berkas itu, dan installer
+membuktikannya dulu sebelum lanjut. Alasannya sederhana: `yoru.conf` bisa
+dibaca agent, jadi kunci yang bisa dipakai belanja tidak boleh ada di situ.
+
+Yang rahasia, seperti token Telegram dan kunci API, diketik tanpa tampil di
+layar dan tidak pernah lewat argumen perintah. Argumen kelihatan oleh siapa
+pun yang sedang login, dan tersimpan di riwayat shell.
+
+#### Menyambungkan Telegram
+
+Kalau kamu mengisi token bot, installer menutup dengan satu kode pendek.
+Kodenya beda-beda tiap server, bentuknya kira-kira begini:
+
+```
+  Connect Telegram - open your bot and send this, once:
+      /start K7M2QP
+```
+
+Kirim baris itu ke bot kamu, cukup sekali. Kode ini perlu karena nama bot di
+Telegram bisa dicari siapa saja. Tanpa kode, orang asing yang menemukan bot
+kamu duluan bisa jadi pemegang tombol setuju untuk server kamu. Kalau layar
+installernya sudah terlewat, kodenya juga ada di halaman Setelan.
+
+#### Membuka dashboard dari laptop
+
+Dashboard cuma mendengar di `127.0.0.1`. Cara paling aman membukanya dari
+laptop adalah terowongan SSH. Perintahnya juga dicetak installer di akhir:
+
+```bash
+ssh -L 8000:127.0.0.1:8000 pemilik@alamat-server
+```
+
+Tambahkan `-p <port>` kalau SSH-nya tidak di port 22. Selama terminal itu
+terbuka, buka `http://127.0.0.1:8000` di browser laptop. Tidak ada port baru
+yang terbuka ke internet.
+
+Kalau memang harus dibuka langsung ke jaringan:
 
 ```bash
 sudo bash install.sh --host 0.0.0.0 --port 8080
@@ -238,56 +301,65 @@ sudo bash install.sh --host 0.0.0.0 --port 8080
 Begitu dibuka ke jaringan, tombol Hardening di halaman itu jadi tombol yang
 bisa ditekan siapa saja yang bisa menjangkau portnya. Jadi installer
 membuatkan token, mencetaknya di akhir, dan dashboard akan memintanya sekali
-di browser. Dari `127.0.0.1` token tidak pernah diminta — yang sudah bisa
-membuka `127.0.0.1` memang sudah punya akses ke server itu.
+di browser. Dari `127.0.0.1` token tidak pernah diminta, karena yang sudah
+bisa membuka `127.0.0.1` memang sudah punya akses ke server itu.
 
-Tokennya dipakai untuk **membaca juga**, bukan cuma menekan tombol. Laporan
+Tokennya dipakai untuk membaca juga, tidak cuma untuk menekan tombol. Laporan
 menyebut kontrol mana yang gagal, kernelnya apa, dan port apa saja yang
-terbuka berikut nama prosesnya — dibagikan tanpa ditanya, itu laporan
-pengintaian gratis atas mesin yang titik lemahnya sudah didaftarkan. Menu
-Audit Logs lebih jauh lagi: isinya jejak milik root yang justru dibuat supaya
-agent tidak bisa menyuntingnya. Dua-duanya sekarang berada di balik aturan
-yang sama dengan tombol Hardening.
+terbuka berikut nama prosesnya. Kalau dibagikan tanpa ditanya, itu jadi
+laporan pengintaian gratis atas mesin yang titik lemahnya sudah didaftar.
+Halaman Riwayat lebih jauh lagi: catatan tindakannya itu jejak milik root
+yang justru dibuat supaya agent tidak bisa menyuntingnya. Dua-duanya sekarang
+ada di balik aturan yang sama dengan tombol Hardening.
 
-Tidak mau dashboardnya sama sekali: `--tanpa-dashboard`.
+#### Pilihan lain
 
-Pemasangnya cuma menanyakan dua hal: token bot Telegram dan alamat
-dashboard. Dua-duanya boleh dikosongkan dan diisi belakangan di
-`/etc/yoru/yoru.conf`. Yang rahasia diketik tanpa ditampilkan di layar, dan
-tidak pernah lewat argumen perintah, karena argumen kelihatan oleh siapa pun
-yang sedang login dan tersimpan di riwayat shell.
+```bash
+sudo bash install.sh --owner budi      # akun pemilik, kalau bukan yang sedang memakai sudo
+sudo bash install.sh --no-dashboard    # tanpa dashboard
+sudo bash install.sh --no-questions    # tanpa pertanyaan, untuk skrip otomatis
+```
 
-Kunci API model AI **tidak** ditanyakan, dan itu disengaja. Yang memanggil
-model itu Hermes, bukan Yoru — Yoru tidak pernah bicara ke model sama sekali.
-Jadi kuncinya tinggal di konfigurasi Hermes, satu tempat saja. Menyimpannya
-di dua tempat berarti dua tempat yang bisa bocor, dan dua tempat yang bisa
-beda isinya tanpa ada yang sadar.
+Tanpa dashboard berarti tanpa tombol di Telegram juga, karena yang
+mendengarkan tombol itu ada di dalam dashboard. Dengan `--no-questions`,
+installer tidak menanyakan apa pun, lalu di akhir menyebut apa saja yang
+masih kosong, misalnya token Telegram atau model AI.
 
-Kalau kamu memasangnya lewat skrip otomatis, pakai `--tanpa-tanya`. Yoru
-akan membuat berkas konfigurasi kosong dan memberitahu bahwa isinya harus
-dilengkapi.
+Flag lama yang berbahasa Indonesia (`--pemilik`, `--tanpa-dashboard`,
+`--tanpa-tanya`, `--copot`) masih diterima, jadi skrip lama tidak rusak.
 
 Kalau kamu perhatikan, tidak ada cara pasang model `curl ... | sudo bash`.
-Itu memang lebih ringkas, tapi ini alat keamanan — menyuruh orang
-menyalurkan skrip dari internet langsung ke `sudo bash` persis kebiasaan
-yang mau kami berantas. Unduh dulu, kalau mau baca dulu, baru jalankan.
+Itu memang lebih ringkas, tapi ini alat keamanan. Menyuruh orang menyalurkan
+skrip dari internet langsung ke `sudo bash` persis kebiasaan yang mau kami
+berantas. Unduh dulu, baca kalau mau, baru jalankan.
 
 ### Yang akan kamu lihat
 
-Pemasangan berjalan bertahap, tiap langkah menulis `ok`. Di bagian akhir ada
-**Menguji hasil pemasangan** — di situ installer menguji kerjanya sendiri:
+Pemasangannya dibagi lima bagian: memeriksa server, pertanyaan, memasang,
+menguji, lalu ringkasan. Tiap baris diawali satu penanda: `ok`, `!` untuk
+peringatan, `x` untuk yang menghentikan, dan `..` untuk yang sedang jalan.
+Keluaran apt dan pip tidak ditampilkan di layar, tapi disimpan lengkap di
+`/var/log/yoru-install.log`.
+
+Di bagian **Verifying**, installer menguji kerjanya sendiri:
 
 ```
-ok   agent bisa meminta tindakan yang sah
-ok   agent ditolak saat mencoba perintah lain
-ok   dispatcher menolak jalan saat dirinya sendiri bisa ditulis
-ok   dispatcher kembali normal setelah izin dipulihkan
-ok   penjagaan menolak berjalan sebagai root
-ok   timer penjagaan terdaftar di systemd
+Verifying
+  ok  the agent can run an allowed action
+  ok  the agent is blocked from anything else
+  ok  the dispatcher refuses to run while it is writable
+  ok  the watch refuses to run as root
+  ok  the daily timer is registered with systemd
 ```
 
-Kalau salah satu gagal, pemasangan berhenti dan menyebutkan gagal di mana.
-Installer ini sengaja tidak akan bilang "selesai" sebelum terbukti jalan.
+Ada satu uji lagi yang tidak mencetak baris sendiri: setelah uji ketiga,
+dispatcher harus kembali normal begitu izinnya dipulihkan. Kalau salah satu
+gagal, pemasangan berhenti dan menyebut gagal di mana. Installer ini sengaja
+tidak akan bilang selesai sebelum terbukti jalan.
+
+Di ringkasan akhir ada daftar **Still open**, isinya hal yang belum beres dan
+perlu kamu kerjakan sendiri. Contohnya menguji kunci SSH dari terminal lain
+sebelum menyetujui K02.
 
 Aman dijalankan berkali-kali. Yang sudah ada dilewati, bukan dibuat ulang.
 
@@ -297,7 +369,7 @@ Aman dijalankan berkali-kali. Yang sudah ada dilewati, bukan dibuat ulang.
 sudo -u yoru-agent sudo -n /opt/yoru/bin/yoructl K01 periksa
 ```
 
-Keluarnya satu baris JSON — itu bentuk yang dibaca dashboard dan dikirim ke
+Keluarnya satu baris JSON. Itu bentuk yang dibaca dashboard dan dikirim ke
 Telegram. Ganti `K01` dengan `K02` sampai `K10` untuk kontrol lain.
 
 Coba juga yang ini:
@@ -318,26 +390,30 @@ yoructl K01 kembalikan    # mengembalikan
 ```
 
 `periksa` tidak menyentuh apa pun, jadi bebas dicoba termasuk di server yang
-sedang dipakai. `terapkan` mengubah setelan sungguhan — ambil snapshot dulu,
+sedang dipakai. `terapkan` mengubah setelan sungguhan, jadi ambil snapshot dulu,
 dan baca bagian `yang_rusak_kalau_diterapkan` di berkas katalognya.
 
 > **K05 menolak menyala selama masih ada port terbuka yang belum kamu jawab.**
 > Port SSH dicarinya sendiri dari `sshd -T`, jadi server yang SSH-nya bukan di
-> 22 tetap aman. Untuk layanan lain — web, panel, apa pun — Yoru berhenti dan
+> 22 tetap aman. Untuk layanan lain (web, panel, apa pun), Yoru berhenti dan
 > menyebutkan port berikut nama prosesnya, lalu menunggu jawabanmu. Daftarkan
-> lewat halaman System Settings di dashboard, atau isi `PORT_DIIZINKAN` di
+> lewat halaman Setelan di dashboard, atau isi `PORT_DIIZINKAN` di
 > `/etc/yoru/yoru.conf`. Yoru tidak pernah menebak port mana yang boleh
 > terbuka.
 
 ### Mencopot
 
 ```bash
-sudo bash install.sh --copot
+sudo bash install.sh --uninstall
 ```
 
-Menghapus dispatcher, katalog, aturan sudoers, dan pengguna agent. Catatan
-tindakan di `/var/log/yoru` sengaja ditinggalkan — itu jejak audit, dan alat
-keamanan tidak menghapus jejaknya sendiri diam-diam.
+Menghapus dispatcher, katalog, dashboard, penghubung model beserta kuncinya,
+aturan sudoers, dan pengguna agent. Empat folder sengaja ditinggalkan:
+catatan tindakan di `/var/log/yoru`, konfigurasi di `/etc/yoru`, laporan di
+`/var/lib/yoru`, dan rekaman keadaan asal di `/var/backups/yoru`. Itu jejak
+audit dan data milik kamu, dan alat keamanan tidak boleh menghapus jejaknya
+sendiri diam-diam. Kalau servernya mau dijual atau dikembalikan ke penyedia,
+hapus sendiri `/etc/yoru/yoru.conf`, karena token bot masih ada di situ.
 
 Perlu diingat: mencopot **tidak** mengembalikan kontrol yang sudah kamu
 terapkan. Kalau mau server kembali seperti semula, jalankan `kembalikan`
@@ -348,18 +424,19 @@ untuk tiap kontrol dulu, baru copot.
 ## Isi repo
 
 ```
-bin/yoructl     satu-satunya pintu ke hak root - 10 kontrol x 4 tindakan
-bin/yoru-agent  otaknya: memeriksa, merakit laporan, menerapkan yang disetujui
-bin/yoru-watch  pembungkus yang dipanggil timer harian
-catalog/        10 kontrol keamanan, satu berkas YAML per kontrol
-contract/       bentuk data laporan JSON, dipakai dispatcher sampai dashboard
-web/            API dashboard dan halamannya
-systemd/        unit systemd: siklus penjagaan harian dan dashboard
-examples/       contoh laporan, contoh konfigurasi, jembatan FastAPI
-docs/           penjelasan alur dan panduan pasang di VPS
-install.sh      pemasang semuanya, sekalian menguji hasilnya sendiri
-check-all.sh    periksa 10 kontrol sekaligus, tanpa memasang apa pun
-demo.sh         nyalakan dashboard dengan data contoh
+bin/yoructl           satu-satunya pintu ke hak root - 10 kontrol x 4 tindakan
+bin/yoru-agent        otaknya: memeriksa, merakit laporan, menerapkan yang disetujui
+bin/yoru-watch        pembungkus yang dipanggil timer harian
+bin/yoru-model-proxy  penghubung ke Gemini, satu-satunya yang memegang kunci API
+catalog/              10 kontrol keamanan, satu berkas YAML per kontrol
+contract/             bentuk data laporan JSON, dipakai dispatcher sampai dashboard
+web/                  API dashboard dan halamannya
+systemd/              unit systemd: siklus penjagaan harian dan dashboard
+examples/             contoh laporan, contoh konfigurasi, jembatan FastAPI
+docs/                 penjelasan alur, peta kode, dan panduan pasang di VPS
+install.sh            pemasang semuanya, sekalian menguji hasilnya sendiri
+check-all.sh          periksa 10 kontrol sekaligus, tanpa memasang apa pun
+demo.sh               nyalakan dashboard dengan data contoh
 ```
 
 Setelah terpasang, berkas-berkasnya duduk di sini:
@@ -368,9 +445,11 @@ Setelah terpasang, berkas-berkasnya duduk di sini:
 /opt/yoru/bin/              dispatcher dan pembungkus, milik root
 /usr/share/yoru/catalog/    katalog, milik root - agent cuma boleh membaca
 /etc/yoru/yoru.conf         konfigurasi, root:yoru-agent 640
+/etc/yoru/model.env         kunci model AI, root:yoru-model 640 - agent tidak bisa membaca
 /var/log/yoru/tindakan.log  catatan tindakan, milik root - agent TIDAK bisa menulis
 /var/lib/yoru/              laporan dan database dashboard, milik yoru-agent
 /opt/yoru/web/              dashboard dan venv-nya, milik root - agent cuma menjalankan
+/var/log/yoru-install.log   catatan lengkap pemasangan, termasuk keluaran apt dan pip
 ```
 
 Pembagian izin itu inti desainnya: agent boleh menulis laporannya sendiri,
@@ -386,7 +465,7 @@ Nama fungsi, variabel, dan seluruh komentar ditulis dalam bahasa Inggris.
 Yang sengaja **tidak** diterjemahkan: empat nama tindakan (`periksa`,
 `terapkan`, `kembalikan`, `verifikasi`), nama field di laporan JSON, kunci
 YAML di katalog, kolom SQLite, dan setiap kalimat yang dibaca pemilik server.
-Itu bukan detail implementasi — itu kosakata produknya, tertulis di
+Itu bukan sekadar detail implementasi. Itu kosakata produknya, tertulis di
 `contract/report.md`, dipakai bersama oleh dispatcher, agent, dan dashboard,
 dan sudah ada di dalam database yang terpasang. Menerjemahkannya berarti
 memutus semuanya sekaligus tanpa dapat apa-apa.
@@ -409,14 +488,14 @@ Ini masih versi awal. Yang belum ada, ditulis apa adanya:
   memilih menuliskannya daripada menambal semalam. Rinciannya di
   `catalog/K10.yaml`.
 - **`rp_filter` sengaja tidak diterapkan.** Alasannya ada di
-  `catalog/K10.yaml` — singkatnya, menulis `conf.all.rp_filter` saja tidak
+  `catalog/K10.yaml`. Singkatnya, menulis `conf.all.rp_filter` saja tidak
   berpengaruh karena kernel memakai nilai maksimum antara `all` dan
   per-kartu, dan mode ketat bisa memutus lalu lintas yang jalurnya tidak
   simetris.
 - **Model baru dipakai di satu tempat.** Yoru menyambung ke Hermes lewat
   `HERMES_URL`, dan sejauh ini modelnya cuma dipakai untuk satu hal: menilai
   port terbuka yang belum dijawab pemilik. Sisa kalimat di laporan masih diambil
-  apa adanya dari katalog. Itu disengaja untuk sekarang — laporan tidak boleh
+  apa adanya dari katalog. Itu disengaja untuk sekarang: laporan tidak boleh
   gagal keluar cuma karena satu panggilan API, jadi tiap tambahan harus punya
   jalan mundur yang jelas dulu.
 - **Notifikasi Telegram belum diuji dengan bot sungguhan.** Kodenya jalan dan
@@ -425,16 +504,16 @@ Ini masih versi awal. Yang belum ada, ditulis apa adanya:
 - **`kembalikan` pada K05 mengosongkan firewall, bukan memulihkannya.**
   Perintahnya `ufw reset`, jadi aturan yang dipasang sendiri oleh pemilik
   server ikut terhapus. ufw mengarsipkan berkasnya lebih dulu ke
-  `/etc/ufw/user.rules.<tanggal>`, jadi datanya tidak hilang — tapi Yoru
+  `/etc/ufw/user.rules.<tanggal>`, jadi datanya tidak hilang. Tapi Yoru
   belum memulihkan dari arsip itu. Untuk kontrol ini, "kembalikan" lebih
   tepat dibaca "dikosongkan".
 - **K02 mengabaikan AllowGroups dan DenyGroups.** Semua akun yang masih bisa
   masuk lewat SSH sudah diperiksa satu per satu, termasuk yang bukan pemilik.
   Yang belum dibaca cuma pembatasan berbasis grup. Keduanya hanya
-  *mempersempit* siapa yang boleh masuk, jadi mengabaikannya membuat daftar
-  peringatan kepanjangan — tidak pernah kependekan.
+  *mempersempit* siapa yang boleh masuk, jadi mengabaikannya bisa bikin
+  daftar peringatan kepanjangan, tapi tidak pernah kependekan.
 - **Pagu log K09 masih dipatok 500M.** Katalognya sendiri bilang angka itu
-  harus dihitung ulang per server. Masuk akal untuk disk 10–100 GB, tidak
+  harus dihitung ulang per server. Masuk akal untuk disk 10 sampai 100 GB, tidak
   untuk di luar itu.
 - Kontrol untuk lapisan web (nginx, TLS, header) belum ada. Sepuluh kontrol
   yang sekarang semuanya di lapisan sistem operasi.
