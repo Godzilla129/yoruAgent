@@ -998,10 +998,21 @@ except Exception as e:
 PY
 }
 
+# The bridge is installed before the dashboard, so the dashboard's port still
+# looks free at this point. It has to be skipped by name, not by probing.
+model_port() {
+  local p who
+  for p in 8080 8090 8091 8092; do
+    [ "$WITH_DASHBOARD" = yes ] && [ "$p" = "$WEB_PORT" ] && continue
+    who="$(port_owner "$p")"
+    case "$who" in ""|"?") printf '%s' "$p"; return 0 ;; esac
+  done
+  return 1
+}
+
 install_gemini() {
-  local port=8080 busy
-  busy="$(port_owner 8080)"
-  case "$busy" in ""|"?") : ;; *) port=8090 ;; esac
+  local port
+  port="$(model_port)" || { warn "no free port for the model bridge (tried 8080, 8090 to 8092)"; return 1; }
 
   id "$MODEL_USER" >/dev/null 2>&1 \
     || useradd --system --no-create-home --shell /usr/sbin/nologin "$MODEL_USER" \
