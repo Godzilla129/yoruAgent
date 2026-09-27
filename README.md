@@ -460,15 +460,28 @@ menyunting catatan tindakannya sendiri.
 
 ## Catatan untuk yang membaca kodenya
 
-Nama fungsi, variabel, dan seluruh komentar ditulis dalam bahasa Inggris.
+Bahasanya memang masih campur. Nama fungsi dan variabel pakai bahasa
+Inggris, begitu juga kolom SQLite dan sebagian besar field di laporan JSON.
+Yang masih bahasa Indonesia:
 
-Yang sengaja **tidak** diterjemahkan: empat nama tindakan (`periksa`,
-`terapkan`, `kembalikan`, `verifikasi`), nama field di laporan JSON, kunci
-YAML di katalog, kolom SQLite, dan setiap kalimat yang dibaca pemilik server.
-Itu bukan sekadar detail implementasi. Itu kosakata produknya, tertulis di
-`contract/report.md`, dipakai bersama oleh dispatcher, agent, dan dashboard,
-dan sudah ada di dalam database yang terpasang. Menerjemahkannya berarti
-memutus semuanya sekaligus tanpa dapat apa-apa.
+- Empat nama tindakan: `periksa`, `terapkan`, `kembalikan`, `verifikasi`.
+- Kata status: `LULUS`, `GAGAL`, `DILEWATI`, `DITOLAK`, `DIKEMBALIKAN`,
+  `DISIMPAN`.
+- Keputusan pemilik: `setuju`, `tolak`, `sah`, `kembalikan`.
+- Lima field di hasil tindakan pada laporan JSON: `nilai_sesudah`,
+  `diverifikasi`, `dirollback`, `pesan_error`, `durasi_detik`.
+- Kunci YAML di katalog, misalnya `nama`, `kenapa`, `risiko`.
+- Sebagian kunci di `/etc/yoru/yoru.conf`: `NAMA_SERVER`, `JAM_PENJAGAAN`,
+  `ZONA_WAKTU`, `LEWATI_KONTROL`, `PORT_DIIZINKAN`.
+- Pilihan baris perintah `yoru-agent` (`--siklus`, `--kering`, dan
+  lainnya) dan `--paksa` di `yoructl`.
+- Beberapa nama file: `/etc/yoru/pemilik`, `/var/log/yoru/tindakan.log`,
+  `/var/lib/yoru/port-disetujui`.
+- Semua kalimat yang dibaca pemilik server.
+
+Nama tindakan, kata status, dan field JSON dipakai bareng oleh `yoructl`,
+agent, dan dashboard, dan bentuknya tertulis di `contract/report.md`. Kalau
+nanti mau diganti, harus diganti di semua tempat itu sekaligus.
 
 ---
 

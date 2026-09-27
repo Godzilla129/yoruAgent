@@ -24,8 +24,8 @@ ssh -p <port-ssh> root@<ip-vps>
 passwd
 ```
 
-Kalau nanti kunci SSH udah jalan, password root nggak dipakai lagi sama
-sekali. Tapi tetap ganti sekarang, jangan nunggu.
+Kalau nanti kunci SSH udah jalan, password root cuma kepakai buat konsol
+darurat di langkah 7. Tapi tetap ganti sekarang, jangan nunggu.
 
 ---
 
@@ -34,7 +34,7 @@ sekali. Tapi tetap ganti sekarang, jangan nunggu.
 Yoru **nolak** kalau pemiliknya root:
 
 ```
-pemilik tidak boleh root - Yoru butuh akun manusia biasa
+stopped  the owner cannot be root - Yoru needs a normal human account
 ```
 
 Itu disengaja. Pemilik itu akun yang dipakai buat masuk setelah K01 dan K02
@@ -80,7 +80,7 @@ sudo journalctl -t sshd --since "-30 days" | grep "Accepted publickey for yoru-o
 Kalau baris itu nggak ada, K02 bakal nolak:
 
 ```
-belum ada bukti login SSH key berhasil - menerapkan ini menutup satu-satunya jalan masuk
+menerapkan ini menutup satu-satunya jalan masuk. kunci yoru-owner sudah terpasang tapi belum pernah dipakai login. Login sekali pakai kunci itu (ssh yoru-owner@<alamat-server>), lalu ulangi
 ```
 
 Itu penjaganya lagi kerja dengan benar. Jangan diakalin, login beneran aja.
@@ -154,7 +154,7 @@ Terus yang **BERISIKO**, satu-satu, jangan diloop:
 
 | Urutan | Kontrol | Yang perlu diperhatiin |
 |---|---|---|
-| 1 | K05 firewall | Cek dulu `ufw show added` ada port SSH kamu. Habis nyala, **buka sesi SSH baru dari terminal lain** buat mastiin masih bisa masuk. |
+| 1 | K05 firewall | K05 sendiri yang ngizinin port SSH sebelum firewall nyala. Habis itu cek `sudo ufw status`, port SSH kamu harus ada di situ. Terus **buka sesi SSH baru dari terminal lain** buat mastiin masih bisa masuk. |
 | 2 | K04 kripto | Kalau klien SSH-nya baru, aman. |
 | 3 | K01 root SSH | Setelah ini root nggak bisa SSH lagi. Pastiin `yoru-owner` udah kepake. |
 | 4 | K02 password off | **Paling akhir.** Setelah ini cuma kunci SSH yang bisa masuk. |
