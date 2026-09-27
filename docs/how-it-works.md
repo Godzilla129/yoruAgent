@@ -8,15 +8,15 @@ ada istilah yang dipakai tanpa dijelasin dulu.
 ## 1. Masalahnya apa
 
 Orang punya server. Server itu nyala terus, 24 jam, dan bisa dihubungi dari
-seluruh dunia. Di dalamnya ada ratusan setelan keamanan — boleh nggak login
+seluruh dunia. Di dalamnya ada ratusan setelan keamanan: boleh nggak login
 pakai password, firewallnya nyala nggak, log-nya disimpan nggak, dan
 seterusnya.
 
 Setelan itu ada yang bawaannya sudah aman, banyak yang enggak. Yang tahu
 bedanya cuma orang yang memang belajar itu.
 
-Dan orang yang punya server kecil — warung online, developer sendirian, orang
-yang baru sewa VPS pertama kali — biasanya nggak tahu, nggak punya waktu, dan
+Dan orang yang punya server kecil (warung online, developer sendirian, orang
+yang baru sewa VPS pertama kali) biasanya nggak tahu, nggak punya waktu, dan
 nggak punya siapa-siapa buat nanya. Servernya jalan, webnya kebuka, ya udah,
 dianggap beres.
 
@@ -44,7 +44,7 @@ seperti sekarang.
 
 ## 3. Kenapa AI-nya nggak dikasih akses penuh
 
-AI itu **baca log**. Log server isinya tulisan yang bisa ditulis siapa aja —
+AI itu **baca log**. Log server isinya tulisan yang bisa ditulis siapa aja,
 termasuk penyerang. Contoh nyata: penyerang bisa nyoba login pakai username
 apa pun. Username itu langsung nyantol di log server kamu.
 
@@ -141,7 +141,7 @@ yang bertindak.** Tiga hal berbeda, sengaja dipisah.
 
 ## 6. Alurnya dari awal
 
-### Hari pertama — Siklus Perbaikan
+### Hari pertama: Siklus Perbaikan
 
 **1.** Pemilik pasang Yoru. Dua baris perintah, selesai.
 
@@ -178,32 +178,32 @@ kalimat kayak gini:
 > [ Setuju, matikan ]  [ Nanti dulu ]
 
 **6.** Yang risikonya AMAN, Yoru kerjain sendiri tanpa nanya. Yang BERISIKO,
-nunggu pemilik mencet setuju — **satu per satu, bukan sekali setuju untuk
+nunggu pemilik mencet setuju. **Satu per satu, bukan sekali setuju untuk
 semua.**
 
 **7.** Buat yang disetujui, Hermes manggil `yoructl <kontrol> terapkan`.
 Sebelum ngubah apa pun, `yoructl` **motret dulu keadaan lama** ke
 `/var/backups/yoru/`, biar ada bahan buat mulihin nanti.
 
-**8.** Habis itu `yoructl <kontrol> verifikasi` — **baca ulang keadaan yang
-bener-bener aktif**, bukan sekadar "filenya berhasil ditulis".
+**8.** Habis itu `yoructl <kontrol> verifikasi`, yang **baca ulang keadaan
+yang bener-bener aktif**, bukan sekadar "filenya berhasil ditulis".
 
 Ini penting banget dan kami pernah kena: waktu ngerjain K02, filenya
-kesimpen, `sshd -t` bilang valid, reload nggak error — tiga tanda hijau — dan
+kesimpen, `sshd -t` bilang valid, reload nggak error. Tiga tanda hijau, tapi
 **setelan servernya nggak berubah sama sekali**, karena kalah urutan sama
 file bawaan sistem. Makanya aturannya keras: `berhasil: true` cuma boleh
 diisi kalau `diverifikasi: true`.
 
 **9.** Laporan diperbarui, skornya naik, pemilik dikabarin.
 
-### Tiap hari sesudahnya — Siklus Penjagaan
+### Tiap hari sesudahnya: Siklus Penjagaan
 
 **10.** Jam 3 pagi (bisa diatur), timer sistem manggil Yoru otomatis.
 
 **11.** Sepuluh kontrol diperiksa ulang. Kalau semua masih sesuai, ya udah,
 diem aja. Nggak usah ngirim notifikasi cuma buat bilang "aman".
 
-**12.** Kalau ada yang **berubah** — nah ini intinya. Yoru nanya ke jejak
+**12.** Kalau ada yang **berubah**, nah ini intinya. Yoru nanya ke jejak
 audit: **siapa yang ngubah, kapan, pakai perintah apa.** Terus pemilik
 dikabarin:
 
@@ -225,7 +225,7 @@ alarm yang bunyi terus itu pasti diabaikan.
 
 ### "Log" itu ada dua, dan bedanya penting
 
-**Catatan tindakan** — `/var/log/yoru/tindakan.log` plus `K01.log` sampai
+**Catatan tindakan** ada di `/var/log/yoru/tindakan.log` plus `K01.log` sampai
 `K10.log`. Isinya satu baris JSON tiap kali `yoructl` dipanggil. Ini **jejak
 audit**: milik root, dan **agent sendiri nggak bisa nulis ke situ**. Alat
 keamanan nggak boleh bisa ngedit jejaknya sendiri.
@@ -234,7 +234,7 @@ Baris di log ini sama kayak yang keluar di layar, plus dua kolom tambahan di
 depan: `time` dan `caller` (siapa yang manggil sudo). Buat halaman riwayat
 di dashboard, dua kolom itu yang dipakai.
 
-**Laporan** — `/var/lib/yoru/laporan-terakhir.json`. Ini hasil rangkuman
+**Laporan** ada di `/var/lib/yoru/laporan-terakhir.json`. Ini hasil rangkuman
 Hermes, bentuknya sesuai `contract/report.md`. Ini yang dibaca dashboard buat
 nampilin skor, daftar kontrol, dan tombol setuju.
 
@@ -250,7 +250,7 @@ Dashboard **nggak pernah** ngehubungi server.
 
 Kenapa: server yang dijaga Yoru jadi nggak perlu buka satu port pun buat
 dashboard. Dan kalau dashboardnya jebol, yang bisa dilakuin penyerang paling
-jauh cuma nyetujuin kontrol yang **udah ada di katalog** — dia nggak bisa
+jauh cuma nyetujuin kontrol yang **udah ada di katalog**. Dia nggak bisa
 nyuruh server ngelakuin hal baru.
 
 Jangan pernah dibalik arahnya demi kepraktisan.
@@ -264,14 +264,14 @@ diluruskan:
 
 ### "Memberi akses ke Hermes untuk eksekusi bash, membaca file konfigurasi, write file"
 
-Ini yang **paling** perlu diluruskan, dan bukan karena salah nangkep — emang
+Ini yang **paling** perlu diluruskan. Bukan karena salah nangkep, emang
 begitu cara kebanyakan alat lain bekerja.
 
 Hermes **nggak** dikasih akses bash. **Nggak** dikasih akses nulis file.
 Hermes cuma bisa manggil satu program dengan dua argumen.
 
 Kalau Hermes dikasih bash, seluruh alasan Yoru boleh dipercaya nyentuh server
-orang itu bubar — karena satu baris log yang dirancang jahat langsung jadi
+orang itu bubar, karena satu baris log yang dirancang jahat langsung jadi
 perintah root. Dengan desain sekarang, skenario terburuknya cuma: agentnya
 ketipu terus mencet salah satu dari 40 tombol yang udah ditulis manusia.
 
@@ -284,16 +284,16 @@ sudo -u yoru-agent sudo -n id                                   # ditolak
 
 ### "Setiap proses yang dijalankan Hermes harus menunggu persetujuan user"
 
-Hampir. Yang nunggu persetujuan cuma yang **BERISIKO** — K01, K02, K04, K05,
+Hampir. Yang nunggu persetujuan cuma yang **BERISIKO**: K01, K02, K04, K05,
 K06. Yang **AMAN** (K03, K07, K08, K09, K10) dikerjain Yoru sendiri.
 
 Bedanya disengaja. Kalau semuanya butuh persetujuan, pemilik bakal dihujani
 sepuluh pertanyaan di hari pertama, terus mencet setuju semua tanpa baca.
 Persetujuan yang diminta buat segalanya itu sama aja nggak minta persetujuan.
 
-Sisanya — script hardening/audit/rollback, daftar file log, Hermes yang
-ngejelasin pakai LLM, output masuk log, log diakses lewat API buat dashboard —
-**semuanya persis kayak yang ditulis.**
+Sisanya **persis kayak yang ditulis**: script hardening/audit/rollback, daftar
+file log, Hermes yang ngejelasin pakai LLM, output masuk log, dan log yang
+diakses lewat API buat dashboard.
 
 ### Dan dua hal yang dia nemuin, yang ternyata bener
 
@@ -304,13 +304,13 @@ Dua-duanya udah dibenerin di yoructl 0.1.5.
 
 Bener. Nggak ada kunci sama sekali di `yoructl`. Kami uji di K06: dua
 `systemctl restart mariadb` jalan bertumpuk, dan **dua-duanya ngelapor
-sukses**. Sekarang tindakan yang nulis (`terapkan`, `kembalikan`) ngantre —
+sukses**. Sekarang tindakan yang nulis (`terapkan`, `kembalikan`) ngantre,
 satu-satu buat seluruh server. `periksa` sama `verifikasi` nggak ikut ngantre
 karena cuma baca.
 
-Kuncinya satu buat semua kontrol, bukan satu per kontrol. Sebabnya K01–K04
-sama-sama nulis ke `/etc/ssh/sshd_config.d`, dan K05 sama K10 sama-sama
-nyunting `/etc/default/ufw` — kunci per-kontrol bakal kelihatan aman padahal
+Kuncinya satu buat semua kontrol, bukan satu per kontrol. Sebabnya K01 sampai
+K04 sama-sama nulis ke `/etc/ssh/sshd_config.d`, dan K05 sama K10 sama-sama
+nyunting `/etc/default/ufw`. Kunci per-kontrol bakal kelihatan aman, padahal
 dua `sed -i` masih bisa jalan bareng di file yang sama.
 
 **"Semisal di server udah ada 5 user berbeda, bisa kekunci kalau belum bikin
@@ -319,8 +319,8 @@ key."**
 Bener juga. Penjaga K02 cuma ngecek **satu orang**, si pemilik. Empat orang
 lain bisa kekunci di luar sementara Yoru ngelapor `LULUS`. Sekarang K02
 mendata semua akun yang masih bisa masuk tapi belum punya kunci, terus nolak
-sambil nyebut namanya. Ada jalan `--paksa` buat akun lama yang emang nganggur
-— tapi **`--paksa` ditolak kalau yang manggil agent**, karena maksa itu
+sambil nyebut namanya. Ada jalan `--paksa` buat akun lama yang emang nganggur,
+tapi **`--paksa` ditolak kalau yang manggil agent**, karena maksa itu
 keputusan manusia.
 
 ### Bonus dari dua pertanyaan itu: port panel
@@ -329,7 +329,7 @@ Waktu ngurus yang kedua, ketahuan K05 punya masalah sebangun. Dia cuma buka
 port SSH, jadi di server yang ada aaPanel (8888) atau web (80/443), nyalain
 firewall = ngunci pemilik dari panelnya sendiri.
 
-Godaannya: hafalin nomornya. **Itu salah** — orang bisa ganti port panelnya,
+Godaannya: hafalin nomornya. **Itu salah.** Orang bisa ganti port panelnya,
 dan panel yang belum kami tau ada ratusan. Daftar hafalan selalu ketinggalan.
 
 Jadi caranya sama kayak SSH: **baca kenyataan.** `ss` ngasih tau port mana
@@ -356,12 +356,12 @@ inti produknya.
 Bagian ini dulu isinya daftar tugas. Sekarang isinya daftar yang **sudah
 jadi**, biar nggak ada yang ngerjain dua kali.
 
-**Dispatcher dan katalog** — `bin/yoructl`, `catalog/`. Sepuluh kontrol, empat
+**Dispatcher dan katalog** (`bin/yoructl`, `catalog/`). Sepuluh kontrol, empat
 puluh tindakan, semuanya udah pernah dijalanin sungguhan di VM. Ada kunci
 antar-proses biar `terapkan` sama `kembalikan` nggak bisa tabrakan, dan
 `terapkan` nggak ngulang kerjaan kalau semuanya udah bener.
 
-**Agent** — `bin/yoru-agent`. Dia yang mikir dan yang ngomong ke luar:
+**Agent** (`bin/yoru-agent`). Dia yang mikir dan yang ngomong ke luar:
 
 - baca `/etc/yoru/yoru.conf` (sebagai teks, nggak pernah di-`source`)
 - panggil `yoructl` sepuluh kali, kumpulin baris JSON-nya
@@ -372,12 +372,12 @@ antar-proses biar `terapkan` sama `kembalikan` nggak bisa tabrakan, dan
   ke jejak audit siapa yang ngubah
 
 Satu hal yang perlu diinget soal agent ini: **dia jalan tanpa model AI juga.**
-Kalimat penjelasan buat pemilik diambil dari katalog — emang udah ditulis
-manusia buat orang awam. Model AI nambah lapisan di atasnya: nimbang port yang
+Kalimat penjelasan buat pemilik diambil dari katalog, yang emang udah
+ditulis manusia buat orang awam. Model AI nambah lapisan di atasnya: nimbang port yang
 mencurigakan, nyusun urutan, nerjemahin drift. Kalau kuncinya habis atau
 jaringannya mati, **laporannya tetep keluar lengkap.**
 
-**API dan dashboard** — `web/api.py`, `web/dashboard.html`. Nyimpen laporan di
+**API dan dashboard** (`web/api.py`, `web/dashboard.html`). Nyimpen laporan di
 SQLite, nampilin skor sama sepuluh kontrol, nampung jawaban pemilik.
 
 Arah datanya satu jalur, dan itu sengaja: agent yang nyamperin dashboard,
@@ -387,7 +387,7 @@ pun buat dashboard.
 Satu aturan yang nggak bisa ditawar dan udah dipasang: kontrol yang
 `butuh_izin: true` **wajib nampilin `breaks_if_applied` tepat di
 sebelah tombol setuju.** Bukan di tooltip, bukan di halaman lain. Orang yang
-mencet harus udah baca akibatnya — itu alasan Yoru boleh dipercaya nyentuh
+mencet harus udah baca akibatnya. Itu alasan Yoru boleh dipercaya nyentuh
 server orang.
 
 **Buat nyoba tanpa server:**

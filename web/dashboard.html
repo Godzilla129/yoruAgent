@@ -945,8 +945,8 @@ function telegramStatus(config) {
   if (chat) return `<div class="note ok status">Tersambung ke chat <code>${esc(chat)}</code>.</div>`;
   if (code) return `<div class="note wait status">Belum tersambung. Buka bot kamu di Telegram, lalu kirim sekali:
     <code>/start ${esc(code)}</code></div>`;
-  return `<div class="note wait status">Belum tersambung. Kirim <code>/start</code> ke bot kamu —
-    dia akan membalas dengan chat ID yang perlu diisi di bawah.</div>`;
+  return `<div class="note wait status">Belum tersambung. Kirim <code>/start</code> ke bot kamu.
+    Dia akan membalas dengan chat ID yang perlu diisi di bawah.</div>`;
 }
 
 async function settingsPage(gen) {

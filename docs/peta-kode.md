@@ -44,7 +44,7 @@ Diurut dari yang paling penting buat dipahami.
 | `bin/yoru.sudoers` | 13 | Batas izin. Baca ini duluan. |
 | `catalog/K01..K10.yaml` | kecil | **Faktanya.** Tiap kontrol: namanya apa, kenapa penting, nilai targetnya berapa, apa yang rusak kalau diterapin. Ditulis manusia, bukan AI. |
 | `bin/yoructl` | 930 | **Satu satunya yang nyentuh server.** 10 kontrol x 4 tindakan (`periksa` `terapkan` `kembalikan` `verifikasi`). Jalan sebagai root. |
-| `bin/yoru-agent` | 867 | Otaknya. Baca semua kontrol, urutin, minta model AI bikin kalimatnya, kirim laporan ke dashboard dan Telegram. **Ga pernah jalanin perintah sendiri** — selalu lewat yoructl. |
+| `bin/yoru-agent` | 867 | Otaknya. Baca semua kontrol, urutin, minta model AI bikin kalimatnya, kirim laporan ke dashboard dan Telegram. **Ga pernah jalanin perintah sendiri**, selalu lewat yoructl. |
 | `web/api.py` | 774 | Server dashboard + bot Telegram. Nerima laporan, simpen ke SQLite, layanin tombol. |
 | `web/dashboard.html` | 1329 | Halamannya. Satu file, HTML + CSS + JS jadi satu. |
 | `install.sh` | 1559 | Installer. Paling panjang tapi paling ga perlu dipahami. |
@@ -86,8 +86,8 @@ Jadi ga ada pintu masuk baru ke server.
 
 | Pertanyaan lu | Buka file ini |
 |---|---|
-| "Kontrol K05 itu ngapain sih?" | `catalog/K05.yaml` — bahasa manusia, bukan kode |
-| "Perintah apa yang beneran dijalanin?" | `bin/yoructl`, cari `k05()` — tiap kontrol satu fungsi, isinya `case` buat empat tindakannya |
+| "Kontrol K05 itu ngapain sih?" | `catalog/K05.yaml`, isinya bahasa manusia, bukan kode |
+| "Perintah apa yang beneran dijalanin?" | `bin/yoructl`, cari `k05()`. Tiap kontrol satu fungsi, isinya `case` buat empat tindakannya |
 | "Kenapa skornya 80?" | `bin/yoru-agent`, cari `"summary"` |
 | "Urutan kerjanya gimana?" | `bin/yoru-agent`, cari `ORDER =` |
 | "Tombol di dashboard manggil apa?" | `web/dashboard.html`, cari `async function run(` (baris 1262) |
@@ -103,11 +103,11 @@ ga penting.
 
 ## Yang ga usah dibaca
 
-- `install.sh` — 1559 baris, dan isinya 90% penanganan hal yang jarang
+- `install.sh`: 1559 baris, dan isinya 90% penanganan hal yang jarang
   kejadian. Cukup tau: dia ngecek dulu, nanya di depan, baru kerja.
-- `web/dashboard.html` bagian CSS — 340 baris warna dan jarak.
-- `web/test_api.py`, `web/demo.py`, `demo.sh`, `check-all.sh` — alat uji.
-- `contract/report.md` — bentuk JSON laporan. Berguna kalau nanti ada yang
+- `web/dashboard.html` bagian CSS: 340 baris warna dan jarak.
+- `web/test_api.py`, `web/demo.py`, `demo.sh`, `check-all.sh`: alat uji.
+- `contract/report.md`: bentuk JSON laporan. Berguna kalau nanti ada yang
   bikin klien lain, ga berguna buat ngerti cara kerjanya.
 
 ---
@@ -154,8 +154,8 @@ sudo tail -20 /var/log/yoru/tindakan.log
 
 ## Kalau lagi bingung, urutan ini biasanya kejawab
 
-1. Buka `catalog/` — di situ semuanya bahasa manusia, ga ada kode sama sekali
-2. Jalanin `yoructl K05 periksa` — liat outputnya
+1. Buka `catalog/`. Di situ semuanya bahasa manusia, ga ada kode sama sekali
+2. Jalanin `yoructl K05 periksa`, liat outputnya
 3. Baru buka `bin/yoructl` dan cari fungsi K05-nya
 
 Dari bawah ke atas gitu lebih gampang daripada baca dari baris pertama.
