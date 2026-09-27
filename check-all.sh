@@ -5,7 +5,7 @@
 
 if [ "$EUID" -ne 0 ]; then echo "Harus dijalankan dengan sudo."; exit 1; fi
 
-passed=0; failed=0
+passed=0; failed=0; skipped=0
 
 check() {  # check "<name>" "<actual>" "<expected>"
   if [ "$2" = "$3" ]; then
@@ -15,6 +15,11 @@ check() {  # check "<name>" "<actual>" "<expected>"
     printf '  \033[31mGAGAL\033[0m  %-46s %s (harusnya: %s)\n' "$1" "$2" "$3"
     failed=$((failed+1))
   fi
+}
+
+skip() {  # skip "<name>" "<reason>"
+  printf '  \033[33mDILEWATI\033[0m %-43s %s\n' "$1" "$2"
+  skipped=$((skipped+1))
 }
 
 echo
@@ -42,11 +47,13 @@ check "K05 firewall aktif" \
 check "K05 default tolak masuk" \
     "$(ufw status verbose 2>/dev/null | grep -c 'deny (incoming)')" "1"
 
-check "K06 mariadb hanya localhost" \
-    "$(ss -tulpn 2>/dev/null | grep -c '127.0.0.1:3306')" "1"
-
-check "K06 mariadb tidak di 0.0.0.0" \
-    "$(ss -tulpn 2>/dev/null | grep -c '0.0.0.0:3306')" "0"
+# Same three outcomes as yoructl K06: no MariaDB is not a failure.
+listening="$(ss -tulpn 2>/dev/null)"
+case "$listening" in
+  *0.0.0.0:3306*)   check "K06 mariadb hanya localhost" "0.0.0.0:3306" "127.0.0.1:3306" ;;
+  *127.0.0.1:3306*) check "K06 mariadb hanya localhost" "127.0.0.1:3306" "127.0.0.1:3306" ;;
+  *)                skip  "K06 mariadb hanya localhost" "tidak ada layanan di 3306" ;;
+esac
 
 check "K07 update otomatis aktif" \
     "$(systemctl is-enabled unattended-upgrades 2>/dev/null)" "enabled"
@@ -77,7 +84,7 @@ check "K10 jumlah setelan terbaca (min 12)" \
 
 echo
 echo "  ------------------------------------------------------------"
-printf '  LULUS %d   GAGAL %d\n' "$passed" "$failed"
+printf '  LULUS %d   GAGAL %d   DILEWATI %d\n' "$passed" "$failed" "$skipped"
 echo
 
 # Bonus drift signal: did the server die unexpectedly?

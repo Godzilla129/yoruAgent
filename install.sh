@@ -278,7 +278,7 @@ check_container() {
   command -v systemd-detect-virt >/dev/null 2>&1 && kind="$(systemd-detect-virt --container 2>/dev/null)"
   case "${kind:-none}" in
     none) : ;;
-    *) warn "this is a $kind container - kernel settings (K07) may be read-only here" ;;
+    *) warn "this is a $kind container - kernel settings (K10) may be read-only here" ;;
   esac
 }
 
@@ -659,9 +659,10 @@ the agent is allowed to open.")" || MODEL_KEY=""
       ;;
     2)
       local suggest=""
-      case " $hosts " in *" ollama "*) suggest="http://127.0.0.1:11434/v1" ;; esac
+      case " $hosts " in *" ollama "*) suggest="http://127.0.0.1:11434" ;; esac
       local where="Anything that answers POST /v1/chat/completions works here -
-Ollama, an OpenAI-shaped gateway, or your own server.
+Ollama, an OpenAI-shaped gateway, or your own server. Give the base
+address only; Yoru adds /v1/chat/completions itself.
 
 Address:"
       if dialog_ready; then
@@ -672,6 +673,7 @@ Address:"
         ask "Address" MODEL_URL
       fi
       MODEL_URL="$(printf '%s' "$MODEL_URL" | tr -d '\r\n ')"
+      MODEL_URL="${MODEL_URL%/}"; MODEL_URL="${MODEL_URL%/v1}"
       [ -n "$MODEL_URL" ] || { printf '  No address given - skipping.\n'; return 0; }
       if dialog_ready; then
         MODEL_TOKEN="$(box_pass "AI model" "Token, if that address needs one. Leave empty if it does not.")" || MODEL_TOKEN=""
@@ -860,7 +862,7 @@ create_dirs() {
   chgrp "$AGENT" "$LOG_DIR"/*.log 2>/dev/null || true
 
   # The only directory the agent may write; $LOG_DIR stays root's.
-  install -d -o "$AGENT" -g "$AGENT" -m 750 "$DATA_DIR" "$DATA_DIR/riwayat" \
+  install -d -o "$AGENT" -g "$AGENT" -m 750 "$DATA_DIR" "$DATA_DIR/history" \
     || die "could not create $DATA_DIR"
   # If the agent was ever run under sudo, the last report is root-owned and the
   # daily cycle silently cannot overwrite it.

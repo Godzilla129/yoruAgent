@@ -1081,7 +1081,7 @@ async function vouchPort(port, btn, slot) {
   btn.disabled = true;
   slotSay(slot, 'busy', `menyimpan port ${port}…`);
   try {
-    const r = await post('/api/port', {server, port: [Number(port)], keterangan: 'dijawab lewat dashboard'});
+    const r = await post('/api/port', {server, port: [Number(port)], note: 'dijawab lewat dashboard'});
     const d = await r.json();
     if (r.ok && d.ok) {
       btn.textContent = 'sudah dicatat';
