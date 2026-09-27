@@ -401,7 +401,7 @@ check_ports() {
   fi
 
   who="$(port_owner 8080)"
-  case "$who" in ""|"?") : ;; *) note "port 8080 taken by $who - the model connector will use 8090" ;; esac
+  case "$who" in ""|"?") : ;; *) note "port 8080 taken by $who - the model connector will take the next free port" ;; esac
   return 0
 }
 
@@ -1110,7 +1110,7 @@ install_model() {
 
   case "$MODEL_CHOICE" in
     gemini)
-      install_gemini || pending "no AI model yet - add one in Settings when you want it"
+      install_gemini || pending "no AI model yet - run the installer again to retry Gemini"
       ;;
     url)
       local answer; answer="$(model_probe "$MODEL_URL" "$MODEL_TOKEN" "$MODEL_NAME")"
@@ -1130,7 +1130,7 @@ install_model() {
     *)
       ok "AI model - off, wording comes from the catalog"
       [ "$INTERACTIVE" = yes ] \
-        || pending "no AI model yet - add one in Settings to get plain-language reports"
+        || pending "no AI model yet - Yoru works without one, add it later in Settings"
       ;;
   esac
   chown root:"$AGENT" "$CONFIG_FILE"; chmod 640 "$CONFIG_FILE"
@@ -1423,7 +1423,10 @@ summary() {
       *)
         printf '\n  The dashboard is open to the network. Token for the buttons:\n'
         printf '      %s\n' "$(config_get "$CONFIG_FILE" DASHBOARD_TOKEN)"
-        pending "port $WEB_PORT is not in PORT_DIIZINKAN yet, so K05 will not turn the firewall on" ;;
+        case " $(config_get "$CONFIG_FILE" PORT_DIIZINKAN) " in
+          *" $WEB_PORT "*) : ;;
+          *) pending "port $WEB_PORT is not in PORT_DIIZINKAN yet, so K05 will not turn the firewall on" ;;
+        esac ;;
     esac
   fi
 
@@ -1432,7 +1435,7 @@ summary() {
     printf '      /start %s\n' "$PAIR_CODE"
   fi
 
-  printf '\n  Check the server now\n'
+  printf '\n  Run the daily cycle now (safe controls get applied)\n'
   printf '      sudo -u %s %s/yoru-agent --siklus penjagaan\n' "$AGENT" "$BIN_DIR"
   printf '  Remove Yoru\n'
   printf '      sudo bash install.sh --uninstall\n'
@@ -1486,7 +1489,7 @@ uninstall() {
 
   # Not ours to delete uncalled for, but not ours to stay quiet about either.
   if [ -f "$CONFIG_FILE" ]; then
-    printf '\n  %s%s still holds your API key and bot token.%s\n' "$AMBER" "$CONFIG_FILE" "$RESET"
+    printf '\n  %s%s still holds your tokens (Telegram, dashboard, model).%s\n' "$AMBER" "$CONFIG_FILE" "$RESET"
     printf '  If this server is being sold, handed back or retired, delete it:\n'
     printf '      sudo rm %s\n' "$CONFIG_FILE"
   fi

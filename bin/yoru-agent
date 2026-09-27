@@ -269,7 +269,7 @@ class Reasoner:
                             "menjalankan apa pun."},
                 {"role": "user", "content": f"{instruction}\n\n{material}"},
             ],
-        }, timeout=20, label="Hermes")
+        }, timeout=20, label="model AI")
         try:
             text = answer["choices"][0]["message"]["content"]
         except (TypeError, KeyError, IndexError):
@@ -671,7 +671,7 @@ def test_telegram(config):
     """One test message, so a wrong token surfaces before real drift does."""
     token = config.get("TELEGRAM_TOKEN", "").strip()
     if not token:
-        say("TELEGRAM_TOKEN kosong - isi dulu di dashboard, menu Telegram Bot")
+        say("TELEGRAM_TOKEN kosong - isi dulu di halaman Setelan dashboard, bagian Bot Telegram")
         return False
 
     chat = config.get("TELEGRAM_CHAT_ID", "").strip()

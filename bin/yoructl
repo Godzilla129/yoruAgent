@@ -90,12 +90,12 @@ root_owned_only() {
 }
 
 self_check() {
-  [ "$(id -u)" -eq 0 ] || refuse "must run as root through sudo"
+  [ "$(id -u)" -eq 0 ] || refuse "harus dijalankan sebagai root lewat sudo"
   local self; self="$(readlink -f "$0")"
   local path
   for path in "$self" "$(dirname "$self")" /opt/yoru; do
     [ -e "$path" ] || continue
-    root_owned_only "$path" || refuse "stopping: $path is writable by someone other than root"
+    root_owned_only "$path" || refuse "berhenti: $path bisa ditulis selain root"
   done
 }
 
@@ -838,7 +838,7 @@ set_config() {  # set_config <KEY> <value>
         || refuse "token cuma boleh huruf, angka, dan tanda . _ ~ + / = -" ;;
     HERMES_URL)
       [ -z "$val" ] || [[ "$val" =~ ^https?://[A-Za-z0-9._-]+(:[0-9]{1,5})?$ ]] \
-        || refuse "alamat Hermes bentuknya http://host:port, contoh http://127.0.0.1:8080" ;;
+        || refuse "alamat server model bentuknya http://host:port, contoh http://127.0.0.1:8080" ;;
     AI_MODEL)
       [ -z "$val" ] || [[ "$val" =~ ^[A-Za-z0-9._:/-]{1,80}$ ]] \
         || refuse "nama model cuma boleh huruf, angka, titik, garis, titik dua, dan garis miring" ;;
