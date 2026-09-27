@@ -1,4 +1,4 @@
-# Kontrak Laporan Yoru — versi 1
+# Kontrak Laporan Yoru, versi 1
 
 Dokumen ini menjelaskan satu-satunya bentuk data yang dipakai bersama oleh
 tiga lane. Selama bentuknya stabil, kita bertiga bisa kerja sendiri-sendiri
@@ -16,13 +16,13 @@ Mengubahnya sendiri berarti memecahkan kode dua orang lain tanpa mereka tahu.
 ## Di mana filenya
 
 ```
-/var/lib/yoru/laporan-terakhir.json     selalu ditimpa — ini yang dibaca dashboard
+/var/lib/yoru/laporan-terakhir.json     selalu ditimpa, ini yang dibaca dashboard
 /var/lib/yoru/riwayat/<ISO8601>.json    arsip, tidak dihapus otomatis
 ```
 
 Kedua folder itu dibuat oleh `install.sh` dan dimiliki `yoru-agent` dengan izin
-`750`. Itu satu-satunya tempat yang boleh ditulis agent — laporan memang
-keluarannya sendiri. Catatan tindakan di `/var/log/yoru/tindakan.log` tetap
+`750`. Itu satu-satunya tempat yang boleh ditulis agent, karena laporan
+memang keluarannya sendiri. Catatan tindakan di `/var/log/yoru/tindakan.log` tetap
 milik root dan tidak bisa disentuh agent, karena alat keamanan tidak boleh
 bisa menyunting jejaknya sendiri.
 
@@ -37,7 +37,7 @@ examples/report-fix.json      siklus perbaikan, server sakit, skor 10
 examples/report-watch.json    siklus penjagaan, server sehat, ada satu drift
 ```
 
-Jangan menunggu server nyata untuk mulai membangun tampilan — bentuknya sudah
+Jangan menunggu server nyata untuk mulai membangun tampilan. Bentuknya sudah
 sama persis.
 
 ---
@@ -56,7 +56,7 @@ sama persis.
 | `summary` | objek | Angka-angka untuk kartu di dashboard |
 | `controls` | array | Satu entri per kontrol yang diperiksa |
 | `drift` | array | Hanya terisi saat siklus penjagaan. Kosong saat perbaikan |
-| `pending_decisions` | array | Daftar `id` yang menunggu jawaban pemilik — ini yang dikirim bot |
+| `pending_decisions` | array | Daftar `id` yang menunggu jawaban pemilik. Ini yang dikirim bot |
 
 ### `server`
 
@@ -72,7 +72,7 @@ sama persis.
 
 `detected_panel` isinya `null`, `"aapanel"`, `"cpanel"`, atau `"cyberpanel"`.
 Dashboard memakainya untuk menampilkan peringatan khusus panel yang sudah
-dicatat di katalog — misalnya aaPanel yang butuh port 8888 tetap terbuka.
+dicatat di katalog, misalnya aaPanel yang butuh port 8888 tetap terbuka.
 
 ### `summary`
 
@@ -112,14 +112,14 @@ Contoh satu entri:
   "observed": "without-password",
   "target": "no",
   "why": "Kalau akun root bisa login langsung dari internet, penyerang cuma perlu menebak satu password untuk menguasai seluruh server.",
-  "breaks_if_applied": "Script otomatis yang selama ini login sebagai root akan berhenti jalan — misalnya tool backup atau deploy.",
+  "breaks_if_applied": "Script otomatis yang selama ini login sebagai root akan berhenti jalan, misalnya tool backup atau deploy.",
   "needs_approval": true,
   "blockers": [],
   "result": null
 }
 ```
 
-### `kontrol[].hasil` — terisi setelah dijalankan
+### `kontrol[].hasil` (terisi setelah dijalankan)
 
 ```json
 {
@@ -142,12 +142,12 @@ Satu hal yang tidak bisa ditawar: **`berhasil: true` hanya boleh diisi kalau
 
 Kami menaruh aturan ini di sini karena sudah pernah kena. Waktu mengerjakan
 K02, file drop-in berhasil ditulis, `sshd -t` bilang valid, `systemctl reload`
-tidak mengeluarkan error apa pun — dan setelan servernya sama sekali tidak
+tidak mengeluarkan error apa pun, tapi setelan servernya sama sekali tidak
 berubah, karena kalah urutan dengan file bawaan cloud-init. Tiga tanda hijau
 di atas server yang masih terbuka. "Perintahnya jalan" bukan bukti berhasil;
 yang jadi bukti cuma pembacaan ulang keadaan efektif.
 
-### `drift[]` — hanya saat siklus penjagaan
+### `drift[]` (hanya saat siklus penjagaan)
 
 ```json
 {
@@ -171,7 +171,7 @@ kalau memang tidak ada jejaknya.
 perubahan yang disengaja, jadikan patokan baru), atau `"kembalikan"`.
 
 Jawaban di field inilah yang memperbarui baseline. Ini engsel yang
-menyambungkan Siklus Perbaikan dengan Siklus Penjagaan — tanpa itu, Yoru
+menyambungkan Siklus Perbaikan dengan Siklus Penjagaan. Tanpa itu, Yoru
 cuma jadi alarm yang bunyi terus dan lama-lama diabaikan.
 
 ---
@@ -182,7 +182,7 @@ cuma jadi alarm yang bunyi terus dan lama-lama diabaikan.
 Dashboard menentukan warna dari field `status`, bukan menebak dari kata-kata.
 
 **2. Field tidak boleh hilang.**
-Kalau nilainya belum ada, isi `null`. Jangan hapus fieldnya — kode yang
+Kalau nilainya belum ada, isi `null`. Jangan hapus fieldnya. Kode yang
 membaca field yang tidak ada akan error, dan errornya muncul di layar orang
 lain, bukan di layar yang menghapus.
 
@@ -193,7 +193,7 @@ pernah bikin kami salah paham sendiri.
 **4. Kalau `needs_approval` bernilai `true`, dashboard harus menampilkan
 `breaks_if_applied` di sebelah tombol setuju.**
 Bukan di tooltip, bukan di halaman lain. Orang yang menekan tombol harus
-sudah membaca konsekuensinya. Ini bukan soal tata letak — ini alasan Yoru
+sudah membaca konsekuensinya. Ini bukan soal tata letak. Ini alasan Yoru
 boleh dipercaya menyentuh server orang.
 
 ---
@@ -224,17 +224,17 @@ baris JSON, langsung bisa diteruskan sebagai isi respons.
 Sengaja satu berkas, bukan empat puluh. Alasannya ada tiga: logika bersamanya
 tidak perlu diduplikasi empat puluh kali, izin sudoers tetap satu baris yang
 bisa dibaca siapa pun, dan pemeriksaan-diri dispatcher cukup dijalankan
-sekali. Satu bug yang kami temukan minggu ini butuh satu perbaikan — kalau
+sekali. Satu bug yang kami temukan minggu ini butuh satu perbaikan. Kalau
 sudah terpecah, butuh empat puluh, dan kemungkinan besar hanya ketemu di satu.
 
 ### Satu tindakan menulis pada satu waktu
 
-Sejak yoructl 0.1.5, `terapkan` dan `kembalikan` **antre** — hanya satu yang
+Sejak yoructl 0.1.5, `terapkan` dan `kembalikan` **antre**: hanya satu yang
 boleh jalan di seluruh server pada satu waktu. `periksa` dan `verifikasi`
 tidak ikut antre, karena keduanya cuma membaca.
 
 Kuncinya satu untuk semua kontrol, bukan satu per kontrol, karena kontrolnya
-berbagi berkas: K01–K04 sama-sama menulis ke `/etc/ssh/sshd_config.d`, dan
+berbagi berkas: K01 sampai K04 sama-sama menulis ke `/etc/ssh/sshd_config.d`, dan
 K05 dengan K10 sama-sama menyunting `/etc/default/ufw`. Kunci per kontrol
 akan terasa aman padahal dua `sed -i` masih bisa jalan bersamaan di berkas
 yang sama.
@@ -248,13 +248,13 @@ dari itu, jawabannya:
  "value":null,"message":"kontrol lain sedang diterapkan atau dikembalikan - sudah menunggu 120 detik, coba lagi nanti"}
 ```
 
-Ini **bukan kegagalan kontrol** — servernya tidak disentuh sama sekali.
+Ini **bukan kegagalan kontrol**. Servernya tidak disentuh sama sekali.
 Tampilkan sebagai "sedang sibuk, coba lagi", bukan sebagai kontrol gagal, dan
 jangan ubah skor karenanya. Tombolnya boleh dinyalakan lagi.
 
 Kenapa ini ada: tanpa kunci, dua proses bisa mengerjakan hal yang
 berlawanan sekaligus. Diuji 8 Sep 2026 di K06 dengan restart yang sengaja
-dibuat lambat — tanpa kunci, dua `systemctl restart mariadb` berjalan
+dibuat lambat. Tanpa kunci, dua `systemctl restart mariadb` berjalan
 bertumpuk dan **dua-duanya melapor sukses**; dengan kunci, yang kedua
 menunggu yang pertama selesai.
 
@@ -273,13 +273,13 @@ perhitungan skor. Yang berubah cuma satu: tidak ada yang dikerjakan, jadi
 jangan menampilkan "baru saja diterapkan".
 
 Kenapa ada: tanpa ini, memanggil `K06 terapkan` dua kali me-restart mariadb
-dua kali — koneksi database pengguna putus dua kali untuk perubahan yang
+dua kali, dan koneksi database pengguna putus dua kali untuk perubahan yang
 tidak terjadi. Hal yang sama berlaku untuk journald di K09.
 
 Syaratnya dua, dan sengaja: berkas milik Yoru harus sudah ada **dengan isi
 yang sama persis**, **dan** keadaan efektifnya sudah sesuai. Kalau nilainya
 sudah benar tapi datang dari berkas milik pihak lain, Yoru tetap menuliskan
-berkasnya sendiri — supaya setelan itu punya satu pemilik yang jelas, dan
+berkasnya sendiri, supaya setelan itu punya satu pemilik yang jelas, dan
 tidak diam-diam berubah saat berkas pihak lain itu hilang.
 
 ### Port terbuka: jawaban pemilik dipakai K05
@@ -296,18 +296,18 @@ belum pernah dijawab pemilik, berikut nama prosesnya:
 Port SSH tidak pernah muncul di sini (dicari sendiri dari `sshd -T`), begitu
 juga port yang cuma mendengar di `127.0.0.1` atau `[::1]`.
 
-**Yang harus dikerjakan agent:** tanyakan tiap port ke pemilik — "port 8888
-terbuka dipakai python3, itu panel kamu?" — lalu tulis yang dijawab "iya" ke:
+**Yang harus dikerjakan agent:** tanyakan tiap port ke pemilik (misalnya "port
+8888 terbuka dipakai python3, itu panel kamu?"), lalu tulis yang dijawab "iya" ke:
 
 ```
 /var/lib/yoru/port-disetujui      satu port per baris, boleh diberi "# keterangan"
 ```
 
 Berkas ini milik agent, jadi agent boleh menulisnya. Isinya divalidasi
-yoructl: hanya angka 1–65535 yang dipakai, sisanya dibuang.
+yoructl: hanya angka 1 sampai 65535 yang dipakai, sisanya dibuang.
 
 Selama masih ada port yang belum dijawab, **`K05 terapkan` akan `DITOLAK`**
-dan firewall tidak disentuh sama sekali. Itu bukan kegagalan — itu Yoru
+dan firewall tidak disentuh sama sekali. Itu bukan kegagalan, Yoru sedang
 menunggu jawaban. Dashboard sebaiknya menampilkannya sebagai pertanyaan yang
 menunggu, bukan sebagai kontrol gagal.
 
@@ -337,15 +337,15 @@ tidak perlu menyaring berkas gabungan.
 | `time` | ISO 8601 berikut zona |
 | `version` | versi yoructl yang menjalankan |
 | `caller` | pengguna yang memanggil lewat sudo |
-| `id` | `K01`–`K10` |
+| `id` | `K01` sampai `K10` |
 | `action` | `periksa`, `terapkan`, `kembalikan`, `verifikasi` |
 | `status` | `LULUS`, `GAGAL`, `DIKEMBALIKAN`, `DILEWATI`, `DITOLAK`, `ERROR`, `PERINGATAN` |
 | `ok` | bool. `false` berarti perintahnya sendiri bermasalah |
 | `value` | keadaan yang terbaca, atau `null` |
 | `message` | keterangan, atau `null` |
 
-Folder ini milik root dan agent tidak bisa menulis ke sini — alat keamanan
-tidak boleh bisa menyunting jejaknya sendiri. Berkasnya `640`, jadi bacanya
+Folder ini milik root dan agent tidak bisa menulis ke sini, karena alat
+keamanan tidak boleh bisa menyunting jejaknya sendiri. Berkasnya `640`, jadi bacanya
 lewat root.
 
 ### Rekaman keadaan asal
@@ -359,7 +359,7 @@ sebelumnya direkam dulu:
 /var/backups/yoru/K05/berkas/...      salinan berkas yang akan disentuh
 ```
 
-Direkam sekali, tidak pernah ditimpa — rekaman pertama itu yang benar-benar
+Direkam sekali, tidak pernah ditimpa. Rekaman pertama itu yang benar-benar
 "sebelum Yoru"; rekaman kedua cuma memotret hasil kerja Yoru sendiri.
 
 Berkas, bukan database. Rollback justru paling dibutuhkan saat servernya

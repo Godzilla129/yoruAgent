@@ -395,7 +395,7 @@ async def handle_callback(cq: Dict[str, Any], token: str, config: Dict[str, str]
     if result.get("ok") is True:
         refresh_stored_report(control, result)
     line = (f"{control} {statusof(result)}"
-            + (f" — {result.get('value')}" if result.get("value") else "")
+            + (f" · {result.get('value')}" if result.get("value") else "")
             + (f"\n{result.get('message')}" if result.get("message") else ""))
     await asyncio.to_thread(tg, "sendMessage", token, {"chat_id": chat, "text": line[:900]})
 

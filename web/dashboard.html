@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Yoru — CIS Agent</title>
+<title>Yoru · CIS Agent</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b1220'/%3E%3Cpath d='M16 6l7 3v5.5c0 4.2-2.8 7.6-7 8.9-4.2-1.3-7-4.7-7-8.9V9z' fill='none' stroke='%2334d399' stroke-width='1.8'/%3E%3C/svg%3E">
 <style>
 /* ---------------------------------------------------------------- theme
@@ -416,7 +416,7 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
 
 <dialog id="dlgToken"><form method="dialog" class="dlg">
   <h3>Server ini minta token</h3>
-  <p>Dashboard dibuka dari komputer lain, jadi halaman ini perlu token — untuk
+  <p>Dashboard dibuka dari komputer lain, jadi halaman ini perlu token, baik untuk
      membaca laporan maupun untuk menekan tombolnya. Isinya sama dengan
      <b>DASHBOARD_TOKEN</b> di <code>/etc/yoru/yoru.conf</code> pada server itu.</p>
   <input id="tokenInput" type="password" autocomplete="off" placeholder="tempel token di sini">
@@ -461,7 +461,7 @@ function applyTheme(t) {
   if (t === 'sistem') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', t === 'gelap' ? 'dark' : 'light');
   $('themeBtn').textContent = THEME_ICON[t];
-  $('themeBtn').title = `Tema: ${THEME_NAME[t]} — klik untuk ganti`;
+  $('themeBtn').title = `Tema: ${THEME_NAME[t]}. Klik untuk ganti`;
 }
 applyTheme(readTheme());
 $('themeBtn').onclick = () => {
@@ -656,7 +656,7 @@ function remoteNotice() {
     <div><b>Laporan ini datang dari ${esc((DATA.server || {}).name || 'server lain')}</b>
     <div style="color:var(--muted);font-size:13px;margin-top:3px;line-height:1.6">
       Tombol Audit, Hardening dan Rollback menjalankan <code>yoructl</code> di mesin tempat
-      dashboard ini dipasang, jadi untuk server lain tombolnya dimatikan — kalau tidak, menekannya
+      dashboard ini dipasang, jadi untuk server lain tombolnya dimatikan. Kalau tidak, menekannya
       akan mengeraskan server yang salah. Yang tetap jalan: menyetujui kontrol dan menjawab port.
       Dua-duanya dicatat di sini lalu diambil agent di server itu pada siklus berikutnya.
     </div></div></div></div>`;
@@ -676,7 +676,7 @@ function driftPanel() {
     const evidence = bits.length
       ? `<div class="evidence">${bits.join(' · ')}${
            d.evidence_source ? ` <span style="opacity:.75">(sumber: ${esc(d.evidence_source)})</span>` : ''}</div>`
-      : `<div class="evidence">Tidak ada jejak siapa yang mengubah — auditd (K08) belum aktif
+      : `<div class="evidence">Tidak ada jejak siapa yang mengubah: auditd (K08) belum aktif
          di server ini, jadi memang tidak ada catatannya. Yoru tidak menebak.</div>`;
     return `<div class="drift" data-kid="${esc(d.id)}">
       <div class="who">⚠</div>
@@ -723,7 +723,7 @@ function attentionPanel() {
     body += `<div class="panel-body" style="border-bottom:${asking.length ? '1px solid var(--line-soft)' : '0'}">
       <b>Port ini terbuka ke internet dan belum kamu jawab</b>
       <div style="color:var(--muted);font-size:13px;margin-top:4px;line-height:1.6">
-        Selama masih ada yang belum dijawab, K05 menolak menyalakan firewall — Yoru tidak
+        Selama masih ada yang belum dijawab, K05 menolak menyalakan firewall. Yoru tidak
         pernah menebak port mana yang boleh terbuka. Port SSH tidak ikut ditanya, itu dicari sendiri.</div>
       ${note ? `<div class="said">${esc(note)}</div>` : ''}
       <div class="ports">${ports.map(p => `
@@ -793,7 +793,7 @@ function table() {
     <div class="head">
       <h2>Sepuluh kontrol CIS Ubuntu 24.04</h2>
       <span class="note">${local ? 'tombol menjalankan yoructl di mesin ini'
-                                 : 'tombol dimatikan — laporan dari server lain'}</span>
+                                 : 'tombol dimatikan, laporan ini dari server lain'}</span>
       <div class="bulk">
         <button class="btn" data-bulk="periksa"${local ? '' : ' disabled'}>Audit semua</button>
         <button class="btn" data-bulk="terapkan"${local ? '' : ' disabled'}>Hardening semua</button>
@@ -845,7 +845,7 @@ function chartPanel(rows) {
     const h = Math.max(2, (r.score / 100) * (H - pad - 12));
     const x = pad + i * step + (step - bw) / 2;
     return `<rect class="bar" x="${x.toFixed(1)}" y="${(H - pad - h).toFixed(1)}"
-      width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2"><title>${esc(when(r.time))} — skor ${r.score} (${esc(r.cycle)})</title></rect>`;
+      width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2"><title>${esc(when(r.time))} · skor ${r.score} (${esc(r.cycle)})</title></rect>`;
   }).join('');
   const gridlines = [0, 25, 50, 75, 100].map(v => {
     const y = H - pad - (v / 100) * (H - pad - 12);
@@ -868,8 +868,8 @@ function chartPanel(rows) {
       </svg>
     </div>
     <div class="legend">
-      <span>Paling lama: <b>${esc(when(first.time))}</b> — skor ${first.score}</span>
-      <span>Terbaru: <b>${esc(when(last.time))}</b> — skor ${last.score}</span>
+      <span>Paling lama: <b>${esc(when(first.time))}</b> · skor ${first.score}</span>
+      <span>Terbaru: <b>${esc(when(last.time))}</b> · skor ${last.score}</span>
       <span style="color:${colour}">${arrow} ${delta > 0 ? '+' : ''}${delta} poin</span>
     </div></div>`;
 }
@@ -889,11 +889,11 @@ async function logPanel(kid, gen) {
         <span class="w">${esc((b.time||'').replace('T',' ').slice(0,19))}</span>
         <span class="s ${esc(b.status)}">${esc(b.status)}</span>
         <span class="w">${esc(b.id)} ${esc(b.action)}</span>
-        <span class="msg">${esc(b.value ?? '')}${b.message ? ' — ' + esc(b.message) : ''}</span></div>`).join('')
+        <span class="msg">${esc(b.value ?? '')}${b.message ? ' · ' + esc(b.message) : ''}</span></div>`).join('')
     : `<div class="empty"><b>Belum ada catatan.</b>${esc(d.message || 'Jejak tindakan ditulis ke /var/log/yoru/ setiap kali sebuah kontrol dijalankan.')}</div>`;
 
   return `<div class="panel">
-    <div class="head"><h2>Jejak tindakan${kid ? ' — ' + esc(kid) : ''}</h2>
+    <div class="head"><h2>Jejak tindakan${kid ? ' · ' + esc(kid) : ''}</h2>
       <span class="note">milik root · agent tidak bisa menyuntingnya</span>
       <div class="bulk">${kid ? '<button class="btn" id="allLogs">Lihat semua</button>' : ''}</div></div>
     <div class="logbox">${body}</div></div>`;
@@ -904,7 +904,7 @@ async function logPanel(kid, gen) {
 // meant three loads of the same config for a form most people touch once.
 const SETTINGS = [
   {id: 'telegram', title: 'Bot Telegram',
-   intro: 'Yoru cuma mengirim kalau ada yang berubah atau ada yang perlu dijawab — bukan laporan harian yang isinya "semuanya masih aman". Yang mengirim itu agent di server, bukan halaman ini.',
+   intro: 'Yoru cuma mengirim kalau ada yang berubah atau ada yang perlu dijawab. Tidak ada laporan harian yang isinya "semuanya masih aman". Yang mengirim itu agent di server, bukan halaman ini.',
    fields: [
      {key:'TELEGRAM_TOKEN', label:'Token bot', secret:true,
       hint:'Dari @BotFather: /newbot, lalu salin utuh barisnya. Bentuknya angka, titik dua, lalu huruf-angka.'},
@@ -912,26 +912,26 @@ const SETTINGS = [
       hint:'Biasanya terisi sendiri begitu kamu kirim /start beserta kode sambung ke botmu. Isi manual cuma kalau botnya yang meminta.'}]},
 
   {id: 'model', title: 'Model AI',
-   intro: 'Yoru bertanya ke sebuah server model di dalam server ini lewat alamat di bawah. Kunci API TIDAK disimpan di sini — dia tinggal di berkas lain yang tidak bisa dibaca agent. Kosong = Yoru tetap jalan, kalimat penjelasannya diambil dari katalog.',
+   intro: 'Yoru bertanya ke sebuah server model di dalam server ini lewat alamat di bawah. Kunci API TIDAK disimpan di sini. Dia tinggal di berkas lain yang tidak bisa dibaca agent. Kosong = Yoru tetap jalan, kalimat penjelasannya diambil dari katalog.',
    fields: [
      {key:'HERMES_URL', label:'Alamat server model',
       hint:'Bentuknya http://host:port. Kalau dipasang lewat installer, biasanya sudah terisi http://127.0.0.1:8080.'},
      {key:'AI_MODEL', label:'Nama model (boleh dikosongkan)',
-      hint:'Kosongkan saja — penghubungnya memilih model yang masih dilayani oleh kuncimu.'},
+      hint:'Kosongkan saja. Penghubungnya memilih model yang masih dilayani oleh kuncimu.'},
      {key:'HERMES_TOKEN', label:'Token server model (boleh dikosongkan)', secret:true,
       hint:'Cuma perlu kalau server modelmu minta token. Ini token layanan di 127.0.0.1, bukan kunci berbayar.'}]},
 
   {id: 'sistem', title: 'Sistem',
-   intro: 'Semua ini disimpan di /etc/yoru/yoru.conf. Halaman ini tidak menulis berkas itu sendiri — dia menitipkannya ke yoructl, program yang sama yang dipakai agent.',
+   intro: 'Semua ini disimpan di /etc/yoru/yoru.conf. Halaman ini tidak menulis berkas itu sendiri, tapi menitipkannya ke yoructl, program yang sama yang dipakai agent.',
    fields: [
      {key:'NAMA_SERVER', label:'Nama server',
       hint:'Nama yang muncul di dashboard dan bot. Kosong = pakai hostname.'},
      {key:'PORT_DIIZINKAN', label:'Port yang boleh terbuka',
-      hint:'Dipisah spasi, contoh: 80 443 8000. Port SSH tidak perlu ditulis — Yoru mencarinya sendiri. Selama masih ada port terbuka yang belum ada di sini, K05 menolak menyalakan firewall.'},
+      hint:'Dipisah spasi, contoh: 80 443 8000. Port SSH tidak perlu ditulis, Yoru mencarinya sendiri. Selama masih ada port terbuka yang belum ada di sini, K05 menolak menyalakan firewall.'},
      {key:'LEWATI_KONTROL', label:'Kontrol yang dilewati',
       hint:'Dipisah koma, contoh: K05,K06. Kosongkan kalau semua boleh dipertimbangkan.'},
      {key:'JAM_PENJAGAAN', label:'Jam pemindaian harian',
-      hint:'Bentuk HH:MM. Timer systemd langsung ikut diganti begitu disimpan — pilih jam sepi.'},
+      hint:'Bentuk HH:MM. Timer systemd langsung ikut diganti begitu disimpan. Pilih jam sepi.'},
      {key:'ZONA_WAKTU', label:'Zona waktu',
       hint:'Contoh: Asia/Jakarta. Dipakai untuk jam pemindaian dan semua jam di laporan.'}]},
 ];
@@ -989,7 +989,7 @@ async function settingsPage(gen) {
 
 function fieldHtml(f, cur) {
   const val = f.secret ? '' : (cur.value || '');
-  const mark = f.secret && cur.set ? ' — sudah terisi, kosongkan kalau tidak mau diganti' : '';
+  const mark = f.secret && cur.set ? ' · sudah terisi, kosongkan kalau tidak mau diganti' : '';
   return `<div class="field">
     <label for="f_${f.key}">${esc(f.label)}<span class="mark">${esc(mark)}</span></label>
     <input id="f_${f.key}" ${f.secret ? 'type="password" autocomplete="off"' : 'type="text"'}
@@ -1043,12 +1043,12 @@ async function decide(control, value, slot, buttons) {
     const d = await r.json();
     if (r.ok && d.ok) {
       slotSay(slot, 'ok', value === 'kembalikan'
-        ? 'dicatat — agent akan mengembalikannya pada siklus berikutnya'
+        ? 'dicatat, agent akan mengembalikannya pada siklus berikutnya'
         : value === 'sah'
         ? 'dicatat sebagai perubahan yang kamu sengaja'
         : value === 'setuju'
-        ? (isLocal() ? 'disetujui — tinggal jalankan' : 'disetujui — agent di server itu yang menjalankan')
-        : 'dicatat — kontrol ini tidak akan diterapkan');
+        ? (isLocal() ? 'disetujui, tinggal jalankan' : 'disetujui, agent di server itu yang menjalankan')
+        : 'dicatat, kontrol ini tidak akan diterapkan');
       if (value === 'setuju' && isLocal()) offerApply(control, slot);
     } else {
       slotSay(slot, 'bad', d.detail || `gagal disimpan (HTTP ${r.status})`);
@@ -1125,7 +1125,7 @@ function wireButtons() {
           bulkMark(kid, 'hold', 'dilewati'); held++; continue;
         }
         if (action === 'terapkan' && btn.dataset.approval === '1') {
-          slotSay(tr.querySelector('[data-slot]'), 'busy', 'dilewati — butuh persetujuan');
+          slotSay(tr.querySelector('[data-slot]'), 'busy', 'dilewati, butuh persetujuan');
           bulkMark(kid, 'hold', 'butuh persetujuanmu'); held++; continue;
         }
         bulkMark(kid, 'on', 'berjalan…');
@@ -1133,7 +1133,7 @@ function wireButtons() {
         const ok = d && d.ok === true;
         const waiting = d && (d.status === 'DITOLAK' || d.status === 'MENUNGGU');
         bulkMark(kid, ok ? 'done' : waiting ? 'hold' : 'fail',
-                 `${statusLabel((d || {}).status || 'ERROR')}${d && d.value ? ' — ' + d.value : ''}`);
+                 `${statusLabel((d || {}).status || 'ERROR')}${d && d.value ? ' · ' + d.value : ''}`);
         if (ok) done++; else if (waiting) held++; else broke++;
       }
       closeBulk(done, held, broke);
@@ -1172,7 +1172,7 @@ function confirmApply(kid, btn) {
 // The real sequence yoructl runs for each action, in plain words.
 const STEPS = {
   periksa: ['Membaca keadaan yang benar-benar berlaku sekarang',
-            'Bukan isi berkas konfigurasi — itu belum tentu yang aktif',
+            'Bukan isi berkas konfigurasi, karena itu belum tentu yang aktif',
             'Membandingkan dengan nilai target di katalog'],
   terapkan: ['Merekam keadaan asal ke /var/backups/yoru',
              'Menulis setelan sebagai berkas milik Yoru sendiri',
@@ -1215,7 +1215,7 @@ function bulkMark(kid, cls, text) {
   const li = $('runSteps').querySelector(`[data-bulk="${CSS.escape(kid)}"]`);
   if (!li) return;
   li.className = cls;
-  li.querySelector('.r').textContent = text ? '— ' + text : '';
+  li.querySelector('.r').textContent = text ? '· ' + text : '';
   li.scrollIntoView({block: 'nearest'});
 }
 
@@ -1233,7 +1233,7 @@ function closeBulk(done, held, broke) {
 
 function openRun(kid, action) {
   const k = (DATA?.controls || []).find(x => x.id === kid) || {};
-  $('runTitle').textContent = `${ACTION_LABEL[action] || action} — ${k.name || kid}`;
+  $('runTitle').textContent = `${ACTION_LABEL[action] || action} · ${k.name || kid}`;
   $('runKid').textContent = `${kid}${k.cis_code ? ' · ' + k.cis_code : ''}`;
   $('runSteps').innerHTML = (STEPS[action] || []).map((s, i) =>
     `<li class="${i === 0 ? 'on' : ''}">${esc(s)}</li>`).join('');
@@ -1260,7 +1260,7 @@ function closeRun(kid, d) {
   const ok = d.ok === true;
   const waiting = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
   box.className = 'reply ' + (ok ? 'ok' : waiting ? 'wait' : 'bad');
-  box.innerHTML = `<b>${esc(statusLabel(d.status))}</b>${d.value ? ' — ' + esc(d.value) : ''}` +
+  box.innerHTML = `<b>${esc(statusLabel(d.status))}</b>${d.value ? ' · ' + esc(d.value) : ''}` +
     (d.message ? `<br>${esc(d.message)}` : '');
   box.hidden = false;
   $('runClock').textContent = 'selesai';
@@ -1293,7 +1293,7 @@ async function run(kid, action, btn, quiet) {
   const ok = d.ok === true;
   const waiting = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
   slotSay(slot, ok ? 'ok' : waiting ? 'wait' : 'bad',
-    `${statusLabel(d.status)}${d.value ? ' — ' + d.value : ''}${d.message ? ' — ' + d.message : ''}`);
+    `${statusLabel(d.status)}${d.value ? ' · ' + d.value : ''}${d.message ? ' · ' + d.message : ''}`);
   scope.querySelectorAll('button').forEach(b => {
     if (!(b.dataset.a === 'terapkan' && b.title)) b.disabled = false;
   });
@@ -1323,7 +1323,7 @@ async function beat() {
     const b = ((await r.json()).lines || [])[0];
     el.querySelector('.l').textContent = b
       ? `${(b.time || '').replace('T', ' ').slice(0, 19)}  ${b.id || ''} ${b.action || ''} ${b.status || ''}`
-        + (b.value ? ' — ' + b.value : '')
+        + (b.value ? ' · ' + b.value : '')
       : 'belum ada tindakan yang tercatat';
   } catch (e) { /* the strip is decoration; a failure here must stay silent */ }
 }
