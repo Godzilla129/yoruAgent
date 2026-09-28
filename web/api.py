@@ -16,6 +16,7 @@ import re
 import socket
 import sqlite3
 import time
+import urllib.error
 import urllib.request
 from contextlib import asynccontextmanager, closing
 from pathlib import Path
@@ -348,12 +349,13 @@ def report_for_chat() -> str:
     return json.dumps(servers, ensure_ascii=False)
 
 
-def ask_model(config: Dict[str, str], messages: list) -> Optional[str]:
-    """One chat completion, blocking. None on any failure, so the caller can
-    fall back to the fixed replies."""
+def ask_model(config: Dict[str, str], messages: list) -> tuple:
+    """One chat completion, blocking. Returns (answer, ""), or (None, why) so
+    the caller can fall back to a fixed reply: why is "limit" when the model's
+    provider refused for quota (HTTP 429), "down" for anything else."""
     base = config.get("HERMES_URL", "").strip().rstrip("/")
     if not base:
-        return None
+        return None, "down"
     body = json.dumps({
         # "hermes-agent" is the name Hermes' API server reads as "your
         # configured model"; the Gemini bridge ignores the field.
@@ -370,11 +372,19 @@ def ask_model(config: Dict[str, str], messages: list) -> Optional[str]:
     try:
         with urllib.request.urlopen(req, timeout=CHAT_TIMEOUT) as r:
             answer = json.loads(r.read().decode("utf-8", "replace") or "{}")
-        text = answer["choices"][0]["message"]["content"]
+        choice = answer["choices"][0]
+        text = choice["message"]["content"]
+    except urllib.error.HTTPError as e:
+        return None, "limit" if e.code == 429 else "down"
     except Exception:  # noqa: BLE001 - a model outage must not break the bot
-        return None
+        return None, "down"
+    # Hermes answers a failed turn with HTTP 200 and its own English error
+    # text as the content; finish_reason "error" and hermes.failed mark it.
+    failed = answer.get("hermes") or {}
+    if choice.get("finish_reason") == "error" or failed.get("failed"):
+        return None, "limit" if "429" in str(failed.get("error") or "") else "down"
     text = str(text or "").replace("**", "").strip()
-    return text[:3500] or None
+    return (text[:3500], "") if text else (None, "down")
 
 
 async def chat_reply(chat: str, text: str, token: str, config: Dict[str, str]) -> None:
@@ -387,8 +397,11 @@ async def chat_reply(chat: str, text: str, token: str, config: Dict[str, str]) -
         messages = ([{"role": "system",
                       "content": CHAT_RULES + "\n\nLAPORAN:\n" + report_for_chat()}]
                     + past + [{"role": "user", "content": text[:1500]}])
-        answer = await asyncio.to_thread(ask_model, config, messages)
-        if not answer:
+        answer, why = await asyncio.to_thread(ask_model, config, messages)
+        if why == "limit":
+            answer = ("Maaf, jatah pemakaian model AI-ku lagi habis. Coba lagi "
+                      "semenit lagi ya. /status tetap bisa dipakai kapan aja.")
+        elif not answer:
             answer = ("Maaf, otak AI-ku lagi nggak bisa dihubungi, jadi sekarang aku "
                       "cuma bisa jawab /status dan /help.")
         else:
