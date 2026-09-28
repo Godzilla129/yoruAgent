@@ -46,7 +46,9 @@ Diurut dari yang paling penting buat dipahami.
 | `bin/yoructl` | 910 | **Satu satunya yang nyentuh server.** 10 kontrol x 4 tindakan (`periksa` `terapkan` `kembalikan` `verifikasi`). Jalan sebagai root. |
 | `bin/yoru-agent` | 875 | Otaknya. Baca semua kontrol, urutin, rakit laporan, kirim ke dashboard dan Telegram. Model AI (kalau dipasang) cuma dimintai catatan soal port terbuka. **Ga pernah jalanin perintah sendiri**, selalu lewat yoructl. |
 | `web/api.py` | 769 | Server dashboard + bot Telegram. Nerima laporan, simpen ke SQLite, layanin tombol. |
-| `web/dashboard.html` | 1322 | Halamannya. Satu file, HTML + CSS + JS jadi satu. |
+| `web/dashboard.html` | 85 | Kerangka halamannya: menu, dialog, tempat isi. |
+| `web/dashboard.js` | 1063 | Yang ngisi halaman dari laporan dan ngejalanin tombol. |
+| `web/dashboard.css` | 331 | Warna, jarak, tema terang/gelap, tampilan HP. |
 | `install.sh` | 1549 | Installer. Paling panjang tapi paling ga perlu dipahami. |
 | `bin/yoru-model-proxy` | 298 | Jembatan ke Gemini. Nyimpen API key, biar agent ga pernah liat kuncinya. |
 | `bin/yoru-watch` | 74 | Bungkus kecil yang dipanggil systemd tiap hari jam 03:17. |
@@ -90,7 +92,7 @@ Jadi ga ada pintu masuk baru ke server.
 | "Perintah apa yang beneran dijalanin?" | `bin/yoructl`, cari `k05()`. Tiap kontrol satu fungsi, isinya `case` buat empat tindakannya |
 | "Kenapa skornya 80?" | `bin/yoru-agent`, cari `"summary"` |
 | "Urutan kerjanya gimana?" | `bin/yoru-agent`, cari `ORDER =` |
-| "Tombol di dashboard manggil apa?" | `web/dashboard.html`, cari `async function run(` (baris 1256) |
+| "Tombol di dashboard manggil apa?" | `web/dashboard.js`, cari `async function run(` (baris 986) |
 | "Telegram jawabnya dari mana?" | `web/api.py`, cari `handle_message` |
 | "Tombol setuju di Telegram?" | `web/api.py`, cari `handle_callback` |
 | "Installer ngecek apa aja?" | `install.sh`, cari `check_all()` |
@@ -105,7 +107,7 @@ ga penting.
 
 - `install.sh`: 1549 baris, dan isinya 90% penanganan hal yang jarang
   kejadian. Cukup tau: dia ngecek dulu, nanya di depan, baru kerja.
-- `web/dashboard.html` bagian CSS: 335 baris warna dan jarak.
+- `web/dashboard.css`: 331 baris warna dan jarak.
 - `web/test_api.py`, `web/demo.py`, `demo.sh`, `check-all.sh`: alat uji.
 - `contract/report.md`: bentuk JSON laporan. Berguna kalau nanti ada yang
   bikin klien lain, ga berguna buat ngerti cara kerjanya.

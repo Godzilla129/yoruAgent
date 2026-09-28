@@ -46,7 +46,7 @@ WRITE = [("POST", "/api/decision", {"server": "uji", "control": "K01", "value": 
                                    "summary": {"score": 100}, "controls": []})]
 
 # Open on purpose: the page loads before a token exists, and the installer polls /health.
-OPEN = [("GET", "/"), ("GET", "/health")]
+OPEN = [("GET", "/"), ("GET", "/dashboard.css"), ("GET", "/dashboard.js"), ("GET", "/health")]
 
 # Anything that is not a refusal. A 404 or a 422 still means "you got through".
 ALLOWED = {200, 404, 422, 500}
@@ -127,6 +127,10 @@ async def main():
 
     _, body = await call("GET", "/health", REMOTE)
     check("/health dari jaringan tidak menyebut jalur database", b'"db"' not in body)
+
+    for path in ("/dashboard.css", "/dashboard.js"):
+        status, _ = await call("GET", path, REMOTE)
+        check(f"{path} benar-benar terkirim", status == 200, f"  -> {status}")
 
     status, _ = await call("GET", "/api/decision", LOCAL)
     check("GET /api/decision tanpa ?server= ditolak", status == 422, f"  -> {status}")

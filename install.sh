@@ -1679,14 +1679,15 @@ install_dashboard() {
     return 0
   fi
   local f
-  for f in web/api.py web/dashboard.html systemd/yoru-web.service; do
+  for f in web/api.py web/dashboard.html web/dashboard.css web/dashboard.js systemd/yoru-web.service; do
     [ -f "$SRC/$f" ] || { warn "$f is missing - dashboard skipped"; return 0; }
   done
 
   install -d -o root -g root -m 755 "$WEB_DIR" || die "could not create $WEB_DIR"
   install -o root -g root -m 644 "$SRC/web/api.py" "$WEB_DIR/api.py" || die "could not copy api.py"
-  install -o root -g root -m 644 "$SRC/web/dashboard.html" "$WEB_DIR/dashboard.html" \
-    || die "could not copy dashboard.html"
+  for f in dashboard.html dashboard.css dashboard.js; do
+    install -o root -g root -m 644 "$SRC/web/$f" "$WEB_DIR/$f" || die "could not copy $f"
+  done
 
   # A venv, not pip into the system - other tools share those packages.
   build_venv || return 0

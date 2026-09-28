@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import Body, FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 HERE = Path(__file__).resolve().parent
 DB_FILE = Path(os.environ.get("YORU_DB", HERE / "yoru.db"))
@@ -948,6 +948,26 @@ async def page():
         return HTMLResponse(PAGE.read_text(encoding="utf-8"))
     except OSError:
         return HTMLResponse("<h1>dashboard.html tidak ditemukan</h1>", status_code=404)
+
+
+# The page's style and script, read on every request like the page itself.
+# no-cache makes the browser ask again, so a copied-in update shows on reload.
+def page_part(name: str, media: str) -> Response:
+    try:
+        body = (HERE / name).read_text(encoding="utf-8")
+    except OSError:
+        return Response(f"{name} tidak ditemukan", status_code=404, media_type="text/plain")
+    return Response(body, media_type=media, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/dashboard.css")
+async def page_css():
+    return page_part("dashboard.css", "text/css")
+
+
+@app.get("/dashboard.js")
+async def page_js():
+    return page_part("dashboard.js", "text/javascript")
 
 
 @app.get("/health")
