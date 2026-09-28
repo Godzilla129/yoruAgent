@@ -52,6 +52,8 @@
 }
 
 *{box-sizing:border-box}
+/* .picker sets display:flex, which would beat the hidden attribute */
+[hidden]{display:none !important}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--text);
   font:14.5px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,sans-serif;
@@ -76,11 +78,11 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
   border-radius:9px;transition:background .12s,color .12s}
 .sidebar nav a:hover{background:var(--side-2);color:#fff}
 .sidebar nav a.on{background:var(--side-2);color:var(--side-on);font-weight:600}
-.sidebar nav a .ic{width:17px;text-align:center;flex:none;opacity:.85}
+.sidebar nav a .ic{width:17px;display:grid;place-items:center;flex:none;opacity:.85;font-size:16px}
 .sidebar nav a .pill{margin-left:auto;background:var(--fail);color:#fff;font-size:10.5px;
   font-weight:700;min-width:18px;height:18px;border-radius:9px;display:grid;place-items:center;padding:0 5px}
 .sidebar .foot{padding:13px 18px;border-top:1px solid var(--side-2);
-  font-size:11px;color:var(--faint);line-height:1.5}
+  font-size:11.5px;color:var(--side-text);line-height:1.5;display:flex;gap:8px;align-items:center}
 
 .main{flex:1;min-width:0;padding:16px 22px 52px}
 .page-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
@@ -101,25 +103,128 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
   box-shadow:var(--shadow);font-size:15px;line-height:1}
 .icon-btn:hover{border-color:var(--brand)}
 
-/* cards */
-.stats{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
-  margin-bottom:13px}
-.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
-  padding:12px 14px;box-shadow:var(--shadow);display:flex;gap:11px;align-items:center}
-/* Sentence case: four all-caps labels in a row would shout on a calm page. */
-.stat .lbl{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:0}
-.stat .val{font-size:22px;font-weight:670;letter-spacing:-.02em;margin-top:2px;line-height:1.15}
-.stat .sub{font-size:12px;color:var(--muted);margin-top:2px}
-.stat .grow{min-width:0;flex:1}
-.ring{flex:none}
-.ring .track{stroke:var(--line);}
-.ring .fill{stroke:var(--brand);stroke-linecap:round;
-  transition:stroke-dasharray .5s ease}
-.chip-ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
-  font-size:14px;flex:none}
-.chip-ic.pass{background:var(--pass-bg);color:var(--pass)}
-.chip-ic.fail{background:var(--fail-bg);color:var(--fail)}
-.chip-ic.info{background:var(--info-bg);color:var(--info)}
+/* icons: one stroke set, drawn inline, so nothing is fetched from outside */
+.i{width:1em;height:1em;flex:none;fill:none;stroke:currentColor;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round;vertical-align:-.14em}
+
+/* hero: the one answer the owner comes for - is my server safe? */
+.hero{display:flex;gap:22px;align-items:center;flex-wrap:wrap;background:var(--surface);
+  border:1px solid var(--line-soft);border-radius:14px;box-shadow:var(--shadow);
+  padding:20px 22px;margin-bottom:14px}
+.hero .ring-wrap{position:relative;width:112px;height:112px;flex:none}
+.hero .ring-num{position:absolute;inset:0;display:grid;place-items:center;text-align:center;
+  line-height:1}
+.hero .ring-num b{font-size:30px;font-weight:720;letter-spacing:-.03em;display:block}
+.hero .ring-num small{font-size:11px;color:var(--muted);display:block;margin-top:3px}
+.ring .track{stroke:var(--line)}
+.ring .fill{stroke-linecap:round}
+.ring.good .fill{stroke:var(--pass)} .ring.mid .fill{stroke:var(--warn)} .ring.bad .fill{stroke:var(--fail)}
+.ring.grow .fill{animation:ringIn .9s cubic-bezier(.2,.8,.2,1)}
+@keyframes ringIn{from{stroke-dasharray:0 999}}
+.hero .say{flex:1;min-width:230px}
+.hero h2{margin:0;font-size:21px;font-weight:680;letter-spacing:-.02em}
+.hero .line{margin:4px 0 0;color:var(--muted);font-size:14px}
+.hero .chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;
+  padding:4px 10px;border-radius:20px;background:var(--surface-2);border:1px solid var(--line-soft)}
+.chip .dot{width:7px;height:7px;border-radius:50%}
+.dot.p{background:var(--pass)} .dot.f{background:var(--fail)} .dot.n{background:var(--warn)}
+.dot.x{background:var(--faint)}
+.hero .facts{display:flex;gap:6px 16px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--muted)}
+.hero .facts span{display:inline-flex;align-items:center;gap:6px}
+.hero .go{align-self:center}
+.remote{display:flex;gap:9px;align-items:flex-start;margin-top:12px;font-size:12.5px;
+  color:var(--info);background:var(--info-bg);border-radius:9px;padding:8px 11px;line-height:1.5}
+.remote .i{margin-top:2px}
+
+/* "Perlu jawabanmu": each question is its own card */
+.asks{display:grid;gap:10px;padding:12px}
+.ask{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;border:1px solid var(--line-soft);
+  border-radius:12px;padding:13px 14px;background:var(--surface)}
+.ask.warn{border-color:color-mix(in srgb,var(--warn) 45%,var(--line));background:color-mix(in srgb,var(--warn-bg) 45%,var(--surface))}
+.ask .badge{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;font-size:17px}
+.badge.warn{background:var(--warn-bg);color:var(--warn)} .badge.info{background:var(--info-bg);color:var(--info)}
+.badge.fail{background:var(--fail-bg);color:var(--fail)}
+.ask .body{flex:1;min-width:210px}
+.ask .t{font-weight:640}
+.ask .d{font-size:13px;color:var(--muted);line-height:1.6;margin-top:3px}
+.ask .d b{color:var(--text);font-weight:600}
+.ask .acts{display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap}
+.was{background:var(--pass-bg);color:var(--pass);padding:1px 7px;border-radius:6px;font-weight:600}
+.now{background:var(--fail-bg);color:var(--fail);padding:1px 7px;border-radius:6px;font-weight:600}
+.evidence{margin-top:6px;font-size:12px;color:var(--faint);line-height:1.6}
+details.why{margin-top:6px;font-size:12.5px;color:var(--muted)}
+details.why summary{cursor:pointer;color:var(--brand);font-weight:600;width:max-content;list-style:none}
+details.why summary::-webkit-details-marker{display:none}
+details.why p{margin:6px 0 0;line-height:1.6}
+.count{font-size:11px;font-weight:700;background:var(--fail);color:#fff;border-radius:10px;
+  padding:1px 7px;min-width:20px;text-align:center}
+
+/* the ten checks: one row each, details on click */
+.group-lbl{font-size:11.5px;font-weight:650;color:var(--faint);letter-spacing:.04em;
+  text-transform:uppercase;padding:12px 16px 4px}
+.ctl{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;
+  background:transparent;padding:11px 16px;cursor:pointer;border-top:1px solid var(--line-soft);
+  transition:background .12s}
+.group-lbl + .ctl{border-top:0}
+.ctl:hover{background:var(--surface-2)}
+.st{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex:none;font-size:16px}
+.st.p{background:var(--pass-bg);color:var(--pass)} .st.f{background:var(--fail-bg);color:var(--fail)}
+.st.n{background:var(--warn-bg);color:var(--warn)} .st.x{background:var(--surface-2);color:var(--faint)}
+.ctl-main{flex:1;min-width:0}
+.ctl .nm{display:block;font-weight:600}
+.ctl .sub{display:block;font-size:12.5px;color:var(--muted);margin-top:1px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ctl .sub.warn{color:var(--warn)}
+.ctl .chev{color:var(--faint);font-size:17px}
+.tag{display:inline-block;font-size:11.5px;font-weight:650;padding:3px 9px;border-radius:20px;
+  white-space:nowrap}
+.tag.p{background:var(--pass-bg);color:var(--pass)}
+.tag.f{background:var(--fail-bg);color:var(--fail)}
+.tag.n{background:var(--warn-bg);color:var(--warn)}
+.tag.x{background:var(--surface-2);color:var(--muted)}
+.result{display:block;margin-top:6px;font-size:12px;line-height:1.5;white-space:normal}
+.result:empty{display:none}
+.result.ok{color:var(--pass)} .result.bad{color:var(--fail)}
+.result.wait{color:var(--warn)} .result.busy{color:var(--muted)}
+
+/* detail panel: slides in from the right, from the bottom on a phone */
+dialog.drawer{margin:0 0 0 auto;height:100%;max-height:100%;width:min(460px,100vw);max-width:100vw}
+dialog.drawer[open]{animation:slideIn .22s ease-out}
+@keyframes slideIn{from{transform:translateX(24px);opacity:0}}
+.dr{background:var(--surface);color:var(--text);height:100%;overflow-y:auto;
+  border-left:1px solid var(--line);padding:20px 20px 28px}
+.dr .top{display:flex;gap:12px;align-items:flex-start}
+.dr h3{margin:0;font-size:17px;font-weight:680;letter-spacing:-.01em;flex:1}
+.dr .close{background:transparent;border:0;cursor:pointer;color:var(--muted);font-size:20px;padding:2px}
+.dr .tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:10px 0 0}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+.cmp div{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:10px;padding:9px 11px}
+.cmp small{display:block;font-size:11px;color:var(--faint);font-weight:650;letter-spacing:.03em;
+  text-transform:uppercase}
+.cmp b{display:block;font-weight:600;margin-top:2px}
+.cmp code{display:block;margin-top:3px;color:var(--faint);font-size:11px;word-break:break-all}
+.dr h4{margin:18px 0 4px;font-size:13px;font-weight:650}
+.dr p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.65}
+.box{margin-top:14px;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.6}
+.box b{display:block;font-size:12px;margin-bottom:2px}
+.box.warn{background:var(--warn-bg);color:var(--warn)} .box.info{background:var(--info-bg);color:var(--info)}
+.dr .acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:20px}
+.dr .acts .btn{padding:7px 12px;font-size:13px;display:inline-flex;align-items:center;gap:6px}
+.dr .ref{margin-top:20px;padding-top:12px;border-top:1px solid var(--line-soft);font-size:11.5px;
+  color:var(--faint);line-height:1.6}
+
+/* toast: a short confirmation that does not push the page around */
+.toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,20px);opacity:0;z-index:50;
+  background:var(--text);color:var(--surface);padding:9px 16px;border-radius:10px;font-size:13px;
+  box-shadow:0 12px 30px -10px rgba(0,0,0,.4);transition:opacity .2s,transform .2s;pointer-events:none;
+  max-width:min(460px,90vw)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* loading placeholder instead of the word "memuat" */
+.sk{background:linear-gradient(90deg,var(--line-soft),var(--surface-2),var(--line-soft));
+  background-size:200% 100%;animation:sk 1.2s linear infinite;border-radius:10px}
+@keyframes sk{to{background-position:-200% 0}}
 
 /* panels */
 .panel{background:var(--surface);border:1px solid var(--line-soft);border-radius:var(--radius);
@@ -153,62 +258,6 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 .btn.now { animation: rise .22s ease-out }
 @keyframes rise { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
 @media (prefers-reduced-motion: reduce) { .btn.now { animation: none } }
-
-/* table */
-.scroll-x{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13.5px}
-thead th{text-align:left;font-size:11px;letter-spacing:.035em;text-transform:uppercase;
-  color:var(--faint);font-weight:600;padding:8px 12px;background:var(--surface-2);
-  border-bottom:1px solid var(--line-soft);white-space:nowrap}
-tbody td{padding:8px 12px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
-tbody tr:last-child td{border-bottom:0}
-tbody tr:hover{background:var(--surface-2)}
-td.num{color:var(--faint);font-size:12px;width:38px}
-td.point{min-width:230px}
-td.point .nm{font-weight:550}
-td.point .ai{display:block;margin-top:4px;font-size:12px;color:var(--info);
-  background:var(--info-bg);border-radius:7px;padding:5px 8px;line-height:1.45}
-td.point .blocked{display:block;margin-top:4px;font-size:12px;color:var(--warn);line-height:1.45}
-.cis{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;color:var(--muted);
-  background:var(--surface-2);border:1px solid var(--line-soft);padding:2px 6px;border-radius:5px;
-  white-space:nowrap}
-.tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;
-  padding:3px 8px;border-radius:20px;white-space:nowrap}
-.tag.p{background:var(--pass-bg);color:var(--pass)}
-.tag.f{background:var(--fail-bg);color:var(--fail)}
-.tag.n{background:var(--warn-bg);color:var(--warn)}
-.tag.x{background:var(--surface-2);color:var(--muted)}
-td.actions{white-space:nowrap}
-td.actions .btn{margin-right:2px;padding:4px 8px;
-  border-color:transparent;background:transparent;color:var(--muted)}
-td.actions .btn:hover:not(:disabled){border-color:var(--line);background:var(--surface-2);
-  color:var(--brand)}
-td.actions .btn:disabled{color:var(--faint)}
-td.actions .btn.danger:hover:not(:disabled){background:var(--fail-bg);
-  border-color:var(--fail);color:var(--fail)}
-tr:hover td.actions .btn:not(:disabled){border-color:var(--line-soft)}
-.result{display:block;margin-top:5px;font-size:11.5px;line-height:1.45;white-space:normal;
-  max-width:340px}
-.result.ok{color:var(--pass)} .result.bad{color:var(--fail)}
-.result.wait{color:var(--warn)} .result.busy{color:var(--muted)}
-
-/* drift */
-.drift{display:flex;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line-soft);
-  flex-wrap:wrap;align-items:flex-start}
-.drift:last-child{border-bottom:0}
-.drift .who{width:34px;height:34px;border-radius:10px;background:var(--warn-bg);color:var(--warn);
-  display:grid;place-items:center;font-size:16px;flex:none}
-.drift .body{flex:1;min-width:210px}
-.drift .t{font-weight:600;margin-bottom:3px}
-.drift .change{font-size:12.5px;color:var(--muted);line-height:1.6}
-.drift .change b{color:var(--text);font-weight:600}
-.was{background:var(--pass-bg);color:var(--pass);padding:1px 6px;border-radius:5px;
-  font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px}
-.now{background:var(--fail-bg);color:var(--fail);padding:1px 6px;border-radius:5px;
-  font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px}
-.evidence{margin-top:7px;font-size:11.5px;color:var(--faint);line-height:1.6;
-  border-left:2px solid var(--line);padding-left:9px}
-.drift .acts{display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap}
 
 /* ports */
 .ports{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
@@ -295,20 +344,17 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
 .steps li.done .r{color:var(--pass)} .steps li.fail .r{color:var(--fail)}
 .steps li.hold .r{color:var(--warn)}
 
-.live{display:flex;gap:9px;align-items:center;padding:9px 16px;border-top:1px solid var(--line-soft);
-  font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;color:var(--muted);
-  overflow:hidden;white-space:nowrap}
-.live .beat{width:6px;height:6px;border-radius:50%;background:var(--pass);flex:none;
+.beat{width:7px;height:7px;border-radius:50%;background:var(--pass);flex:none;
   animation:beat 2.4s ease-in-out infinite}
-.live .l{overflow:hidden;text-overflow:ellipsis}
+.beat.off{background:var(--fail);animation:none}
 @keyframes beat{0%,100%{opacity:.35}50%{opacity:1}}
 
 .delta{font-size:12px;font-weight:650;margin-left:7px}
 .delta.up{color:var(--pass)} .delta.down{color:var(--fail)}
-@media (prefers-reduced-motion: reduce){.live .beat{animation:none}}
+@media (prefers-reduced-motion: reduce){.beat{animation:none}}
 
-/* narrow: below 900px the sidebar becomes a top bar; below 760px each table row
-   becomes a card, since ten columns are unreadable on a phone. */
+/* narrow: below 900px the sidebar becomes a top bar; below 640px the detail
+   panel comes up from the bottom, like a phone sheet. */
 @media (max-width: 900px){
   .wrap{flex-direction:column}
   .sidebar{width:auto;height:auto;position:static;flex-direction:row;align-items:center;
@@ -321,23 +367,24 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
   .sidebar .foot{display:none}
   .main{padding:16px 14px 48px}
 }
-@media (max-width: 760px){
-  thead{display:none}
-  tbody tr{display:block;border:1px solid var(--line);border-radius:11px;
-    padding:11px 13px;margin:11px 12px;background:var(--surface-2)}
-  tbody tr:hover{background:var(--surface-2)}
-  tbody td{display:block;border:0;padding:3px 0}
-  tbody td[data-l]::before{content:attr(data-l);display:block;font-size:10.5px;
-    text-transform:uppercase;letter-spacing:.05em;color:var(--faint);
-    font-weight:650;margin-bottom:2px}
-  td.num{display:none}
-  td.actions{margin-top:9px}
-  td.actions .btn{margin:0 5px 5px 0}
-  .result{max-width:none}
+@media (max-width: 640px){
   .page-head h1{font-size:19px}
   .head-right{width:100%;margin-left:0}
+  .picker{flex:1}
   .picker select{max-width:none;flex:1}
+  .hero{padding:16px;gap:14px}
+  .hero .ring-wrap{width:92px;height:92px}
+  .hero .ring-num b{font-size:25px}
+  .hero .go{width:100%}
+  .ctl{padding:11px 12px;gap:10px}
+  .ctl .tag{display:none}
+  .panel > .head .bulk{margin-left:0;width:100%}
+  dialog.drawer{margin:auto 0 0;height:auto;max-height:88vh;width:100vw}
+  dialog.drawer[open]{animation:slideUp .22s ease-out}
+  .dr{border-left:0;border-top:1px solid var(--line);border-radius:16px 16px 0 0;max-height:88vh}
+  .cmp{grid-template-columns:1fr}
 }
+@keyframes slideUp{from{transform:translateY(30px);opacity:0}}
 @media (prefers-reduced-motion: reduce){
   *{transition:none !important; animation:none !important}
 }
@@ -355,11 +402,11 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
       <span>Yoru<small>penjaga server</small></span>
     </div>
     <nav id="nav">
-      <a data-h="dashboard" class="on"><span class="ic">▦</span>Beranda</a>
-      <a data-h="history"><span class="ic">▤</span>Riwayat</a>
-      <a data-h="settings"><span class="ic">⚙</span>Setelan</a>
+      <a data-h="dashboard" class="on"><span class="ic" data-icon="home"></span>Beranda</a>
+      <a data-h="history"><span class="ic" data-icon="history"></span>Riwayat</a>
+      <a data-h="settings"><span class="ic" data-icon="sliders"></span>Setelan</a>
     </nav>
-    <div class="foot">Semua tindakan lewat <b>yoructl</b>.<br>Agent tidak punya akses shell.</div>
+    <div class="foot"><span class="beat" id="pulseDot"></span><span id="pulseText">menyambung…</span></div>
   </aside>
 
   <main class="main">
@@ -374,12 +421,16 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
           <select id="serverSelect" aria-label="Pilih server"></select>
           <span class="tag-local" id="localTag" hidden>MESIN INI</span>
         </div>
-        <button class="icon-btn" id="themeBtn" title="Ganti tema" aria-label="Ganti tema">◐</button>
+        <button class="icon-btn" id="themeBtn" title="Ganti tema" aria-label="Ganti tema"></button>
       </div>
     </div>
     <div id="content"></div>
   </main>
 </div>
+
+<dialog id="dlgCtl" class="drawer"><form method="dialog" class="dr" id="ctlBody"></form></dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <dialog id="dlgConfirm"><form method="dialog" class="dlg">
   <h3 id="confirmTitle"></h3>
@@ -436,9 +487,39 @@ let RENDER = 0;
 let LAST_SCORE = null;     // to show what the score just did, not only where it is
 let liveTimer = null;
 
+/* icons: paths in the style of the Lucide set (24x24, 2px stroke). Text glyphs
+   like ◐ rendered as half a shape on some fonts, so every icon is an SVG. */
+const ICONS = {
+  home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>',
+  history: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+  sliders: '<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/>',
+  monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/>',
+  half: '<circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/>',
+  minus: '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/>',
+  question: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  calendar: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  chevron: '<path d="m9 18 6-6-6-6"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  plug: '<path d="M12 22v-5M9 8V2M15 8V2M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
+  refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+  shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+  undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
+  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4M16 13H8M16 17H8M10 9H8"/>',
+  swap: '<path d="M8 3 4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"/>',
+};
+const I = name => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+document.querySelectorAll('[data-icon]').forEach(el => el.innerHTML = I(el.dataset.icon));
+
 /* theme: three states; "sistem" stores nothing and lets the OS decide. */
 const THEMES = ['sistem', 'terang', 'gelap'];
-const THEME_ICON = {sistem: '◐', terang: '☀', gelap: '☾'};
+const THEME_ICON = {sistem: 'monitor', terang: 'sun', gelap: 'moon'};
 const THEME_NAME = {sistem: 'ikut sistem', terang: 'terang', gelap: 'gelap'};
 
 function readTheme() {
@@ -448,7 +529,7 @@ function readTheme() {
 function applyTheme(t) {
   if (t === 'sistem') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', t === 'gelap' ? 'dark' : 'light');
-  $('themeBtn').textContent = THEME_ICON[t];
+  $('themeBtn').innerHTML = I(THEME_ICON[t]);
   $('themeBtn').title = `Tema: ${THEME_NAME[t]}. Klik untuk ganti`;
 }
 applyTheme(readTheme());
@@ -533,18 +614,40 @@ async function loadServers() {
   } catch (e) { /* the picker simply does not appear */ }
 }
 
-async function load() {
+// The 30-second refresh redraws only when the report really changed, so an
+// open "Kenapa?" or a half-read card does not jump shut under the owner.
+let LAST_RAW = null;
+async function load(force) {
   const q = PICKED ? `?server=${encodeURIComponent(PICKED)}` : '';
+  let raw = null;
   try {
     const r = await get('/api/report' + q);
-    DATA = (r.status === 404 || !r.ok) ? null : await r.json();
-  } catch (e) { DATA = null; }
+    raw = (r.status === 404 || !r.ok) ? null : await r.text();
+    pulse(true);
+  } catch (e) {
+    // A network blip keeps the last report on screen instead of blanking it.
+    pulse(false);
+    if (DATA) return;
+  }
+  if (!force && raw === LAST_RAW && PAGE === 'dashboard' && DATA) return tickTimes();
+  LAST_RAW = raw;
+  try { DATA = raw ? JSON.parse(raw) : null; } catch (e) { DATA = null; }
   render();
 }
 
+// Bottom of the sidebar: is this page still talking to the dashboard?
+function pulse(ok) {
+  $('pulseDot').className = 'beat' + (ok ? '' : ' off');
+  const now = new Date();
+  $('pulseText').textContent = ok
+    ? `Tersambung · diperbarui ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    : 'Nggak tersambung ke dashboard';
+}
+
 function drawPicker() {
-  // Shown only when there is more than one server to pick from.
-  if (SERVERS.length < 2) { $('serverPicker').hidden = true; return; }
+  // Shown only when there is more than one server to pick from. Not on
+  // Setelan: those settings belong to this machine whatever is picked.
+  if (SERVERS.length < 2 || PAGE === 'settings') { $('serverPicker').hidden = true; return; }
   $('serverPicker').hidden = false;
   const current = (DATA && DATA.server && DATA.server.name) || PICKED || '';
   $('serverSelect').innerHTML = SERVERS.map(s =>
@@ -552,7 +655,8 @@ function drawPicker() {
   ).join('');
   $('localTag').hidden = !(current && current === LOCAL);
 }
-$('serverSelect').onchange = e => { PICKED = e.target.value; load(); };
+// Another server's score is not a change of this one's, so the +/- starts over.
+$('serverSelect').onchange = e => { PICKED = e.target.value; LAST_SCORE = null; load(true); };
 
 /* render */
 function render() {
@@ -570,18 +674,24 @@ function render() {
   if (!DATA) return emptyState();
 
   const s = DATA.server || {};
-  $('meta').textContent = [s.name, s.os, s.primary_ip, when(DATA.time)].filter(Boolean).join(' · ');
+  $('pageTitle').textContent = s.name || PAGE_TITLE[PAGE];
+  $('meta').textContent = [s.os, s.primary_ip, s.detected_panel].filter(Boolean).join(' · ');
 
-  $('content').innerHTML =
-    (PAGE === 'dashboard' ? statCards() + remoteNotice() + driftPanel() + attentionPanel() : '') +
-    table();
+  $('content').innerHTML = hero() + askPanel() + controlList();
   wireButtons();
   watchLive();
 }
 
+// Everything the owner has to answer: approvals, changed settings, open ports.
+function waitingCount() {
+  if (!DATA) return 0;
+  return (DATA.pending_decisions || []).length + (DATA.drift || []).length
+         + pendingPorts().ports.length;
+}
+
 // The red number beside "Beranda": how many things wait on the owner.
 function markBadge() {
-  const waiting = DATA ? (DATA.pending_decisions || []).length + (DATA.drift || []).length : 0;
+  const waiting = waitingCount();
   const a = document.querySelector('#nav a[data-h="dashboard"]');
   const old = a.querySelector('.pill');
   if (old) old.remove();
@@ -593,6 +703,11 @@ function markBadge() {
   }
 }
 
+// Grey blocks in the shape of what is coming, instead of the word "memuat".
+function skeleton(...heights) {
+  return heights.map(h => `<div class="sk" style="height:${h}px;margin-bottom:14px"></div>`).join('');
+}
+
 function emptyState() {
   $('meta').textContent = '';
   $('content').innerHTML = `<div class="panel"><div class="empty">
@@ -601,99 +716,125 @@ function emptyState() {
     <code>sudo -u yoru-agent /opt/yoru/bin/yoru-agent --siklus perbaikan</code></div></div>`;
 }
 
-/* stat cards */
-function ring(pct) {
-  const r = 20, c = 2 * Math.PI * r;
-  return `<svg class="ring" width="52" height="52" viewBox="0 0 52 52">
-    <circle class="track" cx="26" cy="26" r="${r}" fill="none" stroke-width="5"/>
-    <circle class="fill" cx="26" cy="26" r="${r}" fill="none" stroke-width="5"
-      stroke-dasharray="${(c * pct / 100).toFixed(1)} ${c.toFixed(1)}"
-      transform="rotate(-90 26 26)"/>
+/* words for values. yoructl reports what it read (no, 3/30, aturan=12...);
+   these say it in plain words. Anything not listed is shown as it came. */
+const PLAIN = {
+  K01: {'no': 'root nggak bisa login lewat SSH', 'yes': 'root bisa login pakai password',
+        'without-password': 'root masih bisa login pakai kunci SSH',
+        'prohibit-password': 'root masih bisa login pakai kunci SSH',
+        'forced-commands-only': 'root cuma boleh menjalankan perintah tertentu'},
+  K02: {'no': 'login pakai password mati', 'yes': 'login pakai password masih nyala'},
+  K04: {'mac_sha1=0': 'tanpa algoritma lemah (sha1)', 'mac_sha1=1': 'masih ada algoritma lemah (sha1)'},
+  K05: {'active': 'firewall nyala', 'inactive': 'firewall mati', 'tidak-aktif': 'firewall mati'},
+  K07: {'enabled': 'pembaruan otomatis nyala', 'disabled': 'pembaruan otomatis mati',
+        'tidak-terpasang': 'belum terpasang'},
+  K10: {'1/0/0': '3 dari 3 setelan sesuai', '1/0/na': 'setelan sesuai (tanpa IPv6)'},
+};
+function plain(kid, value) {
+  const v = String(value ?? '').trim();
+  if (!v) return '-';
+  if (v === 'tidak-terbaca') return 'nggak kebaca';
+  const map = PLAIN[kid] || {};
+  if (map[v]) return map[v];
+  let m;
+  if (kid === 'K05' && (m = v.match(/^(active|inactive)\b(.*)$/))) return map[m[1]] + m[2];
+  if (kid === 'K03' && (m = v.match(/^(\d+)\/(\d+)$/)))
+    return `boleh salah ${m[1]} kali, waktu login ${m[2]} detik`;
+  if (kid === 'K08' && (m = v.match(/^aturan(>=|=)(\d+)$/)))
+    return `${m[1] === '>=' ? 'minimal ' : ''}${m[2]} aturan audit aktif`;
+  if (kid === 'K09' && (m = v.match(/^max ([\d.]+)([KMGT])$/)))
+    return `log disimpan, batas ${Number(m[1])} ${m[2]}B`;
+  if (kid === 'K10' && (m = v.match(/^(\S)\/(\S)\/(\S+)$/))) {
+    // log_martians must be 1, secure_redirects 0, accept_ra 0 (or absent: no IPv6)
+    const off = [m[1] !== '1', m[2] !== '0', !['0', 'na'].includes(m[3])].filter(Boolean).length;
+    return `${3 - off} dari 3 setelan sesuai`;
+  }
+  if ((m = v.match(/^(?:0\.0\.0\.0|\*|\[::\]):(\d+)$/))) return `port ${m[1]} terbuka ke semua jaringan`;
+  if ((m = v.match(/^(?:127\.0\.0\.1|localhost|\[::1\]):(\d+)$/))) return `port ${m[1]} cuma untuk server ini`;
+  return v;
+}
+
+const CATEGORY = {ssh: 'Akses SSH', firewall: 'Firewall', jaringan: 'Jaringan',
+                  audit: 'Jejak audit', log: 'Log', pembaruan: 'Pembaruan'};
+const STATUS_ICON = {p: 'check', f: 'alert', n: 'half', x: 'minus'};
+const firstSentence = t => (String(t || '').match(/^.*?[.!?](?=\s|$)/) || [String(t || '')])[0];
+
+// "20 hari lalu". Kept in data-ago, so tickTimes() can refresh it without a redraw.
+function ago(t) {
+  const ms = Date.now() - new Date(t).getTime();
+  if (!isFinite(ms)) return '';
+  const min = Math.round(ms / 60000);
+  if (min < 1) return 'baru saja';
+  if (min < 60) return `${min} menit lalu`;
+  if (min < 60 * 24) return `${Math.round(min / 60)} jam lalu`;
+  return `${Math.round(min / 1440)} hari lalu`;
+}
+function tickTimes() {
+  document.querySelectorAll('[data-ago]').forEach(el => el.textContent = ago(el.dataset.ago));
+}
+
+function ring(pct, band, grow) {
+  const r = 48, c = 2 * Math.PI * r;
+  return `<svg class="ring ${band}${grow ? ' grow' : ''}" width="100%" height="100%" viewBox="0 0 112 112">
+    <circle class="track" cx="56" cy="56" r="${r}" fill="none" stroke-width="10"/>
+    <circle class="fill" cx="56" cy="56" r="${r}" fill="none" stroke-width="10"
+      stroke-dasharray="${(c * pct / 100).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 56 56)"/>
   </svg>`;
 }
 
-function statCards() {
-  const s = DATA.summary || {}, total = s.total || 10;
-  const waiting = (DATA.pending_decisions || []).length + (DATA.drift || []).length;
-  // The score moving is the one thing worth pointing at, so the change since
-  // the previous load is shown next to it instead of being left to memory.
-  const now = s.score ?? 0;
-  const diff = (LAST_SCORE === null || LAST_SCORE === now) ? 0 : now - LAST_SCORE;
-  LAST_SCORE = now;
-  const deltaHtml = diff
-    ? `<span class="delta ${diff > 0 ? 'up' : 'down'}">${diff > 0 ? '+' : ''}${diff}</span>` : '';
-  return `<div class="stats">
-    <div class="stat">${ring(now)}
-      <div class="grow"><div class="lbl">Skor keamanan</div>
-        <div class="val">${now}<span style="font-size:15px;color:var(--muted)">/100</span>${deltaHtml}</div>
-        <div class="sub">${esc(DATA.cycle || '-')}</div></div></div>
-    <div class="stat"><div class="chip-ic pass">✓</div>
-      <div class="grow"><div class="lbl">Sudah aman</div>
-        <div class="val">${s.passed ?? 0} <span style="font-size:15px;color:var(--muted)">/ ${total}</span></div>
-        <div class="sub">sudah sesuai</div></div></div>
-    <div class="stat"><div class="chip-ic fail">!</div>
-      <div class="grow"><div class="lbl">Perlu dibenahi</div>
-        <div class="val">${s.failed ?? 0} <span style="font-size:15px;color:var(--muted)">/ ${total}</span></div>
-        <div class="sub">${s.partial ? s.partial + ' sebagian · ' : ''}${s.skipped ?? 0} dilewati</div></div></div>
-    <div class="stat"><div class="chip-ic ${waiting ? 'fail' : 'info'}">${waiting ? '◔' : '✓'}</div>
-      <div class="grow"><div class="lbl">Nunggu jawabanmu</div>
-        <div class="val">${waiting}</div>
-        <div class="sub">${waiting ? 'lihat di bawah' : 'nggak ada'}</div></div></div>
-  </div>`;
-}
+/* hero: one sentence first, numbers after */
+function hero() {
+  const s = DATA.summary || {};
+  const score = s.score ?? 0;
+  const waiting = waitingCount();
+  const failed = (s.failed ?? 0) + (s.partial ?? 0);
+  const band = score >= 80 ? 'good' : score >= 50 ? 'mid' : 'bad';
+  const title = failed === 0 && waiting === 0 ? 'Server kamu aman'
+              : band === 'good' ? 'Server kamu cukup aman'
+              : band === 'mid' ? 'Server kamu masih ada celah' : 'Server kamu masih rawan';
+  const line = [waiting ? `${waiting} hal nunggu jawabanmu` : '',
+                failed ? `${failed} pemeriksaan masih perlu dibenahi` : ''].filter(Boolean).join(', ');
 
-// This report came from another server, so the yoructl buttons cannot touch it.
-// Approving and vouching still work - the agent there collects those.
-function remoteNotice() {
-  if (isLocal()) return '';
-  return `<div class="panel"><div class="panel-body" style="display:flex;gap:11px;align-items:flex-start">
-    <div class="chip-ic info">⇄</div>
-    <div><b>Ini laporan dari ${esc((DATA.server || {}).name || 'server lain')}</b>
-    <div style="color:var(--muted);font-size:13px;margin-top:3px;line-height:1.6">
-      Menyetujui dan menjawab port tetap bisa. Tombol Cek ulang, Amankan dan Kembalikan
-      cuma jalan di server tempat dashboard ini dipasang.
-    </div></div></div></div>`;
-}
+  // Animate the ring on the first draw and when the score moves, not on every refresh.
+  const diff = (LAST_SCORE === null || LAST_SCORE === score) ? 0 : score - LAST_SCORE;
+  const grow = LAST_SCORE === null || diff !== 0;
+  LAST_SCORE = score;
+  const delta = diff ? `<span class="delta ${diff > 0 ? 'up' : 'down'}">${diff > 0 ? '+' : ''}${diff}</span>` : '';
 
-/* drift: the heart of the watch cycle. */
-function driftPanel() {
-  const drift = DATA.drift || [];
-  if (!drift.length) return '';
-  const rows = drift.map(d => {
-    const bits = [];
-    if (d.who)        bits.push(`diubah oleh <b>${esc(d.who)}</b>`);
-    if (d.changed_at) bits.push(`pada ${esc(when(d.changed_at))}`);
-    if (d.command)     bits.push(`lewat <code>${esc(d.command)}</code>`);
-    const evidence = bits.length
-      ? `<div class="evidence">${bits.join(' · ')}${
-           d.evidence_source ? ` <span style="opacity:.75">(sumber: ${esc(d.evidence_source)})</span>` : ''}</div>`
-      : `<div class="evidence">Siapa yang mengubah nggak tercatat, karena jejak audit
-         (auditd) belum aktif di server ini. Yoru nggak menebak.</div>`;
-    return `<div class="drift" data-kid="${esc(d.id)}">
-      <div class="who">⚠</div>
-      <div class="body">
-        <div class="t">${esc(d.name)} <span class="cis">${esc(d.id)}</span></div>
-        <div class="change">Dulu <span class="was">${esc(d.changed_from)}</span>
-          sekarang <span class="now">${esc(d.changed_to)}</span></div>
-        ${evidence}
-        <span class="result" data-slot></span>
-      </div>
-      <div class="acts">
-        <button class="btn" data-drift="sah">Ini memang saya</button>
-        <button class="btn danger" data-drift="kembalikan">Kembalikan</button>
-      </div>
-    </div>`;
-  }).join('');
-  return `<div class="panel urgent">
-    <div class="head"><h2>Ada ${drift.length} setelan yang berubah sejak pemeriksaan terakhir</h2>
-      <span class="note">cek apakah ini memang kamu yang ubah</span></div>
-    ${rows}</div>`;
+  const chip = (n, cls, label) => `<span class="chip"><span class="dot ${cls}"></span>${n} ${label}</span>`;
+  const chips = chip(s.passed ?? 0, 'p', 'aman') + chip(s.failed ?? 0, 'f', 'perlu dibenahi')
+    + (s.partial ? chip(s.partial, 'n', 'setengah jalan') : '')
+    + (s.skipped ? chip(s.skipped, 'x', 'dilewati') : '');
+
+  const local = isLocal();
+  const facts = [
+    `<span>${I('clock')} Dicek ${esc(when(DATA.time))} · <span data-ago="${esc(DATA.time)}">${ago(DATA.time)}</span></span>`,
+    local && SCHEDULE ? `<span>${I('calendar')} Cek harian jam ${esc(SCHEDULE)}</span>` : '',
+    local ? `<span id="lastAct"></span>` : '',
+  ].join('');
+
+  const remote = local ? '' : `<div class="remote">${I('swap')}<span>Ini laporan dari
+    <b>${esc((DATA.server || {}).name || 'server lain')}</b>. Menyetujui dan menjawab port tetap bisa.
+    Tombol Cek ulang, Amankan dan Kembalikan cuma jalan di server tempat dashboard ini dipasang.</span></div>`;
+
+  return `<section class="hero">
+    <div class="ring-wrap">${ring(score, band, grow)}
+      <div class="ring-num"><div><b>${score}</b><small>dari 100${delta}</small></div></div></div>
+    <div class="say">
+      <h2>${title}</h2>
+      <p class="line">${line ? esc(line) + '.' : 'Semua pemeriksaan sudah aman.'}</p>
+      <div class="chips">${chips}</div>
+      <div class="facts">${facts}</div>
+      ${remote}
+    </div>
+    ${waiting ? `<button class="btn primary go" data-jump="ask" style="padding:8px 14px;font-size:13px">Jawab sekarang</button>` : ''}
+  </section>`;
 }
 
 /* ports: K05 will not switch the firewall on while an open port is unanswered;
    the ports ride along in K05's blockers. */
 function pendingPorts() {
-  const k05 = (DATA.controls || []).find(k => k.id === 'K05');
+  const k05 = ((DATA && DATA.controls) || []).find(k => k.id === 'K05');
   const raw = (k05 && (k05.blockers || [])[0]) || '';
   const out = [];
   // Shape written by yoructl: "port terbuka belum dijawab pemilik: 8888(python3) 3306(mariadbd)"
@@ -701,106 +842,189 @@ function pendingPorts() {
   return {ports: out, note: (k05 && k05.ai_note) || ''};
 }
 
-function attentionPanel() {
+/* "Perlu jawabanmu": changed settings, open ports and approvals, one card each */
+function askPanel() {
+  const drift = DATA.drift || [];
   const {ports, note} = pendingPorts();
   const asking = DATA.pending_decisions || [];
-  if (!ports.length && !asking.length) return '';
+  const total = waitingCount();
+  if (!total) return '';
+  const byId = {};
+  (DATA.controls || []).forEach(k => byId[k.id] = k);
+  const cards = [];
 
-  let body = '';
-  if (ports.length) {
-    body += `<div class="panel-body" style="border-bottom:${asking.length ? '1px solid var(--line-soft)' : '0'}">
-      <b>Port ini terbuka ke internet dan belum kamu jawab</b>
-      <div style="color:var(--muted);font-size:13px;margin-top:4px;line-height:1.6">
-        Firewall baru bisa dinyalakan setelah semua port ini kamu jawab.</div>
-      ${note ? `<div class="said">${esc(note)}</div>` : ''}
-      <div class="ports">${ports.map(p => `
-        <div class="port" data-port="${esc(p.port)}">
-          <span><span class="n">${esc(p.port)}</span>
-            <span class="proc">${esc(p.proc || 'proses tak dikenal')}</span></span>
-          <button class="btn" data-portok="${esc(p.port)}">Punya saya</button>
-        </div>`).join('')}</div>
-      <span class="result" data-slot-port></span></div>`;
-  }
-  if (asking.length) {
-    const byId = {};
-    (DATA.controls || []).forEach(k => byId[k.id] = k);
-    body += `<div class="panel-body">
-      <b>${asking.length} hal nunggu persetujuanmu</b>
-      <div style="color:var(--muted);font-size:13px;margin-top:4px;line-height:1.6">
-        Yang berisiko nggak pernah dijalankan Yoru tanpa izinmu.${isLocal()
-          ? ''
-          : ' Jawabanmu dikerjakan di server itu pada pemeriksaan berikutnya.'}</div>
-      <div style="margin-top:11px">${asking.map(kid => {
-        const k = byId[kid] || {id: kid, name: kid};
-        return `<div class="drift" data-kid="${esc(kid)}" style="padding-left:0;padding-right:0">
-          <div class="body">
-            <div class="t">${esc(k.name || kid)} <span class="cis">${esc(kid)}</span></div>
-            <div class="change">${esc(k.why || '')}</div>
-            <span class="result" data-slot></span>
-          </div>
-          <div class="acts">
-            <button class="btn primary" data-decide="setuju">Setujui</button>
-            <button class="btn ghost" data-decide="tolak">Jangan</button>
-          </div></div>`;
-      }).join('')}</div></div>`;
-  }
-  return `<div class="panel"><div class="head"><h2>Perlu jawabanmu</h2>
-    <span class="note">Yoru nunggu kamu di sini</span></div>${body}</div>`;
-}
-
-/* table */
-function table() {
-  const needsApproval = new Set(DATA.pending_decisions || []);
-  const local = isLocal();
-  const rows = (DATA.controls || []).map((k, i) => {
-    const [label, cls] = TAG[k.status] || ['?', 'x'];
-    const blocked = (k.blockers || []).length > 0;
-    const off = !local ? ' disabled' : '';
-    return `<tr data-kid="${esc(k.id)}">
-      <td class="num">#${i + 1}</td>
-      <td class="point" data-l="Pemeriksaan"><span class="nm">${esc(k.name)}</span>
-        ${k.ai_note ? `<span class="ai">${esc(k.ai_note)}</span>` : ''}
-        ${blocked ? `<span class="blocked">${esc(k.blockers[0])}</span>` : ''}</td>
-      <td data-l="Kode CIS"><span class="cis" title="${esc(k.cis_code || '')}">${esc(shorten(k.cis_code || k.id))}</span></td>
-      <td data-l="Status"><span class="tag ${cls}">${label}</span></td>
-      <td data-l="Sekarang" style="color:var(--muted);font-size:12.5px">${esc(k.observed || '-')}</td>
-      <td class="actions" data-l="Aksi">
-        <button class="btn" data-a="periksa"${off}>Cek ulang</button>
-        <button class="btn" data-a="terapkan"${off || (blocked ? ' disabled' : '')}
-          ${blocked ? 'title="prasyarat belum terpenuhi"' : ''}
-          data-approval="${needsApproval.has(k.id) ? 1 : 0}">Amankan</button>
-        <button class="btn danger" data-a="kembalikan"${off}>Kembalikan</button>
-        <button class="btn ghost" data-a="log">Log</button>
+  // drift: the heart of the watch cycle
+  for (const d of drift) {
+    const bits = [];
+    if (d.who)        bits.push(`diubah oleh <b>${esc(d.who)}</b>`);
+    if (d.changed_at) bits.push(esc(when(d.changed_at)));
+    if (d.command)    bits.push(`lewat <code>${esc(d.command)}</code>`);
+    const evidence = bits.length ? bits.join(' · ')
+      : 'Siapa yang mengubah nggak tercatat, karena jejak audit (auditd) belum aktif di server ini. Yoru nggak menebak.';
+    cards.push(`<div class="ask warn" data-kid="${esc(d.id)}">
+      <div class="badge warn">${I('alert')}</div>
+      <div class="body">
+        <div class="t">${esc(d.name)} berubah</div>
+        <div class="d">Dulu <span class="was" title="${esc(d.changed_from)}">${esc(plain(d.id, d.changed_from))}</span>,
+          sekarang <span class="now" title="${esc(d.changed_to)}">${esc(plain(d.id, d.changed_to))}</span>.
+          Ini kamu yang ubah?</div>
+        <div class="evidence">${evidence}</div>
         <span class="result" data-slot></span>
-      </td>
-    </tr>`;
-  }).join('');
-
-  return `<div class="panel">
-    <div class="head">
-      <h2>Pemeriksaan keamanan</h2>
-      <span class="note">${local ? '' : 'tombol mati, ini laporan dari server lain'}</span>
-      <div class="bulk">
-        <button class="btn" data-bulk="periksa"${local ? '' : ' disabled'}>Cek ulang semua</button>
-        <button class="btn" data-bulk="terapkan"${local ? '' : ' disabled'}>Amankan semua</button>
-        <button class="btn danger" data-bulk="kembalikan"${local ? '' : ' disabled'}>Kembalikan semua</button>
       </div>
-    </div>
-    <div class="scroll-x"><table>
-      <thead><tr><th>No</th><th>Pemeriksaan</th><th>Kode CIS</th><th>Status</th>
-        <th>Sekarang</th><th>Aksi</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>
-    <div class="live" id="liveStrip"><span class="beat"></span><span class="l">memuat jejak…</span></div>
-    </div>`;
+      <div class="acts">
+        <button class="btn" data-drift="sah">Iya, saya</button>
+        <button class="btn danger" data-drift="kembalikan">Kembalikan</button>
+      </div></div>`);
+  }
+
+  if (ports.length) {
+    cards.push(`<div class="ask">
+      <div class="badge info">${I('plug')}</div>
+      <div class="body">
+        <div class="t">Port ini terbuka ke internet. Punya kamu?</div>
+        <div class="d">Firewall baru bisa dinyalakan setelah semua port ini kamu jawab.</div>
+        ${note ? `<details class="why"><summary>Kata Yoru soal port ini</summary><p>${esc(note)}</p></details>` : ''}
+        <div class="ports">${ports.map(p => `
+          <div class="port" data-port="${esc(p.port)}">
+            <span><span class="n">${esc(p.port)}</span>
+              <span class="proc">${esc(p.proc || 'program tak dikenal')}</span></span>
+            <button class="btn" data-portok="${esc(p.port)}">Punya saya</button>
+          </div>`).join('')}</div>
+        <span class="result" data-slot-port></span>
+      </div></div>`);
+  }
+
+  for (const kid of asking) {
+    const k = byId[kid] || {id: kid, name: kid};
+    const rest = String(k.why || '').slice(firstSentence(k.why).length).trim();
+    cards.push(`<div class="ask" data-kid="${esc(kid)}">
+      <div class="badge fail">${I('shield')}</div>
+      <div class="body">
+        <div class="t">Boleh Yoru amankan: ${esc(k.name || kid)}?</div>
+        <div class="d">${esc(firstSentence(k.why))}</div>
+        ${rest || k.breaks_if_applied ? `<details class="why"><summary>Kenapa, dan apa yang ikut berubah?</summary>
+          ${rest ? `<p>${esc(rest)}</p>` : ''}
+          ${k.breaks_if_applied ? `<p><b>Yang ikut berubah:</b> ${esc(k.breaks_if_applied)}</p>` : ''}</details>` : ''}
+        <span class="result" data-slot></span>
+      </div>
+      <div class="acts">
+        <button class="btn primary" data-decide="setuju">Setujui</button>
+        <button class="btn ghost" data-decide="tolak">Jangan</button>
+      </div></div>`);
+  }
+
+  const remote = isLocal() ? '' : ' Jawabanmu dikerjakan di server itu pada pemeriksaan berikutnya.';
+  return `<div class="panel" id="ask">
+    <div class="head"><h2>Perlu jawabanmu</h2><span class="count">${total}</span>
+      <span class="note">Yoru nunggu kamu sebelum lanjut.${remote}</span></div>
+    <div class="asks">${cards.join('')}</div></div>`;
 }
+
+/* the ten checks: worst first, one line each, the rest in the detail panel */
+function controlList() {
+  const local = isLocal();
+  const all = DATA.controls || [];
+  const groups = [
+    ['Perlu dibenahi', all.filter(k => ['GAGAL', 'SEBAGIAN', 'ERROR'].includes(k.status))],
+    ['Sudah aman', all.filter(k => k.status === 'LULUS')],
+    ['Dilewati', all.filter(k => k.status === 'DILEWATI')],
+  ].filter(([, list]) => list.length);
+
+  const row = k => {
+    const [label, cls] = TAG[k.status] || ['?', 'x'];
+    const blocker = (k.blockers || [])[0];
+    const sub = blocker && k.status !== 'LULUS'
+      ? `<span class="sub warn">Belum bisa: ${esc(blocker)}</span>`
+      : `<span class="sub">${k.status === 'LULUS' ? '' : 'Sekarang: '}${esc(plain(k.id, k.observed))}</span>`;
+    return `<button class="ctl" data-open="${esc(k.id)}">
+      <span class="st ${cls}">${I(STATUS_ICON[cls])}</span>
+      <span class="ctl-main"><span class="nm">${esc(k.name)}</span>${sub}</span>
+      <span class="tag ${cls}">${label}</span>
+      <span class="chev">${I('chevron')}</span></button>`;
+  };
+
+  const bulk = local ? `<div class="bulk">
+      <button class="btn" data-bulk="periksa">Cek ulang semua</button>
+      <button class="btn" data-bulk="terapkan">Amankan semua</button>
+      <button class="btn danger" data-bulk="kembalikan">Kembalikan semua</button></div>` : '';
+  return `<div class="panel">
+    <div class="head"><h2>Pemeriksaan keamanan</h2>
+      <span class="note">klik salah satu untuk lihat detail</span>${bulk}</div>
+    ${groups.map(([title, list]) =>
+      `<div class="group-lbl">${title} · ${list.length}</div>${list.map(row).join('')}`).join('')}
+  </div>`;
+}
+
+/* detail panel for one check */
+function openControl(kid) {
+  const k = (DATA.controls || []).find(x => x.id === kid);
+  if (!k) return;
+  const [label, cls] = TAG[k.status] || ['?', 'x'];
+  const local = isLocal();
+  const blocked = (k.blockers || []).length > 0;
+  const needsApproval = (DATA.pending_decisions || []).includes(kid);
+  const off = local ? '' : ' disabled';
+  // The value as yoructl read it, under the plain words, only when it is a
+  // code-like token (no, 3/30, 0.0.0.0:3306) that the words replaced.
+  const raw = (v, p) => v && p !== String(v) && !/\s/.test(String(v)) ? `<code>${esc(v)}</code>` : '';
+  const cis = String(k.cis_code || '').startsWith('TIDAK_ADA') ? 'di luar CIS Level 1' : (k.cis_code || '-');
+  const pNow = plain(kid, k.observed), pWant = plain(kid, k.target);
+
+  $('ctlBody').innerHTML = `<div data-kid="${esc(kid)}">
+    <div class="top">
+      <span class="st ${cls}">${I(STATUS_ICON[cls])}</span>
+      <h3>${esc(k.name)}</h3>
+      <button class="close" value="tutup" aria-label="Tutup">${I('x')}</button>
+    </div>
+    <div class="tags">
+      <span class="tag ${cls}">${label}</span>
+      ${CATEGORY[k.category] ? `<span class="tag x">${CATEGORY[k.category]}</span>` : ''}
+      <span class="tag ${k.risk === 'BERISIKO' ? 'n' : 'x'}">${k.risk === 'BERISIKO'
+        ? 'Butuh izinmu dulu' : 'Aman dijalankan otomatis'}</span>
+    </div>
+    <div class="cmp">
+      <div><small>Sekarang</small><b>${esc(pNow)}</b>${raw(k.observed, pNow)}</div>
+      <div><small>Harusnya</small><b>${esc(pWant)}</b>${raw(k.target, pWant)}</div>
+    </div>
+    ${blocked ? `<div class="box warn"><b>Belum bisa diamankan</b>${k.blockers.map(esc).join('<br>')}</div>` : ''}
+    ${k.ai_note ? `<div class="box info"><b>Catatan Yoru</b>${esc(k.ai_note)}</div>` : ''}
+    ${k.why ? `<h4>Kenapa penting</h4><p>${esc(k.why)}</p>` : ''}
+    ${k.breaks_if_applied ? `<h4>Kalau diamankan, ini yang ikut berubah</h4><p>${esc(k.breaks_if_applied)}</p>` : ''}
+    <div class="acts">
+      <button type="button" class="btn" data-a="periksa"${off}>${I('refresh')} Cek ulang</button>
+      <button type="button" class="btn primary" data-a="terapkan"${off || (blocked ? ' disabled' : '')}
+        ${blocked ? 'title="prasyarat belum terpenuhi"' : ''}
+        data-approval="${needsApproval ? 1 : 0}">${I('shield')} Amankan</button>
+      <button type="button" class="btn danger" data-a="kembalikan"${off}>${I('undo')} Kembalikan</button>
+      <button type="button" class="btn ghost" data-a="log">${I('file')} Lihat log</button>
+    </div>
+    ${local ? '' : '<div class="result wait">Tombolnya mati karena ini laporan dari server lain.</div>'}
+    <span class="result" data-slot></span>
+    <div class="ref">Kode pemeriksaan ${esc(kid)} · CIS Ubuntu 24.04: ${esc(cis)}</div>
+  </div>`;
+
+  $('ctlBody').querySelectorAll('button[data-a]').forEach(b => {
+    b.onclick = () => {
+      if (b.dataset.a === 'log') {
+        $('dlgCtl').close();
+        PAGE = 'history'; LOG_KID = kid; render(); return;
+      }
+      if (b.dataset.a === 'terapkan' && b.dataset.approval === '1') return confirmApply(kid, b);
+      run(kid, b.dataset.a, b);
+    };
+  });
+  const d = $('dlgCtl');
+  if (!d.open) d.showModal();
+}
+// A click on the dimmed backdrop closes the panel, as on a phone sheet.
+$('dlgCtl').addEventListener('click', e => { if (e.target === $('dlgCtl')) $('dlgCtl').close(); });
 
 /* history */
 // One page answers one question: what has happened here. The score line and
 // the action trail are two views of the same answer, so they share a page.
 async function historyPage(gen) {
   $('meta').textContent = PICKED || (DATA && DATA.server && DATA.server.name) || '';
-  $('content').innerHTML = `<div class="panel"><div class="empty">memuat riwayat…</div></div>`;
+  $('content').innerHTML = skeleton(240, 320);
 
   const q = PICKED ? `?server=${encodeURIComponent(PICKED)}&limit=60` : '?limit=60';
   let rows = [];
@@ -936,7 +1160,7 @@ function telegramStatus(config) {
 
 async function settingsPage(gen) {
   $('meta').textContent = '';
-  $('content').innerHTML = `<div class="panel"><div class="empty">memuat setelan…</div></div>`;
+  $('content').innerHTML = skeleton(260, 380);
 
   let config = {}, failure = null;
   try {
@@ -1034,6 +1258,8 @@ async function decide(control, value, slot, buttons) {
         : value === 'setuju'
         ? (isLocal() ? 'disetujui, tinggal jalankan' : 'disetujui, dikerjakan di server itu')
         : 'dicatat, kontrol ini tidak akan diterapkan');
+      toast(value === 'setuju' ? 'Disetujui' : value === 'tolak' ? 'Dicatat, nggak akan diterapkan'
+            : value === 'sah' ? 'Dicatat sebagai perubahanmu' : 'Dicatat, akan dikembalikan');
       if (value === 'setuju' && isLocal()) offerApply(control, slot);
     } else {
       slotSay(slot, 'bad', d.detail || `gagal disimpan (HTTP ${r.status})`);
@@ -1070,6 +1296,7 @@ async function vouchPort(port, btn, slot) {
     const d = await r.json();
     if (r.ok && d.ok) {
       btn.textContent = 'sudah dicatat';
+      toast(`Port ${port} dicatat sebagai milikmu`);
       slotSay(slot, 'ok', `Port ${port} dicatat sebagai milikmu. Begitu semua port terjawab, `
         + `firewall boleh dinyalakan.`);
     } else {
@@ -1082,17 +1309,23 @@ async function vouchPort(port, btn, slot) {
   }
 }
 
+// Short confirmation at the bottom of the screen.
+let toastTimer = null;
+function toast(text) {
+  const t = $('toast');
+  t.textContent = text;
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), 3200);
+}
+
 function wireButtons() {
-  // control table
-  document.querySelectorAll('tbody button[data-a]').forEach(b => {
-    b.onclick = () => {
-      const tr = b.closest('tr'), kid = tr.dataset.kid;
-      if (b.dataset.a === 'log') { PAGE = 'history'; LOG_KID = kid; render(); return; }
-      if (b.dataset.a === 'terapkan' && b.dataset.approval === '1') return confirmApply(kid, b);
-      run(kid, b.dataset.a, b);
-    };
-  });
-  // bulk: the same dialog as one row, ten lines filling in one by one.
+  // one row per check opens its detail panel
+  document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openControl(b.dataset.open));
+  // "Jawab sekarang" in the hero
+  document.querySelectorAll('[data-jump]').forEach(b => b.onclick = () =>
+    $(b.dataset.jump).scrollIntoView({behavior: 'smooth', block: 'start'}));
+  // bulk: the same dialog as one check, ten lines filling in one by one.
   document.querySelectorAll('button[data-bulk]').forEach(b => {
     b.onclick = async () => {
       const action = b.dataset.bulk;
@@ -1100,35 +1333,32 @@ function wireButtons() {
           !confirm(`${ACTION_LABEL[action]} semua pemeriksaan?\n\nYang berisiko tetap nunggu persetujuanmu.`)) return;
       b.disabled = true;
       openBulk(action);
+      const asking = new Set(DATA.pending_decisions || []);
       let done = 0, held = 0, broke = 0;
-      for (const tr of document.querySelectorAll('tbody tr')) {
-        const kid = tr.dataset.kid;
-        const btn = tr.querySelector(`button[data-a="${action}"]`);
-        if (!btn) continue;
-        if (btn.disabled && !(action === 'terapkan' && btn.dataset.approval === '1')) {
-          bulkMark(kid, 'hold', 'dilewati'); held++; continue;
+      for (const k of DATA.controls || []) {
+        if (action === 'terapkan' && asking.has(k.id)) {
+          bulkMark(k.id, 'hold', 'butuh persetujuanmu'); held++; continue;
         }
-        if (action === 'terapkan' && btn.dataset.approval === '1') {
-          slotSay(tr.querySelector('[data-slot]'), 'busy', 'dilewati, butuh persetujuan');
-          bulkMark(kid, 'hold', 'butuh persetujuanmu'); held++; continue;
+        if (action === 'terapkan' && (k.blockers || []).length) {
+          bulkMark(k.id, 'hold', 'dilewati, prasyarat belum terpenuhi'); held++; continue;
         }
-        bulkMark(kid, 'on', 'berjalan…');
-        const d = await run(kid, action, btn, true);
+        bulkMark(k.id, 'on', 'berjalan…');
+        const d = await run(k.id, action, null, true);
         const ok = d && d.ok === true;
         const waiting = d && (d.status === 'DITOLAK' || d.status === 'MENUNGGU');
-        bulkMark(kid, ok ? 'done' : waiting ? 'hold' : 'fail',
-                 `${statusLabel((d || {}).status || 'ERROR')}${d && d.value ? ' · ' + d.value : ''}`);
+        bulkMark(k.id, ok ? 'done' : waiting ? 'hold' : 'fail',
+                 `${statusLabel((d || {}).status || 'ERROR')}${d && d.value ? ' · ' + plain(k.id, d.value) : ''}`);
         if (ok) done++; else if (waiting) held++; else broke++;
       }
       closeBulk(done, held, broke);
       b.disabled = false;
-      load();
+      load(true);
     };
   });
   // drift answers and approval queue
   document.querySelectorAll('[data-drift], [data-decide]').forEach(b => {
     b.onclick = () => {
-      const box = b.closest('.drift');
+      const box = b.closest('[data-kid]');
       const kid = box.dataset.kid;
       const value = b.dataset.drift || b.dataset.decide;
       decide(kid, value, box.querySelector('[data-slot]'),
@@ -1145,7 +1375,7 @@ function wireButtons() {
 function confirmApply(kid, btn) {
   const k = (DATA.controls || []).find(x => x.id === kid) || {};
   $('confirmTitle').textContent = k.name || kid;
-  $('confirmKid').textContent = `Sekarang: ${k.observed || '-'} · Harusnya: ${k.target || '-'}`;
+  $('confirmKid').textContent = `Sekarang: ${plain(kid, k.observed)} · Harusnya: ${plain(kid, k.target)}`;
   $('confirmWhy').textContent = k.why || '';
   $('confirmRisk').textContent = k.breaks_if_applied || '(katalog belum mencantumkan konsekuensinya)';
   const d = $('dlgConfirm');
@@ -1247,7 +1477,7 @@ function closeRun(kid, d) {
   const ok = d.ok === true;
   const waiting = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
   box.className = 'reply ' + (ok ? 'ok' : waiting ? 'wait' : 'bad');
-  box.innerHTML = `<b>${esc(statusLabel(d.status))}</b>${d.value ? ' · ' + esc(d.value) : ''}` +
+  box.innerHTML = `<b>${esc(statusLabel(d.status))}</b>${d.value ? ' · ' + esc(plain(kid, d.value)) : ''}` +
     (d.message ? `<br>${esc(d.message)}` : '');
   box.hidden = false;
   $('runClock').textContent = 'selesai';
@@ -1255,16 +1485,20 @@ function closeRun(kid, d) {
   $('runClose').textContent = 'Tutup';
   $('runLog').hidden = false;
   $('dlgRun').onclose = () => {
-    if ($('dlgRun').returnValue === 'log') { PAGE = 'history'; LOG_KID = kid; render(); }
+    if ($('dlgRun').returnValue === 'log') {
+      if ($('dlgCtl').open) $('dlgCtl').close();
+      PAGE = 'history'; LOG_KID = kid; render();
+    }
   };
 }
 
-// Works from the control table and from the approval panel alike: the scope is
-// whatever element carries data-kid, not a table row.
+// Works from the detail panel and from the approval cards alike: the scope is
+// whatever element carries data-kid. The bulk run passes no button at all.
 async function run(kid, action, btn, quiet) {
-  const scope = btn.closest('[data-kid]') || btn.parentElement;
-  const slot = scope.querySelector('[data-slot]');
-  scope.querySelectorAll('button').forEach(b => b.disabled = true);
+  const scope = btn ? (btn.closest('[data-kid]') || btn.parentElement) : null;
+  const slot = scope && scope.querySelector('[data-slot]');
+  if (scope) scope.querySelectorAll('button[data-a], button[data-decide], button[data-drift]')
+    .forEach(b => b.disabled = true);
   slotSay(slot, 'busy', 'menjalankan…');
   if (!quiet) openRun(kid, action);
   let d;
@@ -1280,12 +1514,11 @@ async function run(kid, action, btn, quiet) {
   const ok = d.ok === true;
   const waiting = d.status === 'DITOLAK' || d.status === 'MENUNGGU';
   slotSay(slot, ok ? 'ok' : waiting ? 'wait' : 'bad',
-    `${statusLabel(d.status)}${d.value ? ' · ' + d.value : ''}${d.message ? ' · ' + d.message : ''}`);
-  scope.querySelectorAll('button').forEach(b => {
-    if (!(b.dataset.a === 'terapkan' && b.title)) b.disabled = false;
-  });
-  // After Audit too, so a row that now passes moves the score.
-  if (ok && !quiet) setTimeout(load, 600);
+    `${statusLabel(d.status)}${d.value ? ' · ' + plain(kid, d.value) : ''}${d.message ? ' · ' + d.message : ''}`);
+  if (scope && isLocal()) scope.querySelectorAll('button[data-a], button[data-decide], button[data-drift]')
+    .forEach(b => { if (!(b.dataset.a === 'terapkan' && b.title)) b.disabled = false; });
+  // After Cek ulang too, so a check that now passes moves the score.
+  if (ok && !quiet) setTimeout(() => load(true), 600);
   return d;
 }
 
@@ -1297,28 +1530,40 @@ $('nav').onclick = e => {
   render();
 };
 
-(async () => { await loadServers(); await load(); })();
+// The daily check time, shown in the hero. Read quietly: a page opened from
+// another machine without a token simply leaves it out, it never asks for one.
+let SCHEDULE = '';
+async function loadSchedule() {
+  try {
+    const r = await fetch('/api/config', {headers: TOKEN ? {Authorization: 'Bearer ' + TOKEN} : {}});
+    if (r.ok) SCHEDULE = (((await r.json()).JAM_PENJAGAAN || {}).value || '').trim();
+  } catch (e) { /* no schedule line, nothing else changes */ }
+}
 
-// The newest line of the action trail, so the page has a pulse while the agent
-// works. One line, one request - a full log on a loop would be noise.
+$('content').innerHTML = skeleton(150, 220, 420);
+(async () => { await loadServers(); await loadSchedule(); await load(true); })();
+
+// The newest line of the action trail, in the hero, so the page shows what
+// Yoru did last. One line, one request - a full log on a loop would be noise.
 async function beat() {
-  const el = $('liveStrip'); if (!el) return;
+  const el = $('lastAct'); if (!el) return;
   try {
     const r = await get('/api/log?limit=1');
     if (!r.ok) return;
     const b = ((await r.json()).lines || [])[0];
-    el.querySelector('.l').textContent = b
-      ? `${when(b.time)}  ${b.id || ''} ${ACTION_LABEL[b.action] || b.action || ''} · ${statusLabel(b.status || '')}`
-        + (b.value ? ' · ' + b.value : '')
-      : 'belum ada tindakan yang tercatat';
-  } catch (e) { /* the strip is decoration; a failure here must stay silent */ }
+    if (!b) return;
+    const k = ((DATA && DATA.controls) || []).find(x => x.id === b.id);
+    el.innerHTML = `${I('activity')} Terakhir: ${esc(ACTION_LABEL[b.action] || b.action || '')}
+      ${esc(k ? k.name : b.id || '')} · ${esc(statusLabel(b.status || ''))} ·
+      <span data-ago="${esc(b.time)}">${ago(b.time)}</span>`;
+  } catch (e) { /* decoration; a failure here must stay silent */ }
 }
 
 function watchLive() {
   clearInterval(liveTimer);
   if (PAGE !== 'dashboard') return;
   beat();
-  liveTimer = setInterval(beat, 6000);
+  liveTimer = setInterval(() => { beat(); tickTimes(); }, 15000);
 }
 
 // Only live-state pages auto-refresh; reloading a form would discard typing.
