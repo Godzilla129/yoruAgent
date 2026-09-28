@@ -161,9 +161,10 @@ box_msg() {    # box_msg <title> <text>
   whiptail --backtitle "Yoru $VERSION" --title "$1" --msgbox "$2" 20 74
 }
 box_menu() {   # box_menu <title> <text> <tag> <label> ...
-  local title="$1" text="$2"; shift 2
+  local title="$1" text="$2" rows; shift 2
+  rows=$(( $# / 2 ))
   whiptail --backtitle "Yoru $VERSION" --title "$title" \
-           --menu "$text" 18 74 4 "$@" 3>&1 1>&2 2>&3
+           --menu "$text" $(( 14 + rows )) 74 "$rows" "$@" 3>&1 1>&2 2>&3
 }
 box_yesno() {  # box_yesno <title> <text>
   whiptail --backtitle "Yoru $VERSION" --title "$1" --yesno "$2" 20 74
@@ -631,9 +632,9 @@ Found on this server: $hosts"
     printf '    2   Google Gemini - a small bridge, no agent\n'
     printf '    3   Any OpenAI-compatible address you already run\n'
     printf '    4   Skip\n\n'
-    ask "Choose 1, 2, 3 or 4 [4]" pick
+    ask "Choose 1, 2, 3 or 4 [1]" pick
   fi
-  case "$pick" in
+  case "${pick:-1}" in
     1)
       ask_hermes && MODEL_CHOICE="hermes"
       ;;
@@ -716,7 +717,7 @@ Where does the key come from?"
   case "${pick:-1}" in
     2) HERMES_PROVIDER="openrouter"; suggest="google/gemini-3.8-flash" ;;
     3) HERMES_PROVIDER="custom";     suggest="" ;;
-    *) HERMES_PROVIDER="gemini";     suggest="gemini-flash-latest" ;;
+    *) HERMES_PROVIDER="gemini";     suggest="" ;;
   esac
 
   if [ "$HERMES_PROVIDER" = custom ]; then
@@ -741,15 +742,97 @@ For example: https://api.openai.com/v1"
   HERMES_KEY="${HERMES_KEY#*_API_KEY=}"
   [ -n "$HERMES_KEY" ] || { printf '  Empty key - skipping.\n'; return 1; }
 
-  if dialog_ready; then
-    HERMES_MODEL="$(box_input "Hermes Agent" "Model name. Leave it as it is if unsure." "$suggest")" || HERMES_MODEL=""
+  if [ "$HERMES_PROVIDER" = gemini ]; then
+    ask_gemini_model
   else
-    ask "Model name (empty = ${suggest:-required})" HERMES_MODEL
+    if dialog_ready; then
+      HERMES_MODEL="$(box_input "Hermes Agent" "Model name. Leave it as it is if unsure." "$suggest")" || HERMES_MODEL=""
+    else
+      ask "Model name (empty = ${suggest:-required})" HERMES_MODEL
+    fi
+    HERMES_MODEL="$(printf '%s' "$HERMES_MODEL" | tr -d '\r\n ')"
+    [ -n "$HERMES_MODEL" ] || HERMES_MODEL="$suggest"
   fi
-  HERMES_MODEL="$(printf '%s' "$HERMES_MODEL" | tr -d '\r\n ')"
-  [ -n "$HERMES_MODEL" ] || HERMES_MODEL="$suggest"
   [ -n "$HERMES_MODEL" ] || { printf '  No model name - skipping.\n'; return 1; }
   return 0
+}
+
+# The text models Google lets this key call, one per line. The key goes in
+# through the environment, so it never shows up in the process list.
+gemini_models() {
+  GEMINI_KEY="$HERMES_KEY" python3 - <<'PY'
+import json, os, urllib.request
+req = urllib.request.Request(
+    "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
+    headers={"x-goog-api-key": os.environ["GEMINI_KEY"]})
+try:
+    with urllib.request.urlopen(req, timeout=20) as r:
+        models = json.load(r).get("models", [])
+except Exception:
+    raise SystemExit(1)
+for m in models:
+    if "generateContent" in m.get("supportedGenerationMethods", []):
+        print(m["name"].split("/", 1)[-1])
+PY
+}
+
+# Every message costs the owner a call, so the cheap Lite models come first.
+# Only names Google lists for this key are offered; the owner may still type
+# any other name, and it is checked against the same list.
+ask_gemini_model() {
+  local models m pick i
+  local names=() notes=()
+  models="$(gemini_models)" || models=""
+  if [ -z "$models" ]; then
+    printf '  Google did not list the models for this key (wrong key, or no internet).\n'
+  fi
+  if grep -qx gemini-flash-lite-latest <<<"$models"; then
+    names+=(gemini-flash-lite-latest); notes+=("cheapest, follows Google's newest Lite")
+  fi
+  while read -r m; do
+    [ -n "$m" ] && { names+=("$m"); notes+=("cheapest"); }
+  done < <(grep -E '^gemini-[0-9.]+-flash-lite$' <<<"$models" | sort -rV | head -n 2)
+  if grep -qx gemini-flash-latest <<<"$models"; then
+    names+=(gemini-flash-latest); notes+=("smarter, costs more per message")
+  fi
+
+  if [ ${#names[@]} -gt 0 ]; then
+    local text="Which model answers in Telegram? Each message costs one call on
+this key, so a Lite model keeps the bill (or the free quota) small."
+    if dialog_ready; then
+      local items=()
+      for i in "${!names[@]}"; do items+=("$((i + 1))" "${names[$i]} - ${notes[$i]}"); done
+      items+=("t" "Type another model name")
+      pick="$(box_menu "Hermes Agent" "$text" "${items[@]}")" || pick=1
+    else
+      printf '\n  %s\n\n' "$text"
+      for i in "${!names[@]}"; do printf '    %s   %s - %s\n' "$((i + 1))" "${names[$i]}" "${notes[$i]}"; done
+      printf '    t   Type another model name\n\n'
+      ask "Choose [1]" pick
+    fi
+    pick="${pick:-1}"
+    case "$pick" in
+      [1-9]) [ "$pick" -le ${#names[@]} ] && { HERMES_MODEL="${names[$((pick - 1))]}"; return 0; } ;;
+    esac
+  fi
+
+  # Typed by hand. With a list from Google, a name not on it is asked again.
+  local default="${names[0]:-gemini-flash-lite-latest}"
+  for i in 1 2 3; do
+    if dialog_ready; then
+      HERMES_MODEL="$(box_input "Hermes Agent" "Model name, exactly as Google writes it." "$default")" || HERMES_MODEL=""
+    else
+      ask "Model name (empty = $default)" HERMES_MODEL
+    fi
+    HERMES_MODEL="$(printf '%s' "$HERMES_MODEL" | tr -d '\r\n ')"
+    HERMES_MODEL="${HERMES_MODEL#models/}"
+    [ -n "$HERMES_MODEL" ] || HERMES_MODEL="$default"
+    [ -z "$models" ] && return 0
+    grep -qx -- "$HERMES_MODEL" <<<"$models" && return 0
+    printf '  Google does not offer %s to this key. Try again.\n' "$HERMES_MODEL"
+  done
+  HERMES_MODEL="$default"
+  printf '  Using %s.\n' "$HERMES_MODEL"
 }
 
 recap() {

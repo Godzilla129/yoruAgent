@@ -249,8 +249,12 @@ mendukung, pertanyaannya muncul sebagai kotak dialog.
 3. **Model AI.** Pilihannya Hermes Agent (dipasang di server ini, kamu isi
    kunci API Gemini, OpenRouter, atau penyedia lain yang formatnya OpenAI),
    Google Gemini lewat penghubung kecil, alamat lain yang memakai format
-   OpenAI (misalnya Ollama), atau dilewati. Tanpa model, Yoru tetap jalan dan
-   kalimat penjelasannya diambil dari katalog.
+   OpenAI (misalnya Ollama), atau dilewati. Hermes pilihan bawaannya: tekan
+   Enter dan Hermes ikut dipasang di pemasangan yang sama. Kalau kuncinya
+   dari Google, installer menanyakan ke Google model apa saja yang boleh
+   dipakai kunci itu, lalu menyarankan model Lite yang paling murah. Nama
+   model lain boleh diketik sendiri, asal ada di daftar dari Google. Tanpa
+   model, Yoru tetap jalan dan kalimat penjelasannya diambil dari katalog.
 
 Kalau pakai kotak dialog, sesudahnya muncul ringkasan, dan pemasangan baru
 mulai kalau kamu setuju. Dari situ sampai selesai tidak ada pertanyaan lagi.
