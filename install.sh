@@ -1501,20 +1501,51 @@ EOF
   done
 
   # One real question through Hermes to the provider, so a wrong key shows now.
-  local answer; answer="$(model_probe "http://127.0.0.1:$port" "$token" "hermes-agent")"
+  local log="$HERMES_DIR/logs/agent.log" seen answer reasons
+  seen="$(wc -l < "$log" 2>/dev/null || echo 0)"
+  answer="$(model_probe "http://127.0.0.1:$port" "$token" "hermes-agent")"
   note "hermes replied: $answer"
   case "$answer" in
     ERROR*|"")
-      warn "Hermes is running but the provider did not answer"
-      printf '        %s\n' "$answer"
-      pending "fix the key or model with: sudo bash install.sh --hermes"
-      return 1 ;;
+      # Hermes' reply hides why each model refused; its log says it.
+      reasons="$(hermes_reasons "$log" "$seen")"
+      [ -n "$reasons" ] || reasons="$answer"
+      note "hermes reasons: $reasons"
+      if hermes_only_busy "$reasons"; then
+        # 503 (busy) and 429 (quota) mean the key and the model name were
+        # accepted, so the settings are kept and the bot answers on its own
+        # once the provider has room again.
+        warn "the key and model are right, but the provider is busy or out of quota right now"
+        printf '%s\n' "$reasons" | sed 's/^/        /'
+        pending "the Telegram bot answers once the provider has room again - nothing to change"
+      else
+        warn "Hermes is running but the provider did not answer"
+        printf '%s\n' "$reasons" | sed 's/^/        /'
+        pending "fix the key or model with: sudo bash install.sh --hermes"
+        return 1
+      fi ;;
   esac
 
   config_set "$CONFIG_FILE" HERMES_URL "http://127.0.0.1:$port"
   config_set "$CONFIG_FILE" HERMES_TOKEN "$token"
   config_set "$CONFIG_FILE" AI_MODEL "hermes-agent"
   ok "AI model - Hermes Agent ($HERMES_PROVIDER, $HERMES_MODEL)"
+}
+
+# Why each model refused during the check: the last "API call failed" line per
+# model that Hermes logged after line <from>, as "model: reason".
+hermes_reasons() {  # hermes_reasons <agent.log> <from>
+  [ -r "$1" ] || return 0
+  tail -n +"$(( $2 + 1 ))" "$1" | grep "API call failed" \
+    | sed -n 's/.* model=\([^ ]*\) summary=\(.*\)/\1: \2/p' \
+    | awk -F': ' '{last[$1] = substr($0, 1, 110); if (!($1 in seen)) {seen[$1] = 1; order[++n] = $1}}
+                  END {for (i = 1; i <= n; i++) print last[order[i]]}'
+}
+
+# True when every reason is a 503 (busy) or a 429 (quota used up).
+hermes_only_busy() {  # hermes_only_busy <reasons>
+  grep -q . <<<"$1" || return 1
+  ! grep -v -E 'HTTP (429|503)' <<<"$1" | grep -q .
 }
 
 # --hermes: add Hermes to a server that already runs Yoru, or change its key,
@@ -1528,7 +1559,11 @@ hermes_only() {
   phase "Hermes Agent"
   install_hermes || die "Hermes is not answering yet - the full story is in $LOGFILE"
   chown root:"$AGENT" "$CONFIG_FILE"; chmod 640 "$CONFIG_FILE"
-  printf '\n  The Telegram bot now answers through Hermes. Ask it anything in your chat.\n\n'
+  if [ ${#PENDING[@]} -gt 0 ]; then
+    printf '\n  Settings saved. The Telegram bot answers through Hermes once the provider has room again.\n\n'
+  else
+    printf '\n  The Telegram bot now answers through Hermes. Ask it anything in your chat.\n\n'
+  fi
   exit 0
 }
 
