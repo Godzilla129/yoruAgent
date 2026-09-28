@@ -1243,6 +1243,9 @@ hermes_write_settings() {  # hermes_write_settings <port> <service-token>
     esac
     printf 'platform_toolsets:\n  api_server: []\n'
     printf 'agent:\n  disabled_toolsets: [terminal, file, code_execution, browser, delegation, cronjob]\n'
+    # Hermes' side jobs (naming the chat, reviewing it for memory) each cost
+    # a model call; a free-tier key only allows a few calls a minute.
+    printf 'auxiliary:\n  title_generation:\n    enabled: false\n  background_review:\n    enabled: false\n'
   } > "$conf"
   umask 022
   chown -R "$HERMES_USER": "$HERMES_DIR"
