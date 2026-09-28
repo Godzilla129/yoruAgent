@@ -43,8 +43,8 @@ HERMES_USER="yoru-hermes"
 HERMES_HOME_DIR="/var/lib/yoru-hermes"
 HERMES_DIR="$HERMES_HOME_DIR/.hermes"
 HERMES_UNIT="$SYSTEMD_DIR/yoru-hermes.service"
+HERMES_REPO="https://github.com/NousResearch/hermes-agent.git"
 HERMES_COMMIT="7dbbb0f4a6ebeec9a8714ec37fa41340fe9e4e00"
-HERMES_INSTALLER="https://raw.githubusercontent.com/NousResearch/hermes-agent/$HERMES_COMMIT/scripts/install.sh"
 
 # Four markers only - ok, !, x, and .. for work in progress - so the output still
 # reads with the colour stripped, in a pipe or a support ticket.
@@ -1180,6 +1180,31 @@ hermes_as() {
   (cd "$HERMES_HOME_DIR" && sudo -u "$HERMES_USER" env -i "${envs[@]}" "$@")
 }
 
+# That one commit only, about 80 MB. Hermes' own installer clones the whole
+# history (45,000+ commits) and fetches the files afterwards; on a slow link
+# that second fetch died every time. A stalled transfer is dropped after a
+# minute and tried again instead of hanging.
+hermes_fetch() {
+  local dir="$HERMES_DIR/hermes-agent" try
+  if [ -d "$dir/.git" ] \
+     && [ "$(hermes_as git -C "$dir" rev-parse HEAD 2>/dev/null)" = "$HERMES_COMMIT" ]; then
+    return 0
+  fi
+  hermes_as rm -rf "$dir"
+  hermes_as mkdir -p "$HERMES_DIR"
+  run hermes_as git init -q "$dir" || return 1
+  run hermes_as git -C "$dir" remote add origin "$HERMES_REPO" || return 1
+  for try in 1 2 3; do
+    note "fetching Hermes $HERMES_COMMIT, try $try of 3"
+    if run hermes_as git -C "$dir" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
+           fetch --depth 1 origin "$HERMES_COMMIT"; then
+      run hermes_as git -C "$dir" checkout -q FETCH_HEAD && return 0
+    fi
+    [ "$try" = 3 ] || sleep $((try * 10))
+  done
+  return 1
+}
+
 hermes_port() {
   local p who
   for p in 8642 8643 8644 8645; do
@@ -1235,14 +1260,21 @@ install_hermes() {
   chown "$HERMES_USER": "$HERMES_HOME_DIR"; chmod 700 "$HERMES_HOME_DIR"
 
   if ! bin="$(hermes_bin)"; then
-    busy "installing Hermes Agent ${HERMES_COMMIT:0:7} - a few minutes, it downloads its own Python"
-    local script="$HERMES_HOME_DIR/hermes-install.sh"
-    run curl -fsSL "$HERMES_INSTALLER" -o "$script" \
-      || { warn "could not download the Hermes installer"; return 1; }
-    chown "$HERMES_USER": "$script"
-    run hermes_as bash "$script" --commit "$HERMES_COMMIT" --non-interactive \
-                  --skip-browser --skip-computer-use
-    rm -f "$script"
+    busy "downloading Hermes Agent ${HERMES_COMMIT:0:7} - about 80 MB, then its own Python"
+    printf '        on a slow link this takes a while; to watch it: sudo tail -f %s\n' "$LOGFILE"
+    hermes_fetch || { warn "could not download Hermes from GitHub - see $LOGFILE"; return 1; }
+    ok "Hermes Agent ${HERMES_COMMIT:0:7} downloaded"
+
+    # Hermes' own installer, run from the checkout one stage at a time, minus
+    # its clone stage. setup and gateway are skipped: they ask questions, and
+    # Yoru writes the settings and the service itself.
+    busy "letting Hermes install its Python and dependencies"
+    local stage
+    for stage in prerequisites venv python-deps config products complete; do
+      run hermes_as bash "$HERMES_DIR/hermes-agent/scripts/install.sh" --stage "$stage" \
+          --commit "$HERMES_COMMIT" --non-interactive --skip-browser --skip-computer-use \
+        || { warn "Hermes' installer stopped at '$stage' - see $LOGFILE"; return 1; }
+    done
     bin="$(hermes_bin)" || { warn "the Hermes installer did not finish - see $LOGFILE"; return 1; }
   fi
   ok "Hermes Agent ${HERMES_COMMIT:0:7} is on disk"
