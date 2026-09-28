@@ -422,10 +422,11 @@ check_sources() {
 }
 
 # What Yoru needs is a list of capabilities, not a list of package names.
-have() {  # have cmd:<name> | py:<module>
+have() {  # have cmd:<name> | py:<module> | lib:<shared library>
   case "$1" in
     cmd:*) command -v "${1#cmd:}" >/dev/null 2>&1 ;;
     py:*)  python3 -c "import ${1#py:}" >/dev/null 2>&1 ;;
+    lib:*) ldconfig -p 2>/dev/null | grep -qF "${1#lib:} " ;;
     *) return 1 ;;
   esac
 }
@@ -1252,6 +1253,10 @@ install_hermes() {
   local bin port token
   have cmd:git  || supply cmd:git git   >/dev/null || { warn "Hermes needs git, and it could not be installed"; return 1; }
   have cmd:curl || supply cmd:curl curl >/dev/null || { warn "Hermes needs curl, and it could not be installed"; return 1; }
+  # The node that Hermes downloads links against libatomic, which a minimal
+  # Ubuntu does not always have.
+  have lib:libatomic.so.1 || supply lib:libatomic.so.1 libatomic1 >/dev/null \
+    || { warn "Hermes needs libatomic1, and it could not be installed"; return 1; }
 
   id "$HERMES_USER" >/dev/null 2>&1 \
     || useradd --system --create-home --home-dir "$HERMES_HOME_DIR" --shell /usr/sbin/nologin "$HERMES_USER" \
@@ -1259,7 +1264,10 @@ install_hermes() {
   mkdir -p "$HERMES_HOME_DIR"
   chown "$HERMES_USER": "$HERMES_HOME_DIR"; chmod 700 "$HERMES_HOME_DIR"
 
-  if ! bin="$(hermes_bin)"; then
+  # Hermes writes its launcher halfway through its own installer, so the
+  # launcher alone does not prove the install finished. This file does.
+  local done_file="$HERMES_DIR/yoru-installed"
+  if [ "$(cat "$done_file" 2>/dev/null)" != "$HERMES_COMMIT" ] || ! bin="$(hermes_bin)"; then
     busy "downloading Hermes Agent ${HERMES_COMMIT:0:7} - about 80 MB, then its own Python"
     printf '        on a slow link this takes a while; to watch it: sudo tail -f %s\n' "$LOGFILE"
     hermes_fetch || { warn "could not download Hermes from GitHub - see $LOGFILE"; return 1; }
@@ -1276,6 +1284,7 @@ install_hermes() {
         || { warn "Hermes' installer stopped at '$stage' - see $LOGFILE"; return 1; }
     done
     bin="$(hermes_bin)" || { warn "the Hermes installer did not finish - see $LOGFILE"; return 1; }
+    printf '%s\n' "$HERMES_COMMIT" >"$done_file"
   fi
   ok "Hermes Agent ${HERMES_COMMIT:0:7} is on disk"
 
