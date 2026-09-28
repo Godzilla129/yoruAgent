@@ -49,9 +49,16 @@ NAMA_SERVER=""
 # menyimpan rahasia yang sama: dua tempat yang bisa bocor, dan dua tempat
 # yang bisa beda isinya tanpa ada yang sadar.
 #
-# installer menanyakan ini waktu dipasang. Dua pilihan yang disiapkan:
+# installer menanyakan ini waktu dipasang. Tiga pilihan yang disiapkan:
 #
-#   1. Google Gemini - installer memasang penghubung kecil (yoru-model-proxy)
+#   1. Hermes Agent (Nous Research) - installer memasangnya sebagai pengguna
+#      yoru-hermes, dengan kunci API di /var/lib/yoru-hermes/.hermes/.env.
+#      Semua tool Hermes dimatikan, jadi dia cuma bisa merangkai kalimat.
+#      HERMES_URL jadi http://127.0.0.1:8642, HERMES_TOKEN jadi token
+#      layanannya, AI_MODEL jadi hermes-agent (artinya "model yang disetel
+#      di Hermes"). Ganti kunci: sudo bash install.sh --hermes
+#
+#   2. Google Gemini - installer memasang penghubung kecil (yoru-model-proxy)
 #      yang memegang kuncinya di /etc/yoru/model.env, milik pengguna
 #      yoru-model. Agent tidak bisa membaca berkas itu.
 #
@@ -66,17 +73,16 @@ NAMA_SERVER=""
 #      Perintah itu mencetak jawaban asli Google untuk tiap cara, plus daftar
 #      model yang boleh dipakai kunci itu.
 #
-#   2. Alamat lain yang bicara format OpenAI, misalnya Ollama
-#      (http://127.0.0.1:11434) atau hermes proxy
-#      (hermes proxy start --provider nous --port 8645). Isi HERMES_URL
-#      dengan alamat dasarnya saja, tanpa /v1, dan HERMES_TOKEN kalau
-#      layanannya minta token.
+#   3. Alamat lain yang bicara format OpenAI, misalnya Ollama
+#      (http://127.0.0.1:11434). Isi HERMES_URL dengan alamat dasarnya
+#      saja, tanpa /v1, dan HERMES_TOKEN kalau layanannya minta token.
 #
 # HERMES_TOKEN itu token layanan di 127.0.0.1, bukan kunci berbayar.
 #
 # Kosong = Yoru jalan tanpa model sama sekali. Laporannya tetap keluar
-# lengkap, kalimat penjelasannya diambil dari katalog. Yang hilang cuma satu:
-# penilaian atas port terbuka yang belum dijawab pemilik.
+# lengkap, kalimat penjelasannya diambil dari katalog. Yang hilang dua:
+# penilaian atas port terbuka yang belum dijawab pemilik, dan jawaban bot
+# Telegram untuk kalimat biasa.
 #
 # Yang model TIDAK PERNAH boleh lakukan, dan ini dipagari di kode:
 # jawabannya cuma ditampilkan sebagai kalimat. Tidak pernah jadi perintah,

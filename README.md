@@ -246,9 +246,11 @@ mendukung, pertanyaannya muncul sebagai kotak dialog.
    bagian sebelum ini.
 2. **Token bot Telegram.** Boleh dilewati dan diisi belakangan di halaman
    Setelan.
-3. **Model AI.** Pilihannya Google Gemini (tempel kunci API), alamat lain yang
-   memakai format OpenAI (misalnya Ollama), atau dilewati. Tanpa model, Yoru
-   tetap jalan dan kalimat penjelasannya diambil dari katalog.
+3. **Model AI.** Pilihannya Hermes Agent (dipasang di server ini, kamu isi
+   kunci API Gemini, OpenRouter, atau penyedia lain yang formatnya OpenAI),
+   Google Gemini lewat penghubung kecil, alamat lain yang memakai format
+   OpenAI (misalnya Ollama), atau dilewati. Tanpa model, Yoru tetap jalan dan
+   kalimat penjelasannya diambil dari katalog.
 
 Kalau pakai kotak dialog, sesudahnya muncul ringkasan, dan pemasangan baru
 mulai kalau kamu setuju. Dari situ sampai selesai tidak ada pertanyaan lagi.
@@ -259,6 +261,18 @@ Kunci Gemini tidak ditulis ke `/etc/yoru/yoru.conf`. Kuncinya disimpan di
 pengguna tersendiri. Agent tidak bisa membaca berkas itu, dan installer
 membuktikannya dulu sebelum lanjut. Alasannya sederhana: `yoru.conf` bisa
 dibaca agent, jadi kunci yang bisa dipakai belanja tidak boleh ada di situ.
+
+Hermes Agent diperlakukan sama. Dia jalan sebagai pengguna `yoru-hermes`, dan
+kunci API-nya ada di `/var/lib/yoru-hermes/.hermes/.env` yang cuma bisa
+dibuka pengguna itu. Yoru cuma memegang token layanan untuk bicara ke Hermes
+di `127.0.0.1`. Semua tool Hermes (terminal, berkas, kode, browser) dimatikan
+untuk jalur itu, jadi Hermes cuma bisa merangkai kalimat. Yang bisa mengubah
+server tetap cuma `yoructl`. Mau ganti kunci, penyedia, atau model, atau
+menambah Hermes ke server yang sudah terpasang:
+
+```bash
+sudo bash install.sh --hermes
+```
 
 Yang rahasia, seperti token Telegram dan kunci API, diketik tanpa tampil di
 layar dan tidak pernah lewat argumen perintah. Argumen kelihatan oleh siapa
@@ -278,6 +292,13 @@ Kirim baris itu ke bot kamu, cukup sekali. Kode ini perlu karena nama bot di
 Telegram bisa dicari siapa saja. Tanpa kode, orang asing yang menemukan bot
 kamu duluan bisa jadi pemegang tombol setuju untuk server kamu. Kalau layar
 installernya sudah terlewat, kodenya juga ada di halaman Setelan.
+
+Sesudah tersambung, bot bisa diajak ngobrol pakai kalimat biasa, misalnya
+"kenapa skornya turun?". Kalimat itu dijawab model AI (Hermes kalau
+dipasang) dengan bekal laporan terakhir. `/status` dan tombol Setuju tetap
+diambil langsung dari laporan, bukan dari model. Kalau belum ada model,
+atau modelnya sedang mati, bot bilang begitu dan tetap melayani `/status`
+dan `/help`.
 
 #### Membuka dashboard dari laptop
 
@@ -447,6 +468,7 @@ Setelah terpasang, berkas-berkasnya duduk di sini:
 /usr/share/yoru/catalog/    katalog, milik root - agent cuma boleh membaca
 /etc/yoru/yoru.conf         konfigurasi, root:yoru-agent 640
 /etc/yoru/model.env         kunci model AI, root:yoru-model 640 - agent tidak bisa membaca
+/var/lib/yoru-hermes/       Hermes Agent dan kunci API-nya, milik yoru-hermes 700
 /var/log/yoru/tindakan.log  catatan tindakan, milik root - agent TIDAK bisa menulis
 /var/lib/yoru/              laporan dan database dashboard, milik yoru-agent
 /opt/yoru/web/              dashboard dan venv-nya, milik root - agent cuma menjalankan
@@ -510,15 +532,16 @@ Ini masih versi awal. Yang belum ada, ditulis apa adanya:
   berpengaruh karena kernel memakai nilai maksimum antara `all` dan
   per-kartu, dan mode ketat bisa memutus lalu lintas yang jalurnya tidak
   simetris.
-- **Model baru dipakai di satu tempat.** Agent menyambung ke model lewat
-  alamat di `HERMES_URL`, dan sejauh ini modelnya cuma dipakai untuk satu hal: menilai
-  port terbuka yang belum dijawab pemilik. Sisa kalimat di laporan masih diambil
-  apa adanya dari katalog. Itu disengaja untuk sekarang: laporan tidak boleh
-  gagal keluar cuma karena satu panggilan API, jadi tiap tambahan harus punya
-  jalan mundur yang jelas dulu.
-- **Notifikasi Telegram belum diuji dengan bot sungguhan.** Kodenya jalan dan
-  sudah diuji dengan server tiruan, tapi belum pernah dikirim ke Telegram
-  beneran.
+- **Model baru dipakai di dua tempat.** Lewat alamat di `HERMES_URL`, model
+  dipakai untuk menilai port terbuka yang belum dijawab pemilik, dan untuk
+  menjawab kalimat biasa di bot Telegram. Sisa kalimat di laporan masih
+  diambil apa adanya dari katalog. Itu disengaja untuk sekarang: laporan
+  tidak boleh gagal keluar cuma karena satu panggilan API, jadi tiap
+  tambahan harus punya jalan mundur yang jelas dulu.
+- **Obrolan bot lewat Hermes baru diuji dengan Telegram tiruan.** `/status`
+  dan tombolnya sudah dicoba dengan bot asli di VM uji (28 Sep 2026).
+  Jawaban kalimat biasa diuji dengan Hermes Agent sungguhan di atas model
+  tiruan, belum dengan penyedia berbayar.
 - **Jawaban di panel drift belum dikerjakan dengan benar.** "Ini memang
   saya" baru disimpan, belum dijadikan patokan baru, jadi kontrolnya tetap
   tercatat GAGAL. "Kembalikan" menjalankan `yoructl kembalikan`, yang

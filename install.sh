@@ -36,6 +36,16 @@ MODEL_ENV="$ETC_DIR/model.env"
 MODEL_BIN="$BIN_DIR/yoru-model-proxy"
 MODEL_UNIT="$SYSTEMD_DIR/yoru-model.service"
 
+# Hermes Agent (Nous Research) gets its own user, and its API key lives in that
+# user's home, which yoru-agent cannot open. Pinned to the commit this installer
+# was tested with, so an upstream push cannot change what gets installed.
+HERMES_USER="yoru-hermes"
+HERMES_HOME_DIR="/var/lib/yoru-hermes"
+HERMES_DIR="$HERMES_HOME_DIR/.hermes"
+HERMES_UNIT="$SYSTEMD_DIR/yoru-hermes.service"
+HERMES_COMMIT="7dbbb0f4a6ebeec9a8714ec37fa41340fe9e4e00"
+HERMES_INSTALLER="https://raw.githubusercontent.com/NousResearch/hermes-agent/$HERMES_COMMIT/scripts/install.sh"
+
 # Four markers only - ok, !, x, and .. for work in progress - so the output still
 # reads with the colour stripped, in a pipe or a support ticket.
 if [ -t 1 ]; then
@@ -153,7 +163,7 @@ box_msg() {    # box_msg <title> <text>
 box_menu() {   # box_menu <title> <text> <tag> <label> ...
   local title="$1" text="$2"; shift 2
   whiptail --backtitle "Yoru $VERSION" --title "$title" \
-           --menu "$text" 17 74 3 "$@" 3>&1 1>&2 2>&3
+           --menu "$text" 18 74 4 "$@" 3>&1 1>&2 2>&3
 }
 box_yesno() {  # box_yesno <title> <text>
   whiptail --backtitle "Yoru $VERSION" --title "$1" --yesno "$2" 20 74
@@ -494,6 +504,10 @@ MODEL_KEY=""
 MODEL_NAME="gemini-flash-latest"
 MODEL_URL=""
 MODEL_TOKEN=""
+HERMES_PROVIDER=""
+HERMES_KEY=""
+HERMES_MODEL=""
+HERMES_BASE=""
 TG_TOKEN=""
 PAIR_CODE=""
 SSHKEY=""
@@ -597,7 +611,8 @@ ask_model() {
   local intro="Yoru works without an AI model - reports are still complete, the
 wording just comes from the catalog instead.
 
-With one, Yoru explains findings in plain language."
+With one, Yoru explains findings in plain language, and the Telegram bot
+answers ordinary questions instead of only /status and /help."
   [ -n "$hosts" ] && intro="$intro
 
 Found on this server: $hosts"
@@ -605,18 +620,23 @@ Found on this server: $hosts"
   local pick
   if dialog_ready; then
     pick="$(box_menu "AI model" "$intro" \
-      "1" "Google Gemini - paste an API key" \
-      "2" "An OpenAI-compatible address you run" \
-      "3" "Skip - use the catalog wording")" || pick=3
+      "1" "Hermes Agent - installed here, you bring the API key" \
+      "2" "Google Gemini - a small bridge, no agent" \
+      "3" "An OpenAI-compatible address you run" \
+      "4" "Skip - use the catalog wording")" || pick=4
   else
     printf '\n  %s\n\n' "$intro"
-    printf '    1   Google Gemini - paste an API key\n'
-    printf '    2   Any OpenAI-compatible address you already run\n'
-    printf '    3   Skip\n\n'
-    ask "Choose 1, 2 or 3 [3]" pick
+    printf '    1   Hermes Agent - installed here, you bring the API key\n'
+    printf '    2   Google Gemini - a small bridge, no agent\n'
+    printf '    3   Any OpenAI-compatible address you already run\n'
+    printf '    4   Skip\n\n'
+    ask "Choose 1, 2, 3 or 4 [4]" pick
   fi
   case "$pick" in
     1)
+      ask_hermes && MODEL_CHOICE="hermes"
+      ;;
+    2)
       # Two key shapes are in circulation, AIza... and AQ... - both are valid.
       if dialog_ready; then
         MODEL_KEY="$(box_pass "Google Gemini" "Paste the API key from Google AI Studio.
@@ -640,7 +660,7 @@ the agent is allowed to open.")" || MODEL_KEY=""
       [ -n "$MODEL_NAME" ] || MODEL_NAME="gemini-flash-latest"
       MODEL_CHOICE="gemini"
       ;;
-    2)
+    3)
       local suggest=""
       case " $hosts " in *" ollama "*) suggest="http://127.0.0.1:11434" ;; esac
       local where="Anything that answers POST /v1/chat/completions works here -
@@ -672,6 +692,65 @@ Address:"
   esac
 }
 
+# Which model Hermes runs on is the owner's choice and their bill. The key goes
+# to Hermes only; Yoru keeps the local service token, never the provider key.
+ask_hermes() {
+  local pick text="Hermes Agent needs a model provider and its API key.
+The key stays in Hermes' own folder, which the Yoru agent cannot read.
+
+Where does the key come from?"
+  if dialog_ready; then
+    pick="$(box_menu "Hermes Agent" "$text" \
+      "1" "Google AI Studio (Gemini key, AIza... or AQ...)" \
+      "2" "OpenRouter (sk-or-...)" \
+      "3" "Another OpenAI-compatible provider")" || return 1
+  else
+    printf '\n  %s\n\n' "$text"
+    printf '    1   Google AI Studio (Gemini key, AIza... or AQ...)\n'
+    printf '    2   OpenRouter (sk-or-...)\n'
+    printf '    3   Another OpenAI-compatible provider\n\n'
+    ask "Choose 1, 2 or 3 [1]" pick
+  fi
+  local suggest
+  case "${pick:-1}" in
+    2) HERMES_PROVIDER="openrouter"; suggest="google/gemini-3.8-flash" ;;
+    3) HERMES_PROVIDER="custom";     suggest="" ;;
+    *) HERMES_PROVIDER="gemini";     suggest="gemini-flash-latest" ;;
+  esac
+
+  if [ "$HERMES_PROVIDER" = custom ]; then
+    local where="Base address of the provider, ending in /v1.
+For example: https://api.openai.com/v1"
+    if dialog_ready; then
+      HERMES_BASE="$(box_input "Hermes Agent" "$where" "")" || HERMES_BASE=""
+    else
+      printf '  %s\n' "$where"
+      ask "Address" HERMES_BASE
+    fi
+    HERMES_BASE="$(printf '%s' "$HERMES_BASE" | tr -d '\r\n ')"; HERMES_BASE="${HERMES_BASE%/}"
+    [ -n "$HERMES_BASE" ] || { printf '  No address given - skipping.\n'; return 1; }
+  fi
+
+  if dialog_ready; then
+    HERMES_KEY="$(box_pass "Hermes Agent" "Paste the API key.")" || HERMES_KEY=""
+  else
+    ask "API key" HERMES_KEY secret
+  fi
+  HERMES_KEY="$(printf '%s' "$HERMES_KEY" | tr -d '\r\n "')"
+  HERMES_KEY="${HERMES_KEY#*_API_KEY=}"
+  [ -n "$HERMES_KEY" ] || { printf '  Empty key - skipping.\n'; return 1; }
+
+  if dialog_ready; then
+    HERMES_MODEL="$(box_input "Hermes Agent" "Model name. Leave it as it is if unsure." "$suggest")" || HERMES_MODEL=""
+  else
+    ask "Model name (empty = ${suggest:-required})" HERMES_MODEL
+  fi
+  HERMES_MODEL="$(printf '%s' "$HERMES_MODEL" | tr -d '\r\n ')"
+  [ -n "$HERMES_MODEL" ] || HERMES_MODEL="$suggest"
+  [ -n "$HERMES_MODEL" ] || { printf '  No model name - skipping.\n'; return 1; }
+  return 0
+}
+
 recap() {
   phase "Setup"
   item "Owner"     "$OWNER"
@@ -684,6 +763,7 @@ recap() {
     else item "Telegram" "off"
   fi
   case "$MODEL_CHOICE" in
+    hermes) item "AI model" "Hermes Agent ($HERMES_PROVIDER, $HERMES_MODEL)" ;;
     gemini) item "AI model" "Google Gemini" ;;
     url)    item "AI model" "$MODEL_URL" ;;
     *)      item "AI model" "off - wording comes from the catalog" ;;
@@ -697,6 +777,7 @@ setup_summary() {
   local tg="off" model="off - wording comes from the catalog" web
   [ -n "$TG_TOKEN" ] || [ -n "$(config_get "$CONFIG_FILE" TELEGRAM_TOKEN)" ] && tg="on"
   case "$MODEL_CHOICE" in
+    hermes) model="Hermes Agent ($HERMES_PROVIDER, $HERMES_MODEL)" ;;
     gemini) model="Google Gemini" ;;
     url)    model="$MODEL_URL" ;;
   esac
@@ -1079,6 +1160,175 @@ EOF
   ok "AI model - Gemini ($MODEL_NAME)"
 }
 
+hermes_bin() {
+  local b
+  for b in "$HERMES_DIR/hermes-agent/.hermes/bin/hermes" "$HERMES_HOME_DIR/.local/bin/hermes"; do
+    [ -x "$b" ] && { printf '%s' "$b"; return 0; }
+  done
+  return 1
+}
+
+# A clean environment, so root's variables (and root's CA paths) do not leak
+# into a process that runs as another user. Proxy settings are kept.
+hermes_as() {
+  local envs=("HOME=$HERMES_HOME_DIR" "HERMES_HOME=$HERMES_DIR" "LANG=C.UTF-8"
+              "PATH=/usr/local/bin:/usr/bin:/bin")
+  local v
+  for v in http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY; do
+    [ -n "${!v:-}" ] && envs+=("$v=${!v}")
+  done
+  (cd "$HERMES_HOME_DIR" && sudo -u "$HERMES_USER" env -i "${envs[@]}" "$@")
+}
+
+hermes_port() {
+  local p who
+  for p in 8642 8643 8644 8645; do
+    [ "$WITH_DASHBOARD" = yes ] && [ "$p" = "$WEB_PORT" ] && continue
+    who="$(port_owner "$p")"
+    case "$who" in ""|"?") printf '%s' "$p"; return 0 ;; esac
+  done
+  return 1
+}
+
+# Both files are rewritten whole: Yoru owns them, and a half-edited YAML is
+# worse than a fresh one. The empty api_server list is what keeps every tool
+# (terminal, files, code, browser) away from anything that talks to the API
+# server; disabled_toolsets is the second lock on the dangerous ones.
+hermes_write_settings() {  # hermes_write_settings <port> <service-token>
+  local env="$HERMES_DIR/.env" conf="$HERMES_DIR/config.yaml" keyvar=""
+  case "$HERMES_PROVIDER" in
+    gemini)     keyvar="GEMINI_API_KEY" ;;
+    openrouter) keyvar="OPENROUTER_API_KEY" ;;
+  esac
+  mkdir -p "$HERMES_DIR"
+  umask 077
+  {
+    printf '# Written by the Yoru installer. Change the key with: sudo bash install.sh --hermes\n'
+    printf 'API_SERVER_ENABLED=true\nAPI_SERVER_HOST=127.0.0.1\n'
+    printf 'API_SERVER_PORT=%s\nAPI_SERVER_KEY=%s\n' "$1" "$2"
+    [ -n "$keyvar" ] && printf '%s=%s\n' "$keyvar" "$HERMES_KEY"
+  } > "$env"
+  {
+    printf '# Written by the Yoru installer. Hermes only talks for Yoru: tools are off.\n'
+    printf 'model:\n  default: "%s"\n  provider: "%s"\n' "$HERMES_MODEL" "$HERMES_PROVIDER"
+    case "$HERMES_PROVIDER" in
+      openrouter) printf '  base_url: "https://openrouter.ai/api/v1"\n' ;;
+      custom)     printf '  base_url: "%s"\n  api_key: "%s"\n' "$HERMES_BASE" "$HERMES_KEY" ;;
+    esac
+    printf 'platform_toolsets:\n  api_server: []\n'
+    printf 'agent:\n  disabled_toolsets: [terminal, file, code_execution, browser, delegation, cronjob]\n'
+  } > "$conf"
+  umask 022
+  chown -R "$HERMES_USER": "$HERMES_DIR"
+  chmod 600 "$env" "$conf"
+}
+
+install_hermes() {
+  local bin port token
+  have cmd:git  || supply cmd:git git   >/dev/null || { warn "Hermes needs git, and it could not be installed"; return 1; }
+  have cmd:curl || supply cmd:curl curl >/dev/null || { warn "Hermes needs curl, and it could not be installed"; return 1; }
+
+  id "$HERMES_USER" >/dev/null 2>&1 \
+    || useradd --system --create-home --home-dir "$HERMES_HOME_DIR" --shell /usr/sbin/nologin "$HERMES_USER" \
+    || { warn "could not create the $HERMES_USER user"; return 1; }
+  mkdir -p "$HERMES_HOME_DIR"
+  chown "$HERMES_USER": "$HERMES_HOME_DIR"; chmod 700 "$HERMES_HOME_DIR"
+
+  if ! bin="$(hermes_bin)"; then
+    busy "installing Hermes Agent ${HERMES_COMMIT:0:7} - a few minutes, it downloads its own Python"
+    local script="$HERMES_HOME_DIR/hermes-install.sh"
+    run curl -fsSL "$HERMES_INSTALLER" -o "$script" \
+      || { warn "could not download the Hermes installer"; return 1; }
+    chown "$HERMES_USER": "$script"
+    run hermes_as bash "$script" --commit "$HERMES_COMMIT" --non-interactive \
+                  --skip-browser --skip-computer-use
+    rm -f "$script"
+    bin="$(hermes_bin)" || { warn "the Hermes installer did not finish - see $LOGFILE"; return 1; }
+  fi
+  ok "Hermes Agent ${HERMES_COMMIT:0:7} is on disk"
+
+  # A second run keeps the port and the service token the dashboard already holds.
+  port="$(config_get "$HERMES_DIR/.env" API_SERVER_PORT)"
+  token="$(config_get "$HERMES_DIR/.env" API_SERVER_KEY)"
+  [ -n "$port" ] || port="$(hermes_port)" \
+    || { warn "no free port for Hermes (tried 8642 to 8645)"; return 1; }
+  [ -n "$token" ] || token="$(python3 -c 'import secrets; print(secrets.token_hex(24))')"
+  hermes_write_settings "$port" "$token"
+
+  # Proven, not assumed: if the agent can read the key, the split is decoration.
+  if sudo -u "$AGENT" test -r "$HERMES_DIR/.env" 2>/dev/null; then
+    warn "$AGENT can read Hermes' key file - Hermes was not switched on"
+    return 1
+  fi
+
+  cat > "$HERMES_UNIT" <<EOF
+[Unit]
+Description=Hermes Agent for Yoru (API on 127.0.0.1, tools off)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=$HERMES_USER
+Group=$HERMES_USER
+Environment=HOME=$HERMES_HOME_DIR
+Environment=HERMES_HOME=$HERMES_DIR
+WorkingDirectory=$HERMES_HOME_DIR
+ExecStart=$bin gateway
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=$HERMES_HOME_DIR
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  run systemctl daemon-reload
+  run systemctl enable yoru-hermes.service
+  run systemctl restart yoru-hermes.service
+
+  local waited=0
+  until curl -fsS -m 3 "http://127.0.0.1:$port/health" >/dev/null 2>&1; do
+    sleep 3; waited=$((waited + 3))
+    [ "$waited" -lt 90 ] && continue
+    warn "Hermes did not open port $port - see: journalctl -u yoru-hermes -n 30"
+    return 1
+  done
+
+  # One real question through Hermes to the provider, so a wrong key shows now.
+  local answer; answer="$(model_probe "http://127.0.0.1:$port" "$token" "hermes-agent")"
+  note "hermes replied: $answer"
+  case "$answer" in
+    ERROR*|"")
+      warn "Hermes is running but the provider did not answer"
+      printf '        %s\n' "$answer"
+      pending "fix the key or model with: sudo bash install.sh --hermes"
+      return 1 ;;
+  esac
+
+  config_set "$CONFIG_FILE" HERMES_URL "http://127.0.0.1:$port"
+  config_set "$CONFIG_FILE" HERMES_TOKEN "$token"
+  config_set "$CONFIG_FILE" AI_MODEL "hermes-agent"
+  ok "AI model - Hermes Agent ($HERMES_PROVIDER, $HERMES_MODEL)"
+}
+
+# --hermes: add Hermes to a server that already runs Yoru, or change its key,
+# provider or model. Nothing else is touched.
+hermes_only() {
+  [ -f "$CONFIG_FILE" ] || die "Yoru is not installed here yet - run: sudo bash install.sh"
+  [ -r /dev/tty ] || die "--hermes asks for an API key, so it needs a terminal"
+  INTERACTIVE=yes
+  ensure_dialog
+  ask_hermes || die "nothing was changed"
+  phase "Hermes Agent"
+  install_hermes || die "Hermes is not answering yet - the full story is in $LOGFILE"
+  chown root:"$AGENT" "$CONFIG_FILE"; chmod 640 "$CONFIG_FILE"
+  printf '\n  The Telegram bot now answers through Hermes. Ask it anything in your chat.\n\n'
+  exit 0
+}
+
 install_model() {
   local existing; existing="$(config_get "$CONFIG_FILE" HERMES_URL)"
   if [ -n "$existing" ]; then
@@ -1087,6 +1337,9 @@ install_model() {
   fi
 
   case "$MODEL_CHOICE" in
+    hermes)
+      install_hermes || pending "no AI model yet - retry Hermes with: sudo bash install.sh --hermes"
+      ;;
     gemini)
       install_gemini || pending "no AI model yet - run the installer again to retry Gemini"
       ;;
@@ -1411,6 +1664,10 @@ summary() {
 
   printf '\n  Run the daily cycle now (safe controls get applied)\n'
   printf '      sudo -u %s %s/yoru-agent --siklus penjagaan\n' "$AGENT" "$BIN_DIR"
+  if [ -f "$HERMES_UNIT" ]; then
+    printf '  Change the Hermes API key, provider or model\n'
+    printf '      sudo bash install.sh --hermes\n'
+  fi
   printf '  Remove Yoru\n'
   printf '      sudo bash install.sh --uninstall\n'
 
@@ -1433,10 +1690,11 @@ uninstall() {
   run systemctl disable --now yoru-watch.timer
   run systemctl disable --now yoru-web.service
   run systemctl disable --now yoru-model.service
+  run systemctl disable --now yoru-hermes.service
   rm -f "$SYSTEMD_DIR/yoru-watch.timer" "$SYSTEMD_DIR/yoru-watch.service" \
-        "$SYSTEMD_DIR/yoru-web.service" "$MODEL_UNIT"
+        "$SYSTEMD_DIR/yoru-web.service" "$MODEL_UNIT" "$HERMES_UNIT"
   run systemctl daemon-reload
-  ok "timer, dashboard and model bridge stopped"
+  ok "timer, dashboard, model bridge and Hermes stopped"
 
   gone() {  # gone <path> <sentence> - only says so when there was something
     [ -e "$1" ] || return 0
@@ -1445,6 +1703,9 @@ uninstall() {
   gone "$MODEL_ENV" "model key removed"
   id "$MODEL_USER" >/dev/null 2>&1 && userdel "$MODEL_USER" 2>/dev/null \
     && ok "user $MODEL_USER removed"
+  gone "$HERMES_HOME_DIR" "Hermes Agent and its API key removed"
+  id "$HERMES_USER" >/dev/null 2>&1 && userdel "$HERMES_USER" 2>/dev/null \
+    && ok "user $HERMES_USER removed"
   rm -f "$WEB_ENV"
   gone "$SUDOERS"       "sudoers rule removed"
   gone /opt/yoru        "/opt/yoru removed"
@@ -1483,6 +1744,7 @@ Yoru $VERSION - installer
   sudo bash install.sh --no-dashboard   install without the web dashboard
   sudo bash install.sh --host 0.0.0.0   open the dashboard to the network
   sudo bash install.sh --port 8080      change the dashboard port
+  sudo bash install.sh --hermes         add Hermes Agent, or change its API key
   sudo bash install.sh --uninstall      remove Yoru
 
 Run --check-only first if you want to see what would happen. It reads the
@@ -1498,6 +1760,7 @@ WITH_DASHBOARD="yes"
 WEB_HOST="127.0.0.1"
 WEB_PORT="8000"
 DRY="no"
+HERMES_ONLY="no"
 PY_VER=""
 WATCH_AT=""
 WATCH_TZ=""
@@ -1510,6 +1773,7 @@ while [ $# -gt 0 ]; do
     --check-only|--periksa-saja)    DRY="yes"; shift ;;
     --host)                         WEB_HOST="${2-}"; shift 2 ;;
     --port)                         WEB_PORT="${2-}"; shift 2 ;;
+    --hermes)                       HERMES_ONLY="yes"; shift ;;
     --uninstall|--copot)            check_root; open_log; uninstall ;;
     -h|--help)                      usage; exit 0 ;;
     *) printf 'unknown option: %s\n\n' "$1"; usage; exit 1 ;;
@@ -1527,6 +1791,8 @@ check_root
 open_log
 
 printf '\n%sYoru %s%s  installer\n' "$BOLD" "$VERSION" "$RESET"
+
+[ "$HERMES_ONLY" = yes ] && hermes_only
 
 check_all
 
