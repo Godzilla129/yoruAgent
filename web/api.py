@@ -10,6 +10,7 @@ and the catalog keys stay Indonesian. migrate_db carries older databases over.
 """
 
 import asyncio
+import html
 import json
 import os
 import re
@@ -19,6 +20,7 @@ import time
 import urllib.error
 import urllib.request
 from contextlib import asynccontextmanager, closing
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -252,18 +254,42 @@ async def set_config(key: str, val: str) -> Dict[str, Any]:
             "message": (err.decode("utf-8", "replace").strip() or "yoructl tidak menjawab")[:300]}
 
 
-BOT_HELP = ("Yoru - penjaga server.\n\n"
-            "/status   keadaan server sekarang\n"
-            "/help     pesan ini\n\n"
-            "Selain itu tanya aja pakai kalimat biasa, misalnya "
-            "\"kenapa skornya turun?\".\n\n"
-            "Kalau ada yang perlu kamu putuskan, Yoru yang kirim duluan, "
-            "lengkap dengan tombolnya.")
+# Two real buttons under the typing box, shown once the chat is paired.
+# Pressing one sends its label as a message, which handle_message reads the
+# same as /status or /help; typing those still works.
+KEYBOARD = {"keyboard": [[{"text": "Status"}, {"text": "Bantuan"}]],
+            "resize_keyboard": True, "is_persistent": True,
+            "input_field_placeholder": "Tanya apa aja soal server"}
+
+BOT_HELP = ("<b>Yoru, penjaga servermu</b>\n\n"
+            "Pencet <b>Status</b> di bawah buat lihat keadaan server sekarang.\n\n"
+            "Mau tanya hal lain? Ketik aja pakai kalimat biasa, misalnya "
+            "\"kenapa skornya turun?\"\n\n"
+            "Kalau ada yang perlu kamu putuskan, Yoru kirim kabar duluan, "
+            "lengkap dengan tombol Setujui dan Jangan.")
+
+MONTHS = "Jan Feb Mar Apr Mei Jun Jul Agu Sep Okt Nov Des".split()
+ZONES = {7: "WIB", 8: "WITA", 9: "WIT"}
+
+
+def when(stamp: Any) -> str:
+    """2026-09-28T21:25:09+07:00 -> 28 Sep 2026, 21:25 WIB."""
+    try:
+        t = datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return str(stamp)
+    text = f"{t.day} {MONTHS[t.month - 1]} {t.year}, {t:%H:%M}"
+    off = t.utcoffset()
+    if off is None:
+        return text
+    hours = off.total_seconds() / 3600
+    return f"{text} {ZONES.get(hours) or ('UTC' if not hours else f'UTC{hours:+g}')}"
 
 
 def status_text() -> str:
-    """The last report in a few plain lines. Never raises: this is what the
-    owner sees when they ask whether anything is wrong."""
+    """The last report in a few short lines, as Telegram HTML. Never raises:
+    this is what the owner sees when they ask whether anything is wrong.
+    Names come from the report, so they are escaped."""
     with closing(db()) as conn:
         row = conn.execute("SELECT body FROM report ORDER BY received DESC LIMIT 1").fetchone()
     if not row:
@@ -273,20 +299,26 @@ def status_text() -> str:
     except ValueError:
         return "Laporan terakhir tidak bisa dibaca."
 
+    e = html.escape
     s = report.get("summary") or {}
     name = (report.get("server") or {}).get("name") or "Server ini"
-    lines = [f"{name} - skor {s.get('score', 0)}/100",
-             f"aman {s.get('passed', 0)}, perlu dibenahi {s.get('failed', 0)}, "
-             f"dilewati {s.get('skipped', 0)}",
-             f"diperiksa {report.get('time', '?')}"]
+    lines = [f"<b>{e(str(name))}</b>",
+             f"Skor keamanan <b>{e(str(s.get('score', 0)))}/100</b>",
+             "",
+             f"Aman: {e(str(s.get('passed', 0)))}",
+             f"Perlu dibenahi: {e(str(s.get('failed', 0)))}",
+             f"Dilewati: {e(str(s.get('skipped', 0)))}"]
 
     bad = [c for c in (report.get("controls") or []) if c.get("status") == "GAGAL"]
     if bad:
-        lines += ["", "Belum beres:"]
-        lines += [f"  {c.get('id')}  {c.get('name')}" for c in bad[:8]]
+        lines += ["", "<b>Belum beres</b>"]
+        lines += [f"• {e(str(c.get('id')))} {e(str(c.get('name')))}" for c in bad[:8]]
+        if len(bad) > 8:
+            lines.append(f"• dan {len(bad) - 8} lagi")
 
     asking = report.get("pending_decisions") or []
-    lines += ["", f"Nunggu jawabanmu: {len(asking) if asking else 'tidak ada'}"]
+    lines += ["", f"Nunggu jawabanmu: {len(asking) if asking else 'tidak ada'}",
+              f"<i>Diperiksa {e(when(report.get('time', '?')))}</i>"]
     return "\n".join(lines)
 
 
@@ -305,7 +337,7 @@ Cara ngomong: santai dan hangat, pakai aku-kamu, bahasa Indonesia sehari-hari. J
 
 Soal server, pegang fakta dari LAPORAN di bawah. Kalau yang ditanya tidak ada di laporan, bilang terus terang kamu belum tahu. Jangan mengarang angka, nama, atau waktu.
 
-Kamu tidak bisa menjalankan apa pun di server. Jangan menulis perintah shell, dan jangan bilang kamu sudah menjalankan, mengubah, atau memperbaiki sesuatu. Kalau dia mau menerapkan atau membatalkan setelan, arahkan ke tombol Setuju yang Yoru kirim atau ke dashboard. Ringkasan lengkap ada di /status.
+Kamu tidak bisa menjalankan apa pun di server. Jangan menulis perintah shell, dan jangan bilang kamu sudah menjalankan, mengubah, atau memperbaiki sesuatu. Kalau dia mau menerapkan atau membatalkan setelan, arahkan ke tombol Setuju yang Yoru kirim atau ke dashboard. Ringkasan lengkap ada di tombol Status di bawah kolom chat.
 
 Pertanyaan di luar urusan server boleh dijawab singkat dan ramah, seperti teman ngobrol.
 
@@ -406,18 +438,19 @@ async def chat_reply(chat: str, text: str, token: str, config: Dict[str, str]) -
                     + past + [{"role": "user", "content": text[:1500]}])
         answer, why = await asyncio.to_thread(ask_model, config, messages)
         if why == "limit":
-            answer = ("Maaf, jatah pemakaian model AI-ku lagi habis. Coba lagi "
-                      "semenit lagi ya. /status tetap bisa dipakai kapan aja.")
+            answer = ("Maaf, jatah pemakaian model AI-ku lagi habis. Coba lagi semenit lagi ya.\n\n"
+                      "Keadaan server tetap bisa kamu lihat lewat tombol Status di bawah.")
         elif why == "busy":
-            answer = ("Maaf, server model AI-nya lagi penuh. Coba lagi sebentar ya. "
-                      "/status tetap bisa dipakai kapan aja.")
+            answer = ("Maaf, server model AI-nya lagi penuh. Coba lagi sebentar ya.\n\n"
+                      "Keadaan server tetap bisa kamu lihat lewat tombol Status di bawah.")
         elif not answer:
-            answer = ("Maaf, otak AI-ku lagi nggak bisa dihubungi, jadi sekarang aku "
-                      "cuma bisa jawab /status dan /help.")
+            answer = ("Maaf, otak AI-ku lagi nggak bisa dihubungi.\n\n"
+                      "Sementara ini aku cuma bisa jawab lewat tombol Status dan Bantuan di bawah.")
         else:
             chat_history[chat] = (past + [{"role": "user", "content": text[:1500]},
                                           {"role": "assistant", "content": answer}])[-2 * CHAT_TURNS:]
-        await asyncio.to_thread(tg, "sendMessage", token, {"chat_id": chat, "text": answer})
+        await asyncio.to_thread(tg, "sendMessage", token,
+                                {"chat_id": chat, "text": answer, "reply_markup": KEYBOARD})
     finally:
         chat_busy.discard(chat)
 
@@ -431,9 +464,15 @@ async def handle_message(msg: Dict[str, Any], token: str, config: Dict[str, str]
     if not chat or not text:
         return
 
-    async def say(body: str) -> None:
-        await asyncio.to_thread(tg, "sendMessage", token,
-                                {"chat_id": chat, "text": body[:3500]})
+    async def say(body: str, rich: bool = False, keys: bool = False) -> None:
+        """rich: body is Telegram HTML. keys: show the Status and Bantuan
+        buttons, only in the paired chat."""
+        data: Dict[str, Any] = {"chat_id": chat, "text": body[:3500]}
+        if rich:
+            data["parse_mode"] = "HTML"
+        if keys:
+            data["reply_markup"] = KEYBOARD
+        await asyncio.to_thread(tg, "sendMessage", token, data)
 
     parts = text.split()
     word = parts[0].lower().split("@")[0]      # /status@yoru_bot -> /status
@@ -469,7 +508,9 @@ async def handle_message(msg: Dict[str, Any], token: str, config: Dict[str, str]
             await say("Kode benar, tapi gagal disimpan:\n"
                       + str(result.get("message") or "yoructl menolak"))
             return
-        await say("Tersambung. Chat ini yang sekarang dipakai Yoru.\n\n" + status_text())
+        await say("<b>Tersambung.</b> Chat ini yang sekarang dipakai Yoru.\n"
+                  "Tombol Status dan Bantuan ada di bawah kolom chat.\n\n"
+                  + status_text(), rich=True, keys=True)
         return
 
     if chat != allowed:
@@ -477,17 +518,18 @@ async def handle_message(msg: Dict[str, Any], token: str, config: Dict[str, str]
         return
 
     if word in ("/status", "/start", "/mulai"):
-        await say(status_text())
+        await say(status_text(), rich=True, keys=True)
     elif word in ("/help", "/bantuan"):
-        await say(BOT_HELP)
+        await say(BOT_HELP, rich=True, keys=True)
     elif word.startswith("/"):
-        await say("Perintah itu belum ada. Coba /status atau /help, "
-                  "atau tanya aja pakai kalimat biasa.")
+        await say("Perintah itu belum ada. Pakai tombol Status atau Bantuan di bawah, "
+                  "atau tanya aja pakai kalimat biasa.", keys=True)
     elif not config.get("HERMES_URL", "").strip():
-        await say("Aku belum disambungkan ke model AI, jadi baru ngerti /status dan /help. "
-                  "Sambungkan lewat installer atau halaman Setelan.")
+        await say("Aku belum disambungkan ke model AI, jadi baru bisa jawab lewat tombol "
+                  "Status dan Bantuan di bawah.\n\n"
+                  "Sambungkannya lewat installer atau halaman Setelan dashboard.", keys=True)
     elif chat in chat_busy:
-        await say("Bentar ya, pertanyaanmu yang tadi masih aku jawab.")
+        await say("Bentar ya, pertanyaanmu yang tadi masih aku jawab.", keys=True)
     else:
         chat_busy.add(chat)
         task = asyncio.create_task(chat_reply(chat, text, token, config))
