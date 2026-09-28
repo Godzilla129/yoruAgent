@@ -352,7 +352,8 @@ def report_for_chat() -> str:
 def ask_model(config: Dict[str, str], messages: list) -> tuple:
     """One chat completion, blocking. Returns (answer, ""), or (None, why) so
     the caller can fall back to a fixed reply: why is "limit" when the model's
-    provider refused for quota (HTTP 429), "down" for anything else."""
+    provider refused for quota (HTTP 429), "busy" when it was overloaded
+    (HTTP 503, or every backup model in Hermes failed too), "down" otherwise."""
     base = config.get("HERMES_URL", "").strip().rstrip("/")
     if not base:
         return None, "down"
@@ -375,14 +376,20 @@ def ask_model(config: Dict[str, str], messages: list) -> tuple:
         choice = answer["choices"][0]
         text = choice["message"]["content"]
     except urllib.error.HTTPError as e:
-        return None, "limit" if e.code == 429 else "down"
+        return None, {429: "limit", 503: "busy"}.get(e.code, "down")
     except Exception:  # noqa: BLE001 - a model outage must not break the bot
         return None, "down"
     # Hermes answers a failed turn with HTTP 200 and its own English error
-    # text as the content; finish_reason "error" and hermes.failed mark it.
-    failed = answer.get("hermes") or {}
-    if choice.get("finish_reason") == "error" or failed.get("failed"):
-        return None, "limit" if "429" in str(failed.get("error") or "") else "down"
+    # text as the content. finish_reason "error" or hermes.failed mark a
+    # failure; hermes.completed false without partial text means every backup
+    # model failed as well. A reply cut off at max_tokens is partial, and kept.
+    run = answer.get("hermes") or {}
+    gave_up = run.get("completed") is False and not run.get("partial")
+    if choice.get("finish_reason") == "error" or run.get("failed") or gave_up:
+        err = str(run.get("error") or "")
+        if "429" in err:
+            return None, "limit"
+        return None, "busy" if ("503" in err or not err) else "down"
     text = str(text or "").replace("**", "").strip()
     return (text[:3500], "") if text else (None, "down")
 
@@ -401,6 +408,9 @@ async def chat_reply(chat: str, text: str, token: str, config: Dict[str, str]) -
         if why == "limit":
             answer = ("Maaf, jatah pemakaian model AI-ku lagi habis. Coba lagi "
                       "semenit lagi ya. /status tetap bisa dipakai kapan aja.")
+        elif why == "busy":
+            answer = ("Maaf, server model AI-nya lagi penuh. Coba lagi sebentar ya. "
+                      "/status tetap bisa dipakai kapan aja.")
         elif not answer:
             answer = ("Maaf, otak AI-ku lagi nggak bisa dihubungi, jadi sekarang aku "
                       "cuma bisa jawab /status dan /help.")
