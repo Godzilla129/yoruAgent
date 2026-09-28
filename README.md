@@ -433,7 +433,7 @@ catalog/              10 kontrol keamanan, satu berkas YAML per kontrol
 contract/             bentuk data laporan JSON, dipakai dispatcher sampai dashboard
 web/                  API dashboard dan halamannya
 systemd/              unit systemd: siklus penjagaan harian dan dashboard
-examples/             contoh laporan, contoh konfigurasi, jembatan FastAPI
+examples/             contoh laporan dan contoh konfigurasi
 docs/                 penjelasan alur, peta kode, dan panduan pasang di VPS
 install.sh            pemasang semuanya, sekalian menguji hasilnya sendiri
 check-all.sh          periksa 10 kontrol sekaligus, tanpa memasang apa pun
@@ -481,7 +481,6 @@ laporan JSON. Yang masih bahasa Indonesia:
   dan isi `/var/backups/yoru/` (`tercatat`, `keadaan.json`, `berkas/`).
 - Komentar di `examples/yoru.conf.example`, unit systemd, aturan sudoers,
   dan `.gitattributes`.
-- Seluruh `examples/api_yoructl.py`, termasuk nama fungsi dan variabelnya.
 - Semua kalimat yang dibaca pemilik server, kecuali keluaran installer dan
   penghubung Gemini, yang bahasa Inggris.
 
