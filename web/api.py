@@ -881,6 +881,10 @@ def refresh_stored_report(kid: str, result: Dict[str, Any]):
             report["pending_decisions"] = [
                 e["id"] for e in report["controls"]
                 if e["status"] == "GAGAL" and e.get("needs_approval") and not e.get("blockers")]
+            # Back to the safe value means the change it asked about is gone,
+            # so "was this you?" has nothing left to answer.
+            if status == "LULUS":
+                report["drift"] = [d for d in report.get("drift") or [] if d.get("id") != kid]
             conn.execute("UPDATE report SET score=?, body=? WHERE id=?",
                          (report["summary"]["score"],
                           json.dumps(report, ensure_ascii=False), row["id"]))
