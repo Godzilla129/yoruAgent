@@ -576,6 +576,19 @@ function chartPanel(rows) {
 
 /* logs */
 const LOG_TONE = {LULUS:'p', DIKEMBALIKAN:'p', DISIMPAN:'p', GAGAL:'f', ERROR:'f', DITOLAK:'n', PERINGATAN:'n'};
+
+// yoructl writes the trail in UTC. It is shown in the report's own zone, so the
+// trail and the report read the same clock. The trail is this machine's, so
+// only a report from this machine can lend its zone; otherwise UTC stays.
+function reportZone(t) {
+  const off = isLocal() && String((DATA && DATA.time) || '').match(/([+-])(\d\d):(\d\d)$/);
+  const ms = new Date(t).getTime();
+  if (!off || !isFinite(ms)) return t;
+  const shift = (off[1] === '-' ? -1 : 1) * (Number(off[2]) * 60 + Number(off[3])) * 60000;
+  return new Date(ms + shift).toISOString().slice(0, 19) + off[0];
+}
+const nameOf = kid => (((DATA && DATA.controls) || []).find(k => k.id === kid) || {}).name || kid;
+
 async function logPanel(kid, gen) {
   const q = kid ? `?control=${encodeURIComponent(kid)}` : '';
   let d;
@@ -586,15 +599,19 @@ async function logPanel(kid, gen) {
   if (gen !== undefined && gen !== RENDER) return '';
 
   const body = (d.lines || []).length
-    ? `<ul class="list log">${d.lines.map(b => `<li>
-        <span class="w num">${esc(when(b.time))}</span>
+    ? `<ul class="list log">${d.lines.map(b => {
+        const value = b.value ? plain(b.id, b.value) : '';
+        const said = [value, b.message !== value ? b.message : ''].filter(Boolean).join(' · ');
+        return `<li>
+        <span class="w num">${esc(when(reportZone(b.time)))}</span>
         <span class="badge ${LOG_TONE[b.status] || 'x'}">${esc(statusLabel(b.status))}</span>
-        <span class="what">${esc(b.id)} ${esc(ACTION_LABEL[b.action] || b.action)}</span>
-        <span class="msg">${esc(b.value ?? '')}${b.message ? ' · ' + esc(b.message) : ''}</span></li>`).join('')}</ul>`
+        <span class="what">${esc(ACTION_LABEL[b.action] || b.action)}: ${esc(nameOf(b.id))}</span>
+        <span class="msg">${esc(said)}</span></li>`;
+      }).join('')}</ul>`
     : `<div class="empty"><h2>Belum ada catatan.</h2><p>${esc(d.message || 'Jejak tindakan ditulis ke /var/log/yoru/ setiap kali sebuah kontrol dijalankan.')}</p></div>`;
 
   return `<section class="sec">
-    <div class="sec-head"><div><h2>Jejak tindakan${kid ? ' · ' + esc(kid) : ''}</h2>
+    <div class="sec-head"><div><h2>Jejak tindakan${kid ? ' · ' + esc(nameOf(kid)) : ''}</h2>
       <p>Catatan ini nggak bisa diubah Yoru sendiri.</p></div>
       <div class="bulk">${kid ? '<button class="btn" id="allLogs">Lihat semua</button>' : ''}</div></div>
     ${body}</section>`;
