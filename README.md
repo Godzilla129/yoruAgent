@@ -252,9 +252,13 @@ mendukung, pertanyaannya muncul sebagai kotak dialog.
    OpenAI (misalnya Ollama), atau dilewati. Hermes pilihan bawaannya: tekan
    Enter dan Hermes ikut dipasang di pemasangan yang sama. Kalau kuncinya
    dari Google, installer menanyakan ke Google model apa saja yang boleh
-   dipakai kunci itu, lalu menyarankan model Lite yang paling murah. Nama
-   model lain boleh diketik sendiri, asal ada di daftar dari Google. Tanpa
-   model, Yoru tetap jalan dan kalimat penjelasannya diambil dari katalog.
+   dipakai kunci itu, lalu menyarankan model Lite yang paling murah. Tiap
+   model dicoba dengan satu pesan pendek, dan yang sedang bisa menjawab
+   ditaruh paling atas. Model lainnya jadi cadangan: kalau pesan ditolak
+   Google karena penuh atau kuotanya habis, Hermes pindah ke cadangan untuk
+   pesan itu. Nama model lain boleh diketik sendiri, asal ada di daftar dari
+   Google. Tanpa model, Yoru tetap jalan dan kalimat penjelasannya diambil
+   dari katalog.
 
 Kalau pakai kotak dialog, sesudahnya muncul ringkasan, dan pemasangan baru
 mulai kalau kamu setuju. Dari situ sampai selesai tidak ada pertanyaan lagi.

@@ -510,6 +510,7 @@ HERMES_PROVIDER=""
 HERMES_KEY=""
 HERMES_MODEL=""
 HERMES_BASE=""
+HERMES_FALLBACKS=()
 TG_TOKEN=""
 PAIR_CODE=""
 SSHKEY=""
@@ -776,11 +777,33 @@ for m in models:
 PY
 }
 
-# Every message costs the owner a call, so the cheap Lite models come first.
-# Only names Google lists for this key are offered; the owner may still type
-# any other name, and it is checked against the same list.
+# One tiny call to one model: prints Google's HTTP status, 000 if no answer.
+gemini_try() {  # gemini_try <model>
+  GEMINI_KEY="$HERMES_KEY" python3 - "$1" <<'PY'
+import json, os, sys, urllib.error, urllib.request
+body = json.dumps({"contents": [{"parts": [{"text": "ok"}]}],
+                   "generationConfig": {"maxOutputTokens": 16}}).encode()
+req = urllib.request.Request(
+    "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % sys.argv[1],
+    data=body, headers={"x-goog-api-key": os.environ["GEMINI_KEY"], "Content-Type": "application/json"})
+try:
+    with urllib.request.urlopen(req, timeout=30) as r:
+        print(r.status)
+except urllib.error.HTTPError as e:
+    print(e.code)
+except Exception:
+    print("000")
+PY
+}
+
+# Every message costs the owner a call, so the cheap Lite models come first,
+# and among them the ones that answer right now: Google turns models away
+# when they are busy (503) or the key's quota is used up (429). Only names
+# Google lists for this key are offered; the owner may still type another,
+# and it is checked against the same list. The other candidates become
+# Hermes' backups, which it switches to when a message is turned away.
 ask_gemini_model() {
-  local models m pick i
+  local models m pick i code
   local names=() notes=()
   models="$(gemini_models)" || models=""
   if [ -z "$models" ]; then
@@ -797,6 +820,22 @@ ask_gemini_model() {
   fi
 
   if [ ${#names[@]} -gt 0 ]; then
+    # One test call per model, then the ones that answered move to the top.
+    printf '  Trying %s models with one short message each...\n' "${#names[@]}"
+    local ready=() ready_notes=() rest=() rest_notes=()
+    for i in "${!names[@]}"; do
+      code="$(gemini_try "${names[$i]}")"
+      note "gemini model ${names[$i]}: HTTP $code"
+      case "$code" in
+        200) ready+=("${names[$i]}"); ready_notes+=("${notes[$i]%%,*}, answering now") ;;
+        429) rest+=("${names[$i]}");  rest_notes+=("${notes[$i]%%,*}, quota used up now") ;;
+        503) rest+=("${names[$i]}");  rest_notes+=("${notes[$i]%%,*}, busy at Google now") ;;
+        *)   rest+=("${names[$i]}");  rest_notes+=("${notes[$i]%%,*}, no answer (HTTP $code)") ;;
+      esac
+    done
+    names=("${ready[@]}" "${rest[@]}"); notes=("${ready_notes[@]}" "${rest_notes[@]}")
+    [ ${#ready[@]} -gt 0 ] || printf '  None answered right now. Pick one anyway; Hermes keeps the others as backups.\n'
+
     local text="Which model answers in Telegram? Each message costs one call on
 this key, so a Lite model keeps the bill (or the free quota) small."
     if dialog_ready; then
@@ -812,7 +851,11 @@ this key, so a Lite model keeps the bill (or the free quota) small."
     fi
     pick="${pick:-1}"
     case "$pick" in
-      [1-9]) [ "$pick" -le ${#names[@]} ] && { HERMES_MODEL="${names[$((pick - 1))]}"; return 0; } ;;
+      [1-9]) if [ "$pick" -le ${#names[@]} ]; then
+               HERMES_MODEL="${names[$((pick - 1))]}"
+               hermes_backups "${names[@]}"
+               return 0
+             fi ;;
     esac
   fi
 
@@ -827,12 +870,25 @@ this key, so a Lite model keeps the bill (or the free quota) small."
     HERMES_MODEL="$(printf '%s' "$HERMES_MODEL" | tr -d '\r\n ')"
     HERMES_MODEL="${HERMES_MODEL#models/}"
     [ -n "$HERMES_MODEL" ] || HERMES_MODEL="$default"
-    [ -z "$models" ] && return 0
-    grep -qx -- "$HERMES_MODEL" <<<"$models" && return 0
+    if [ -z "$models" ] || grep -qx -- "$HERMES_MODEL" <<<"$models"; then
+      hermes_backups "${names[@]}"
+      return 0
+    fi
     printf '  Google does not offer %s to this key. Try again.\n' "$HERMES_MODEL"
   done
   HERMES_MODEL="$default"
+  hermes_backups "${names[@]}"
   printf '  Using %s.\n' "$HERMES_MODEL"
+}
+
+# The candidates other than the chosen model, best first. Hermes switches to
+# the first of them for a message the main model could not answer.
+hermes_backups() {  # hermes_backups <candidate...>
+  HERMES_FALLBACKS=()
+  local m
+  for m in "$@"; do
+    [ "$m" = "$HERMES_MODEL" ] || HERMES_FALLBACKS+=("$m")
+  done
 }
 
 recap() {
@@ -1139,10 +1195,12 @@ try:
     with urllib.request.urlopen(req, timeout=45) as r:
         answer = json.load(r)
     # Hermes reports a failed turn (wrong model name, used-up quota) as
-    # HTTP 200 with its error text as the content, so check its own flag.
-    failed = answer.get("hermes") or {}
-    if answer["choices"][0].get("finish_reason") == "error" or failed.get("failed"):
-        print("ERROR", str(failed.get("error") or "the provider refused")[:200])
+    # HTTP 200 with its error text as the content, so check its own flags;
+    # completed false with no error means every backup model failed too.
+    run = answer.get("hermes") or {}
+    gave_up = run.get("completed") is False and not run.get("partial")
+    if answer["choices"][0].get("finish_reason") == "error" or run.get("failed") or gave_up:
+        print("ERROR", str(run.get("error") or "the model and its backups all refused")[:200])
     else:
         print(answer["choices"][0]["message"]["content"].strip()[:160])
 except Exception as e:
@@ -1331,8 +1389,19 @@ hermes_write_settings() {  # hermes_write_settings <port> <service-token>
       openrouter) printf '  base_url: "https://openrouter.ai/api/v1"\n' ;;
       custom)     printf '  base_url: "%s"\n  api_key: "%s"\n' "$HERMES_BASE" "$HERMES_KEY" ;;
     esac
+    if [ ${#HERMES_FALLBACKS[@]} -gt 0 ]; then
+      printf 'fallback_providers:\n'
+      local m
+      for m in "${HERMES_FALLBACKS[@]}"; do
+        printf '  - provider: "%s"\n    model: "%s"\n' "$HERMES_PROVIDER" "$m"
+      done
+    fi
     printf 'platform_toolsets:\n  api_server: []\n'
     printf 'agent:\n  disabled_toolsets: [terminal, file, code_execution, browser, delegation, cronjob]\n'
+    # A turned-away message goes to the backup model at once. Hermes' default
+    # is to keep retrying and then wait up to five rounds of 15 to 60 seconds,
+    # longer than the bot (90 s) or the installer check (45 s) waits.
+    printf '  api_max_retries: 1\n  auto_recovery_cycles: 0\n'
     # Hermes' side jobs (naming the chat, reviewing it for memory) each cost
     # a model call; a free-tier key only allows a few calls a minute.
     printf 'auxiliary:\n  title_generation:\n    enabled: false\n  background_review:\n    enabled: false\n'
