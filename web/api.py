@@ -807,8 +807,8 @@ async def run_yoructl(kid: str, action: str) -> Dict[str, Any]:
                 "value": None,
                 "message": f"sudah {TIME_LIMIT} detik dan belum selesai - biasanya apt "
                          f"masih mengunduh. Tindakannya TETAP JALAN di server, tidak "
-                         f"dibatalkan. Tunggu sebentar lalu tekan Audit untuk melihat "
-                         f"hasilnya, atau buka Log."}
+                         f"dibatalkan. Tunggu sebentar lalu tekan Cek ulang di dashboard "
+                         f"untuk melihat hasilnya, atau buka jejak tindakan di Riwayat."}
 
     for line in reversed([b for b in out.decode("utf-8", "replace").splitlines() if b.strip()]):
         try:
