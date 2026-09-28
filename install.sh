@@ -1054,7 +1054,14 @@ if token:
     req.add_header("Authorization", "Bearer " + token)
 try:
     with urllib.request.urlopen(req, timeout=45) as r:
-        print(json.load(r)["choices"][0]["message"]["content"].strip()[:160])
+        answer = json.load(r)
+    # Hermes reports a failed turn (wrong model name, used-up quota) as
+    # HTTP 200 with its error text as the content, so check its own flag.
+    failed = answer.get("hermes") or {}
+    if answer["choices"][0].get("finish_reason") == "error" or failed.get("failed"):
+        print("ERROR", str(failed.get("error") or "the provider refused")[:200])
+    else:
+        print(answer["choices"][0]["message"]["content"].strip()[:160])
 except Exception as e:
     print("ERROR", e)
 PY
