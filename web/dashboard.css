@@ -68,7 +68,8 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 .i{width:20px;height:20px;flex:none;fill:currentColor}
 
 .masthead{position:sticky;top:0;z-index:20;background:var(--page);border-bottom:1px solid var(--line)}
-.bar{max-width:1080px;margin:0 auto;padding:0 24px;height:56px;display:flex;align-items:center;gap:32px}
+/* Scoped: the chart's bars are also class "bar", and height here would squash them. */
+.masthead .bar{max-width:1080px;margin:0 auto;padding:0 24px;height:56px;display:flex;align-items:center;gap:32px}
 .brand{font-weight:650;font-size:15px;letter-spacing:-.01em;white-space:nowrap}
 .brand small{font-weight:400;font-size:13px;color:var(--text-3);margin-left:6px;letter-spacing:0}
 nav{display:flex;gap:4px;align-self:stretch}
@@ -297,7 +298,7 @@ dialog.drawer[open]{animation:slideIn .2s ease-out}
 /* Phone: the menu moves to its own row under the name, the detail panel comes up
    from the bottom, and every button grows to a 44px tap target. */
 @media (max-width: 720px){
-  .bar{height:auto;flex-wrap:wrap;gap:0 12px;padding:0 16px}
+  .masthead .bar{height:auto;flex-wrap:wrap;gap:0 12px;padding:0 16px}
   .brand{display:flex;align-items:center;min-height:56px}
   .brand small{display:none}
   .bar-end{gap:10px}
