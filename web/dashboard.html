@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Yoru · CIS Agent</title>
+<title>Yoru · Penjaga server</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b1220'/%3E%3Cpath d='M16 6l7 3v5.5c0 4.2-2.8 7.6-7 8.9-4.2-1.3-7-4.7-7-8.9V9z' fill='none' stroke='%2334d399' stroke-width='1.8'/%3E%3C/svg%3E">
 <style>
 /* theme: every colour is a token on :root. Dark only redefines tokens, never adds
@@ -355,7 +355,7 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
       <span>Yoru<small>penjaga server</small></span>
     </div>
     <nav id="nav">
-      <a data-h="dashboard" class="on"><span class="ic">▦</span>Dashboard</a>
+      <a data-h="dashboard" class="on"><span class="ic">▦</span>Beranda</a>
       <a data-h="history"><span class="ic">▤</span>Riwayat</a>
       <a data-h="settings"><span class="ic">⚙</span>Setelan</a>
     </nav>
@@ -365,7 +365,7 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
   <main class="main">
     <div class="page-head">
       <div>
-        <h1 id="pageTitle">Dashboard</h1>
+        <h1 id="pageTitle">Beranda</h1>
         <span class="meta" id="meta"></span>
       </div>
       <div class="head-right">
@@ -388,7 +388,7 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
   <div class="risk"><b>Kalau disetujui, ini yang ikut berubah</b><p id="confirmRisk"></p></div>
   <div class="buttons">
     <button class="btn" value="batal">Batal</button>
-    <button class="btn primary" value="ya" id="confirmGo">Ya, jalankan</button>
+    <button class="btn primary" value="ya" id="confirmGo">Ya, amankan</button>
   </div>
 </form></dialog>
 
@@ -407,9 +407,8 @@ dialog::backdrop{background:rgba(6,10,20,.62);backdrop-filter:blur(2px)}
 
 <dialog id="dlgToken"><form method="dialog" class="dlg">
   <h3>Server ini minta token</h3>
-  <p>Dashboard dibuka dari komputer lain, jadi halaman ini perlu token, baik untuk
-     membaca laporan maupun untuk menekan tombolnya. Isinya sama dengan
-     <b>DASHBOARD_TOKEN</b> di <code>/etc/yoru/yoru.conf</code> pada server itu.</p>
+  <p>Dashboard ini dibuka dari komputer lain, jadi perlu token dulu. Tokennya ada di
+     server itu, di <code>/etc/yoru/yoru.conf</code> baris <b>DASHBOARD_TOKEN</b>.</p>
   <input id="tokenInput" type="password" autocomplete="off" placeholder="tempel token di sini">
   <div class="buttons">
     <button class="btn" value="batal">Batal</button>
@@ -497,17 +496,27 @@ async function get(url) {
   return r;
 }
 
-const TAG = {LULUS:['LULUS','p'], GAGAL:['GAGAL','f'], SEBAGIAN:['SEBAGIAN','n'],
-             DILEWATI:['DILEWATI','x'], ERROR:['ERROR','x']};
+// The report's status codes stay as they are; these are the words shown for them.
+const TAG = {LULUS:['Aman','p'], GAGAL:['Perlu dibenahi','f'], SEBAGIAN:['Setengah jalan','n'],
+             DILEWATI:['Dilewati','x'], ERROR:['Gagal dibaca','x']};
 
-const PAGE_TITLE = {dashboard:'Dashboard', history:'Riwayat', settings:'Setelan'};
+const PAGE_TITLE = {dashboard:'Beranda', history:'Riwayat', settings:'Setelan'};
 
 const shorten = t => {
   const s = String(t || '');
   if (s.startsWith('TIDAK_ADA')) return 'di luar CIS L1';
   return s.length > 22 ? s.slice(0, 21) + '…' : s;
 };
-const when = t => String(t || '').replace('T', ' ').slice(0, 16);
+// 2026-09-08T03:00:12+07:00 -> 8 Sep 2026, 03:00 WIB. Read from the string
+// itself, so it shows the server's own clock, not the browser's.
+const MONTHS = 'Jan Feb Mar Apr Mei Jun Jul Agu Sep Okt Nov Des'.split(' ');
+const ZONES = {'+07:00': 'WIB', '+08:00': 'WITA', '+09:00': 'WIT', 'Z': 'UTC', '+00:00': 'UTC'};
+const when = t => {
+  const m = String(t || '').match(/^(\d{4})-(\d\d)-(\d\d)[T ](\d\d):(\d\d)(?::[\d.]+)?(Z|[+-]\d\d:\d\d)?/);
+  if (!m) return String(t || '');
+  const zone = m[6] ? ' ' + (ZONES[m[6]] || 'UTC' + m[6]) : '';
+  return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}, ${m[4]}:${m[5]}${zone}`;
+};
 
 // Is the report on screen from this very machine? Only then do the
 // Audit/Hardening/Rollback buttons mean anything - they run yoructl HERE.
@@ -570,7 +579,7 @@ function render() {
   watchLive();
 }
 
-// The red number beside "Dashboard": how many things wait on the owner.
+// The red number beside "Beranda": how many things wait on the owner.
 function markBadge() {
   const waiting = DATA ? (DATA.pending_decisions || []).length + (DATA.drift || []).length : 0;
   const a = document.querySelector('#nav a[data-h="dashboard"]');
@@ -588,7 +597,7 @@ function emptyState() {
   $('meta').textContent = '';
   $('content').innerHTML = `<div class="panel"><div class="empty">
     <b>Belum ada laporan yang masuk.</b>
-    Jalankan agent di server yang mau dijaga:
+    Laporan pertama muncul setelah Yoru mengecek server. Mau sekarang? Jalankan:
     <code>sudo -u yoru-agent /opt/yoru/bin/yoru-agent --siklus perbaikan</code></div></div>`;
 }
 
@@ -615,21 +624,21 @@ function statCards() {
     ? `<span class="delta ${diff > 0 ? 'up' : 'down'}">${diff > 0 ? '+' : ''}${diff}</span>` : '';
   return `<div class="stats">
     <div class="stat">${ring(now)}
-      <div class="grow"><div class="lbl">Skor kepatuhan</div>
+      <div class="grow"><div class="lbl">Skor keamanan</div>
         <div class="val">${now}<span style="font-size:15px;color:var(--muted)">/100</span>${deltaHtml}</div>
         <div class="sub">${esc(DATA.cycle || '-')}</div></div></div>
     <div class="stat"><div class="chip-ic pass">✓</div>
       <div class="grow"><div class="lbl">Sudah aman</div>
         <div class="val">${s.passed ?? 0} <span style="font-size:15px;color:var(--muted)">/ ${total}</span></div>
-        <div class="sub">sesuai target katalog</div></div></div>
+        <div class="sub">sudah sesuai</div></div></div>
     <div class="stat"><div class="chip-ic fail">!</div>
-      <div class="grow"><div class="lbl">Perlu hardening</div>
+      <div class="grow"><div class="lbl">Perlu dibenahi</div>
         <div class="val">${s.failed ?? 0} <span style="font-size:15px;color:var(--muted)">/ ${total}</span></div>
         <div class="sub">${s.partial ? s.partial + ' sebagian · ' : ''}${s.skipped ?? 0} dilewati</div></div></div>
     <div class="stat"><div class="chip-ic ${waiting ? 'fail' : 'info'}">${waiting ? '◔' : '✓'}</div>
       <div class="grow"><div class="lbl">Nunggu jawabanmu</div>
         <div class="val">${waiting}</div>
-        <div class="sub">${waiting ? 'Yoru berhenti sampai kamu jawab' : 'tidak ada yang tertahan'}</div></div></div>
+        <div class="sub">${waiting ? 'lihat di bawah' : 'nggak ada'}</div></div></div>
   </div>`;
 }
 
@@ -639,12 +648,10 @@ function remoteNotice() {
   if (isLocal()) return '';
   return `<div class="panel"><div class="panel-body" style="display:flex;gap:11px;align-items:flex-start">
     <div class="chip-ic info">⇄</div>
-    <div><b>Laporan ini datang dari ${esc((DATA.server || {}).name || 'server lain')}</b>
+    <div><b>Ini laporan dari ${esc((DATA.server || {}).name || 'server lain')}</b>
     <div style="color:var(--muted);font-size:13px;margin-top:3px;line-height:1.6">
-      Tombol Audit, Hardening dan Rollback menjalankan <code>yoructl</code> di mesin tempat
-      dashboard ini dipasang, jadi untuk server lain tombolnya dimatikan. Kalau tidak, menekannya
-      akan mengeraskan server yang salah. Yang tetap jalan: menyetujui kontrol dan menjawab port.
-      Dua-duanya dicatat di sini lalu diambil agent di server itu pada siklus berikutnya.
+      Menyetujui dan menjawab port tetap bisa. Tombol Cek ulang, Amankan dan Kembalikan
+      cuma jalan di server tempat dashboard ini dipasang.
     </div></div></div></div>`;
 }
 
@@ -660,8 +667,8 @@ function driftPanel() {
     const evidence = bits.length
       ? `<div class="evidence">${bits.join(' · ')}${
            d.evidence_source ? ` <span style="opacity:.75">(sumber: ${esc(d.evidence_source)})</span>` : ''}</div>`
-      : `<div class="evidence">Tidak ada jejak siapa yang mengubah: auditd (K08) belum aktif
-         di server ini, jadi memang tidak ada catatannya. Yoru tidak menebak.</div>`;
+      : `<div class="evidence">Siapa yang mengubah nggak tercatat, karena jejak audit
+         (auditd) belum aktif di server ini. Yoru nggak menebak.</div>`;
     return `<div class="drift" data-kid="${esc(d.id)}">
       <div class="who">⚠</div>
       <div class="body">
@@ -679,7 +686,7 @@ function driftPanel() {
   }).join('');
   return `<div class="panel urgent">
     <div class="head"><h2>Ada ${drift.length} setelan yang berubah sejak pemeriksaan terakhir</h2>
-      <span class="note">jawabanmu diambil agent di server itu</span></div>
+      <span class="note">cek apakah ini memang kamu yang ubah</span></div>
     ${rows}</div>`;
 }
 
@@ -704,8 +711,7 @@ function attentionPanel() {
     body += `<div class="panel-body" style="border-bottom:${asking.length ? '1px solid var(--line-soft)' : '0'}">
       <b>Port ini terbuka ke internet dan belum kamu jawab</b>
       <div style="color:var(--muted);font-size:13px;margin-top:4px;line-height:1.6">
-        Selama masih ada yang belum dijawab, K05 menolak menyalakan firewall. Yoru tidak
-        pernah menebak port mana yang boleh terbuka. Port SSH tidak ikut ditanya, itu dicari sendiri.</div>
+        Firewall baru bisa dinyalakan setelah semua port ini kamu jawab.</div>
       ${note ? `<div class="said">${esc(note)}</div>` : ''}
       <div class="ports">${ports.map(p => `
         <div class="port" data-port="${esc(p.port)}">
@@ -719,11 +725,11 @@ function attentionPanel() {
     const byId = {};
     (DATA.controls || []).forEach(k => byId[k.id] = k);
     body += `<div class="panel-body">
-      <b>${asking.length} kontrol menunggu persetujuanmu</b>
+      <b>${asking.length} hal nunggu persetujuanmu</b>
       <div style="color:var(--muted);font-size:13px;margin-top:4px;line-height:1.6">
-        Yang berisiko tidak pernah dijalankan Yoru sendiri.${isLocal()
-          ? ' Setelah kamu setujui, tombol untuk menjalankannya muncul di sini juga.'
-          : ' Jawabanmu dicatat, lalu dikerjakan agent di server itu pada pemindaian berikutnya.'}</div>
+        Yang berisiko nggak pernah dijalankan Yoru tanpa izinmu.${isLocal()
+          ? ''
+          : ' Jawabanmu dikerjakan di server itu pada pemeriksaan berikutnya.'}</div>
       <div style="margin-top:11px">${asking.map(kid => {
         const k = byId[kid] || {id: kid, name: kid};
         return `<div class="drift" data-kid="${esc(kid)}" style="padding-left:0;padding-right:0">
@@ -738,8 +744,8 @@ function attentionPanel() {
           </div></div>`;
       }).join('')}</div></div>`;
   }
-  return `<div class="panel"><div class="head"><h2>Butuh jawaban kamu</h2>
-    <span class="note">Yoru berhenti di sini sampai dijawab</span></div>${body}</div>`;
+  return `<div class="panel"><div class="head"><h2>Perlu jawabanmu</h2>
+    <span class="note">Yoru nunggu kamu di sini</span></div>${body}</div>`;
 }
 
 /* table */
@@ -752,18 +758,18 @@ function table() {
     const off = !local ? ' disabled' : '';
     return `<tr data-kid="${esc(k.id)}">
       <td class="num">#${i + 1}</td>
-      <td class="point" data-l="Poin CIS"><span class="nm">${esc(k.name)}</span>
+      <td class="point" data-l="Pemeriksaan"><span class="nm">${esc(k.name)}</span>
         ${k.ai_note ? `<span class="ai">${esc(k.ai_note)}</span>` : ''}
         ${blocked ? `<span class="blocked">${esc(k.blockers[0])}</span>` : ''}</td>
       <td data-l="Kode CIS"><span class="cis" title="${esc(k.cis_code || '')}">${esc(shorten(k.cis_code || k.id))}</span></td>
       <td data-l="Status"><span class="tag ${cls}">${label}</span></td>
-      <td data-l="Terbaca" style="color:var(--muted);font-size:12.5px">${esc(k.observed || '-')}</td>
+      <td data-l="Sekarang" style="color:var(--muted);font-size:12.5px">${esc(k.observed || '-')}</td>
       <td class="actions" data-l="Aksi">
-        <button class="btn" data-a="periksa"${off}>Audit</button>
+        <button class="btn" data-a="periksa"${off}>Cek ulang</button>
         <button class="btn" data-a="terapkan"${off || (blocked ? ' disabled' : '')}
           ${blocked ? 'title="prasyarat belum terpenuhi"' : ''}
-          data-approval="${needsApproval.has(k.id) ? 1 : 0}">Hardening</button>
-        <button class="btn danger" data-a="kembalikan"${off}>Rollback</button>
+          data-approval="${needsApproval.has(k.id) ? 1 : 0}">Amankan</button>
+        <button class="btn danger" data-a="kembalikan"${off}>Kembalikan</button>
         <button class="btn ghost" data-a="log">Log</button>
         <span class="result" data-slot></span>
       </td>
@@ -772,18 +778,17 @@ function table() {
 
   return `<div class="panel">
     <div class="head">
-      <h2>Sepuluh kontrol CIS Ubuntu 24.04</h2>
-      <span class="note">${local ? 'tombol menjalankan yoructl di mesin ini'
-                                 : 'tombol dimatikan, laporan ini dari server lain'}</span>
+      <h2>Pemeriksaan keamanan</h2>
+      <span class="note">${local ? '' : 'tombol mati, ini laporan dari server lain'}</span>
       <div class="bulk">
-        <button class="btn" data-bulk="periksa"${local ? '' : ' disabled'}>Audit semua</button>
-        <button class="btn" data-bulk="terapkan"${local ? '' : ' disabled'}>Hardening semua</button>
-        <button class="btn danger" data-bulk="kembalikan"${local ? '' : ' disabled'}>Rollback semua</button>
+        <button class="btn" data-bulk="periksa"${local ? '' : ' disabled'}>Cek ulang semua</button>
+        <button class="btn" data-bulk="terapkan"${local ? '' : ' disabled'}>Amankan semua</button>
+        <button class="btn danger" data-bulk="kembalikan"${local ? '' : ' disabled'}>Kembalikan semua</button>
       </div>
     </div>
     <div class="scroll-x"><table>
-      <thead><tr><th>No</th><th>Poin CIS hardening</th><th>Kode CIS</th><th>Status</th>
-        <th>Nilai terbaca</th><th>Aksi</th></tr></thead>
+      <thead><tr><th>No</th><th>Pemeriksaan</th><th>Kode CIS</th><th>Status</th>
+        <th>Sekarang</th><th>Aksi</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
     <div class="live" id="liveStrip"><span class="beat"></span><span class="l">memuat jejak…</span></div>
@@ -815,7 +820,7 @@ async function historyPage(gen) {
 function chartPanel(rows) {
   if (!rows.length) {
     return `<div class="panel"><div class="empty">
-      <b>Belum ada riwayat.</b>Riwayat terisi sendiri setiap siklus penjagaan berjalan.</div></div>`;
+      <b>Belum ada riwayat.</b>Riwayat terisi sendiri setiap kali Yoru mengecek server.</div></div>`;
   }
 
   const data = rows.slice().reverse();
@@ -844,7 +849,7 @@ function chartPanel(rows) {
       <span class="note">arahkan kursor ke batang untuk melihat tanggalnya</span></div>
     <div class="panel-body">
       <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
-           aria-label="Grafik batang skor kepatuhan dari waktu ke waktu">
+           aria-label="Grafik skor keamanan dari waktu ke waktu">
         ${gridlines}${bars}
       </svg>
     </div>
@@ -867,15 +872,15 @@ async function logPanel(kid, gen) {
 
   const body = (d.lines || []).length
     ? d.lines.map(b => `<div>
-        <span class="w">${esc((b.time||'').replace('T',' ').slice(0,19))}</span>
-        <span class="s ${esc(b.status)}">${esc(b.status)}</span>
-        <span class="w">${esc(b.id)} ${esc(b.action)}</span>
+        <span class="w">${esc(when(b.time))}</span>
+        <span class="s ${esc(b.status)}">${esc(statusLabel(b.status))}</span>
+        <span class="w">${esc(b.id)} ${esc(ACTION_LABEL[b.action] || b.action)}</span>
         <span class="msg">${esc(b.value ?? '')}${b.message ? ' · ' + esc(b.message) : ''}</span></div>`).join('')
     : `<div class="empty"><b>Belum ada catatan.</b>${esc(d.message || 'Jejak tindakan ditulis ke /var/log/yoru/ setiap kali sebuah kontrol dijalankan.')}</div>`;
 
   return `<div class="panel">
     <div class="head"><h2>Jejak tindakan${kid ? ' · ' + esc(kid) : ''}</h2>
-      <span class="note">milik root · agent tidak bisa menyuntingnya</span>
+      <span class="note">nggak bisa diubah Yoru sendiri</span>
       <div class="bulk">${kid ? '<button class="btn" id="allLogs">Lihat semua</button>' : ''}</div></div>
     <div class="logbox">${body}</div></div>`;
 }
@@ -884,7 +889,7 @@ async function logPanel(kid, gen) {
 // Three groups on one page, one Save each, so the config is loaded once.
 const SETTINGS = [
   {id: 'telegram', title: 'Bot Telegram',
-   intro: 'Yoru cuma mengirim kalau ada yang berubah atau ada yang perlu dijawab. Tidak ada laporan harian yang isinya "semuanya masih aman". Yang mengirim itu agent di server, bukan halaman ini.',
+   intro: 'Yoru cuma mengirim kabar kalau ada yang berubah atau ada yang perlu kamu jawab. Selain itu kamu bisa tanya apa aja lewat chat.',
    fields: [
      {key:'TELEGRAM_TOKEN', label:'Token bot', secret:true,
       hint:'Dari @BotFather: /newbot, lalu salin utuh barisnya. Bentuknya angka, titik dua, lalu huruf-angka.'},
@@ -892,26 +897,26 @@ const SETTINGS = [
       hint:'Biasanya terisi sendiri begitu kamu kirim /start beserta kode sambung ke botmu. Isi manual cuma kalau botnya yang meminta.'}]},
 
   {id: 'model', title: 'Model AI',
-   intro: 'Yoru bertanya ke sebuah server model di dalam server ini lewat alamat di bawah. Kunci API TIDAK disimpan di sini. Dia tinggal di berkas lain yang tidak bisa dibaca agent. Kosong = Yoru tetap jalan, kalimat penjelasannya diambil dari katalog.',
+   intro: 'Otak AI Yoru (Hermes) jalan di server ini. Dia yang menjawab chat Telegram dan menulis catatan di laporan. Kunci API-nya nggak disimpan di sini. Kosong = Yoru tetap jalan, cuma tanpa AI.',
    fields: [
      {key:'HERMES_URL', label:'Alamat server model',
-      hint:'Bentuknya http://host:port. Kalau dipasang lewat installer, biasanya sudah terisi http://127.0.0.1:8080.'},
+      hint:'Diisi installer, biasanya http://127.0.0.1:8642. Ganti model atau kunci lewat: sudo bash install.sh --hermes'},
      {key:'AI_MODEL', label:'Nama model (boleh dikosongkan)',
-      hint:'Kosongkan saja. Penghubungnya memilih model yang masih dilayani oleh kuncimu.'},
+      hint:'Untuk Hermes isinya hermes-agent. Model Gemini-nya dipilih di installer.'},
      {key:'HERMES_TOKEN', label:'Token server model (boleh dikosongkan)', secret:true,
-      hint:'Cuma perlu kalau server modelmu minta token. Ini token layanan di 127.0.0.1, bukan kunci berbayar.'}]},
+      hint:'Diisi installer. Ini kunci antara Yoru dan Hermes di server ini, bukan kunci API berbayar.'}]},
 
   {id: 'sistem', title: 'Sistem',
-   intro: 'Semua ini disimpan di /etc/yoru/yoru.conf. Halaman ini tidak menulis berkas itu sendiri, tapi menitipkannya ke yoructl, program yang sama yang dipakai agent.',
+   intro: 'Setelan server ini. Disimpan di /etc/yoru/yoru.conf.',
    fields: [
      {key:'NAMA_SERVER', label:'Nama server',
       hint:'Nama yang muncul di dashboard dan bot. Kosong = pakai hostname.'},
      {key:'PORT_DIIZINKAN', label:'Port yang boleh terbuka',
-      hint:'Dipisah spasi, contoh: 80 443 8000. Port SSH tidak perlu ditulis, Yoru mencarinya sendiri. Selama masih ada port terbuka yang belum ada di sini, K05 menolak menyalakan firewall.'},
+      hint:'Dipisah spasi, contoh: 80 443 8000. Port SSH nggak perlu ditulis. Firewall baru dinyalakan kalau semua port yang terbuka sudah ada di sini.'},
      {key:'LEWATI_KONTROL', label:'Kontrol yang dilewati',
-      hint:'Dipisah koma, contoh: K05,K06. Kosongkan kalau semua boleh dipertimbangkan.'},
+      hint:'Kode pemeriksaan dipisah koma, contoh: K05,K06. Kodenya ada di detail tiap pemeriksaan. Kosongkan kalau semua boleh.'},
      {key:'JAM_PENJAGAAN', label:'Jam pemindaian harian',
-      hint:'Bentuk HH:MM. Timer systemd langsung ikut diganti begitu disimpan. Pilih jam sepi.'},
+      hint:'Bentuk HH:MM. Langsung berlaku begitu disimpan. Pilih jam sepi.'},
      {key:'ZONA_WAKTU', label:'Zona waktu',
       hint:'Contoh: Asia/Jakarta. Dipakai untuk jam pemindaian dan semua jam di laporan.'}]},
 ];
@@ -1023,11 +1028,11 @@ async function decide(control, value, slot, buttons) {
     const d = await r.json();
     if (r.ok && d.ok) {
       slotSay(slot, 'ok', value === 'kembalikan'
-        ? 'dicatat, agent akan mengembalikannya pada siklus berikutnya'
+        ? 'dicatat, dikembalikan pada pemeriksaan berikutnya'
         : value === 'sah'
         ? 'dicatat sebagai perubahan yang kamu sengaja'
         : value === 'setuju'
-        ? (isLocal() ? 'disetujui, tinggal jalankan' : 'disetujui, agent di server itu yang menjalankan')
+        ? (isLocal() ? 'disetujui, tinggal jalankan' : 'disetujui, dikerjakan di server itu')
         : 'dicatat, kontrol ini tidak akan diterapkan');
       if (value === 'setuju' && isLocal()) offerApply(control, slot);
     } else {
@@ -1050,7 +1055,7 @@ function offerApply(control, slot) {
   const go = document.createElement('button');
   go.className = 'btn primary now';
   go.dataset.a = 'terapkan';
-  go.textContent = 'Terapkan sekarang';
+  go.textContent = 'Amankan sekarang';
   go.onclick = () => confirmApply(control, go);
   acts.appendChild(go);
 }
@@ -1066,7 +1071,7 @@ async function vouchPort(port, btn, slot) {
     if (r.ok && d.ok) {
       btn.textContent = 'sudah dicatat';
       slotSay(slot, 'ok', `Port ${port} dicatat sebagai milikmu. Begitu semua port terjawab, `
-        + `K05 boleh menyalakan firewall.`);
+        + `firewall boleh dinyalakan.`);
     } else {
       slotSay(slot, 'bad', d.detail || `gagal disimpan (HTTP ${r.status})`);
       btn.disabled = false;
@@ -1092,7 +1097,7 @@ function wireButtons() {
     b.onclick = async () => {
       const action = b.dataset.bulk;
       if (action !== 'periksa' &&
-          !confirm(`Jalankan ${action} untuk SEMUA kontrol?\n\nYang berisiko tetap ditanya satu per satu.`)) return;
+          !confirm(`${ACTION_LABEL[action]} semua pemeriksaan?\n\nYang berisiko tetap nunggu persetujuanmu.`)) return;
       b.disabled = true;
       openBulk(action);
       let done = 0, held = 0, broke = 0;
@@ -1140,7 +1145,7 @@ function wireButtons() {
 function confirmApply(kid, btn) {
   const k = (DATA.controls || []).find(x => x.id === kid) || {};
   $('confirmTitle').textContent = k.name || kid;
-  $('confirmKid').textContent = `${kid} · ${k.cis_code || ''} · sekarang ${k.observed} → target ${k.target}`;
+  $('confirmKid').textContent = `Sekarang: ${k.observed || '-'} · Harusnya: ${k.target || '-'}`;
   $('confirmWhy').textContent = k.why || '';
   $('confirmRisk').textContent = k.breaks_if_applied || '(katalog belum mencantumkan konsekuensinya)';
   const d = $('dlgConfirm');
@@ -1150,27 +1155,30 @@ function confirmApply(kid, btn) {
 
 // The real sequence yoructl runs for each action, in plain words.
 const STEPS = {
-  periksa: ['Membaca keadaan yang benar-benar berlaku sekarang',
-            'Bukan isi berkas konfigurasi, karena itu belum tentu yang aktif',
-            'Membandingkan dengan nilai target di katalog'],
-  terapkan: ['Merekam keadaan asal ke /var/backups/yoru',
-             'Menulis setelan sebagai berkas milik Yoru sendiri',
+  periksa: ['Membaca setelan yang benar-benar berlaku sekarang',
+            'Membandingkan dengan yang seharusnya'],
+  terapkan: ['Menyimpan cadangan setelan lama',
+             'Menulis setelan baru',
              'Memuat ulang layanannya',
-             'Membaca ulang keadaan efektif untuk memastikan',
+             'Mengecek ulang hasilnya',
              'Kalau hasilnya tidak sesuai, langsung dikembalikan'],
-  kembalikan: ['Menghapus setelan yang ditulis Yoru',
+  kembalikan: ['Menghapus setelan buatan Yoru',
                'Memuat ulang layanannya',
-               'Membaca ulang keadaan efektif']
+               'Mengecek ulang hasilnya']
 };
-const ACTION_LABEL = {periksa: 'Audit', terapkan: 'Hardening', kembalikan: 'Rollback'};
-const statusLabel = s => s === 'DITOLAK' ? 'BELUM BISA'
-                       : s === 'MENUNGGU' ? 'MASIH JALAN' : s;
+const ACTION_LABEL = {periksa: 'Cek ulang', terapkan: 'Amankan', kembalikan: 'Kembalikan',
+                      verifikasi: 'Cek hasil'};
+// What yoructl answered, in the owner's words.
+const RESULT_LABEL = {LULUS: 'Aman', GAGAL: 'Belum aman', SEBAGIAN: 'Setengah jalan',
+                      DILEWATI: 'Dilewati', DIKEMBALIKAN: 'Dikembalikan', DISIMPAN: 'Tersimpan',
+                      DITOLAK: 'Belum bisa', MENUNGGU: 'Masih jalan', ERROR: 'Error'};
+const statusLabel = s => RESULT_LABEL[s] || s;
 
 let runTimer = null;
 
 function openBulk(action) {
   $('runTitle').textContent = `${ACTION_LABEL[action]} semua`;
-  $('runKid').textContent = `sudo -n yoructl <kontrol> ${action}`;
+  $('runKid').textContent = 'Satu per satu. Yang berisiko tetap nunggu persetujuanmu.';
   $('runCmd').textContent = '';
   $('runCmd').hidden = true;
   $('runReply').hidden = true;
@@ -1203,7 +1211,7 @@ function closeBulk(done, held, broke) {
   $('runClock').textContent = 'selesai';
   const box = $('runReply');
   box.className = 'reply ' + (broke ? 'bad' : held ? 'wait' : 'ok');
-  box.textContent = `${done} beres` + (held ? `, ${held} berhenti sendiri` : '')
+  box.textContent = `${done} beres` + (held ? `, ${held} nunggu atau dilewati` : '')
                                     + (broke ? `, ${broke} gagal` : '') + '.';
   box.hidden = false;
   $('runCmd').hidden = false;
@@ -1212,8 +1220,8 @@ function closeBulk(done, held, broke) {
 
 function openRun(kid, action) {
   const k = (DATA?.controls || []).find(x => x.id === kid) || {};
-  $('runTitle').textContent = `${ACTION_LABEL[action] || action} · ${k.name || kid}`;
-  $('runKid').textContent = `${kid}${k.cis_code ? ' · ' + k.cis_code : ''}`;
+  $('runTitle').textContent = `${ACTION_LABEL[action] || action}: ${k.name || kid}`;
+  $('runKid').textContent = k.name ? kid : '';
   $('runSteps').innerHTML = (STEPS[action] || []).map((s, i) =>
     `<li class="${i === 0 ? 'on' : ''}">${esc(s)}</li>`).join('');
   $('runCmd').textContent = `sudo yoructl ${kid} ${action}`;
@@ -1300,7 +1308,7 @@ async function beat() {
     if (!r.ok) return;
     const b = ((await r.json()).lines || [])[0];
     el.querySelector('.l').textContent = b
-      ? `${(b.time || '').replace('T', ' ').slice(0, 19)}  ${b.id || ''} ${b.action || ''} ${b.status || ''}`
+      ? `${when(b.time)}  ${b.id || ''} ${ACTION_LABEL[b.action] || b.action || ''} · ${statusLabel(b.status || '')}`
         + (b.value ? ' · ' + b.value : '')
       : 'belum ada tindakan yang tercatat';
   } catch (e) { /* the strip is decoration; a failure here must stay silent */ }
